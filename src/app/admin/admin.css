@@ -1,0 +1,241 @@
+:root {
+  --rei-green: #43a419;
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --border: #e7e9f0;
+  --text: #101828;
+  --muted: #667085;
+  --shadow: 0 8px 20px rgba(16, 24, 40, 0.06);
+  --radius: 14px;
+}
+
+/* Base admin wrapper */
+.rei-admin {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+    Helvetica, Arial;
+}
+
+/* Layout */
+.rei-shell {
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.rei-sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 18px 14px;
+}
+
+/* Branding */
+.rei-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 14px;
+}
+
+.rei-brandMark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(67, 164, 25, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rei-green);
+  font-weight: 900;
+}
+
+.rei-brandText strong {
+  display: block;
+  font-size: 14px;
+}
+
+.rei-brandText span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Nav */
+.rei-nav {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rei-navSection {
+  margin-top: 10px;
+  padding: 8px 8px 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rei-navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  margin: 0 6px;
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text);
+  font-weight: 700;
+  position: relative;
+}
+
+.rei-navItem:hover {
+  background: rgba(16, 24, 40, 0.04);
+}
+
+.rei-navItem[data-active="true"] {
+  background: rgba(67, 164, 25, 0.1);
+}
+
+.rei-navItem[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--rei-green);
+}
+
+.rei-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: rgba(16, 24, 40, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: rgba(16, 24, 40, 0.75);
+}
+
+/* Main */
+.rei-main {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Top bar */
+.rei-topbar {
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rei-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.rei-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.rei-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  background: #2f6fed;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+}
+
+/* Content */
+.rei-content {
+  padding: 18px 22px 28px;
+}
+
+/* Card */
+.rei-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+/* Toolbar */
+.rei-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.rei-search {
+  min-width: 280px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+/* Buttons */
+.rei-btn {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.rei-btnPrimary {
+  background: #2f6fed;
+  color: white;
+}
+
+/* Loading state */
+.rei-loadingBox {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--muted);
+  min-height: 300px;
+}
+
+.rei-spinner {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 3px solid rgba(67, 164, 25, 0.2);
+  border-top-color: var(--rei-green);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
