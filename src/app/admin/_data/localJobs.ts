@@ -30,3 +30,6 @@ export function findLocalJob(jobId: string): Job | null {
   const jobs = loadLocalJobs();
   return jobs.find((j) => j.id === jobId) ?? null;
 }
+export function updateLocalJob(job: Job) {
+  upsertLocalJob(job);
+}
