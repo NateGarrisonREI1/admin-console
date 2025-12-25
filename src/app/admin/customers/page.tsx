@@ -1,101 +1,150 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 
 type Customer = {
   id: string;
-  name: string;
-  email?: string;
-  created_at: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at?: string;
 };
 
-const MOCK_CUSTOMERS: Customer[] = [
-  { id: "cust_001", name: "John Smith", email: "john@example.com", created_at: "2025-12-20" },
-  { id: "cust_002", name: "Sarah Johnson", email: "sarah@example.com", created_at: "2025-12-21" },
-];
-
 export default function CustomersPage() {
+  const [rows, setRows] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await supabase
+        .from("customers")
+        .select("id,name,email,phone,created_at")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (error) {
+        setError(error.message);
+        setRows([]);
+      } else {
+        setRows((data as Customer[]) ?? []);
+      }
+
+      setLoading(false);
+    };
+
+    run();
+  }, []);
+
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+    <main style={{ padding: 24 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0 }}>Customers</h1>
-          <p style={{ marginTop: 8, color: "#666" }}>
-            This is a placeholder list. Next we’ll replace it with Supabase data.
+          <p style={{ marginTop: 8, color: "#555" }}>
+            Showing up to 50 most recent records from <code>public.customers</code>
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => alert("Next step: open a modal or route to /admin/customers/new")}
+        <Link
+          href="/admin"
           style={{
+            alignSelf: "flex-start",
             padding: "10px 12px",
-            borderRadius: 10,
             border: "1px solid #ddd",
-            background: "white",
-            cursor: "pointer",
-            fontWeight: 700,
+            borderRadius: 8,
+            textDecoration: "none",
           }}
         >
-          + New Customer
-        </button>
-      </header>
+          ← Back to Admin
+        </Link>
+      </div>
 
-      <div style={{ border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.6fr",
-            gap: 0,
-            padding: "10px 12px",
-            background: "#f7f7f7",
-            fontWeight: 800,
-            fontSize: 13,
-          }}
-        >
-          <div>Name</div>
-          <div>Email</div>
-          <div>Created</div>
-          <div></div>
-        </div>
-
-        {MOCK_CUSTOMERS.map((c) => (
-          <div
-            key={c.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1.2fr 1.2fr 0.8fr 0.6fr",
-              padding: "12px",
-              borderTop: "1px solid #eee",
-              alignItems: "center",
-            }}
-          >
-            <div style={{ fontWeight: 800 }}>{c.name}</div>
-            <div style={{ color: "#666" }}>{c.email ?? "—"}</div>
-            <div style={{ color: "#666" }}>{c.created_at}</div>
-            <div style={{ textAlign: "right" }}>
-              <button
-                type="button"
-                onClick={() => alert(`Open customer: ${c.id} (next step)`)}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  background: "white",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-              >
-                Open
-              </button>
+      <div style={{ marginTop: 16 }}>
+        {loading && <p>Loading…</p>}
+        {error && (
+          <div style={{ padding: 12, border: "1px solid #f3b4b4", borderRadius: 8 }}>
+            <strong style={{ color: "#b00020" }}>Supabase error:</strong>{" "}
+            <span style={{ color: "#b00020" }}>{error}</span>
+            <div style={{ marginTop: 8, color: "#555" }}>
+              Double-check your Vercel Environment Variables:
+              <ul style={{ marginTop: 8 }}>
+                <li>NEXT_PUBLIC_SUPABASE_URL</li>
+                <li>NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
+              </ul>
             </div>
           </div>
-        ))}
-      </div>
+        )}
 
-      <div style={{ display: "flex", gap: 12 }}>
-        <Link href="/admin">← Back to Admin</Link>
-        <span style={{ color: "#bbb" }}>|</span>
-        <Link href="/">Public Home</Link>
+        {!loading && !error && (
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                border: "1px solid #eee",
+              }}
+            >
+              <thead>
+                <tr>
+                  {["Name", "Email", "Phone", "ID"].map((h) => (
+                    <th
+                      key={h}
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        borderBottom: "1px solid #eee",
+                        background: "#fafafa",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: "12px" }}>
+                      No customers found (table empty or RLS blocking read).
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((c) => (
+                    <tr key={c.id}>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2" }}>
+                        {c.name ?? "—"}
+                      </td>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2" }}>
+                        {c.email ?? "—"}
+                      </td>
+                      <td style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2" }}>
+                        {c.phone ?? "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "10px 12px",
+                          borderBottom: "1px solid #f2f2f2",
+                          fontFamily: "monospace",
+                          fontSize: 12,
+                        }}
+                      >
+                        {c.id}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-    </div>
+    </main>
   );
 }
