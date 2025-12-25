@@ -46,7 +46,7 @@ export default function JobDetailPage() {
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      {/* Header card */}
+      {/* Header */}
       <div className="rei-card">
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
@@ -59,7 +59,16 @@ export default function JobDetailPage() {
 
             <div style={{ color: "var(--muted)" }}>{job.address ?? "—"}</div>
 
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 10, color: "var(--muted)", fontSize: 13 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 14,
+                flexWrap: "wrap",
+                marginTop: 10,
+                color: "var(--muted)",
+                fontSize: 13,
+              }}
+            >
               <div>
                 <b style={{ color: "var(--text)" }}>Sq Ft:</b> {job.sqft ?? "—"}
               </div>
@@ -83,13 +92,12 @@ export default function JobDetailPage() {
         </div>
       </div>
 
-      {/* Files panel (placeholder) */}
+      {/* Inspection Upload (placeholder) */}
       <div className="rei-card">
         <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 6 }}>Inspection Upload</div>
         <div style={{ color: "var(--muted)", marginBottom: 12 }}>
           Placeholder: upload inspection/HES PDFs here (Supabase Storage later).
         </div>
-
         <button
           className="rei-btn"
           type="button"
@@ -100,7 +108,7 @@ export default function JobDetailPage() {
         </button>
       </div>
 
-      {/* Systems list */}
+      {/* Existing Systems */}
       <div className="rei-card">
         <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 10 }}>Existing Systems</div>
 
@@ -120,3 +128,48 @@ export default function JobDetailPage() {
                 fontWeight: 900,
                 fontSize: 12,
                 color: "var(--muted)",
+              }}
+            >
+              <div>Type</div>
+              <div>Subtype</div>
+              <div>Age</div>
+              <div>Operational</div>
+              <div>Wear</div>
+              <div />
+            </div>
+
+            {job.systems.map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.1fr 1.4fr 0.7fr 0.7fr 0.9fr 1fr",
+                  gap: 10,
+                  padding: "12px 14px",
+                  borderTop: "1px solid var(--border)",
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ fontWeight: 900 }}>{s.type}</div>
+                <div style={{ color: "var(--muted)" }}>{s.subtype}</div>
+                <div style={{ color: "var(--muted)" }}>{s.ageYears} yrs</div>
+                <div style={{ color: "var(--muted)" }}>{s.operational}</div>
+                <div style={{ color: "var(--muted)" }}>{s.wear}/5</div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <Link
+                    className="rei-btn rei-btnPrimary"
+                    href={`/admin/snapshots/new?jobId=${encodeURIComponent(job.id)}&systemId=${encodeURIComponent(s.id)}`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    Create Snapshot
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
