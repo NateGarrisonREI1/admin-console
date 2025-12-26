@@ -6,15 +6,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { MOCK_JOBS, type Job } from "../../_data/mockJobs";
 import { findLocalJob } from "../../_data/localJobs";
-
 import { upsertLocalSnapshot, type SnapshotDraft } from "../../_data/localSnapshots";
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, n));
 }
 
 export default function NewSnapshotClient() {
@@ -31,20 +26,19 @@ export default function NewSnapshotClient() {
 
   const existingSystem = useMemo(() => {
     if (!job) return null;
-    // Expecting job.systems[] exists in your mock/local job shape
     const sys = (job.systems || []).find((s: any) => s.id === systemId);
     return sys ?? null;
   }, [job, systemId]);
 
   const [suggestedName, setSuggestedName] = useState("");
-  const [estCost, setEstCost] = useState<string>("");
-  const [estAnnualSavings, setEstAnnualSavings] = useState<string>("");
-  const [estPaybackYears, setEstPaybackYears] = useState<string>("");
+  const [estCost, setEstCost] = useState("");
+  const [estAnnualSavings, setEstAnnualSavings] = useState("");
+  const [estPaybackYears, setEstPaybackYears] = useState("");
   const [notes, setNotes] = useState("");
 
   const backHref = job ? `/admin/jobs/${job.id}` : "/admin/jobs";
 
-  function parseNum(v: string) {
+  function parseNum(v: string): number | null {
     const cleaned = (v || "").replace(/[^0-9.]/g, "");
     if (!cleaned) return null;
     const n = Number(cleaned);
@@ -59,49 +53,42 @@ export default function NewSnapshotClient() {
       return;
     }
 
- function onSave() {
-  if (!job || !existingSystem) return;
+    const draft: SnapshotDraft = {
+      id: `snap_${Math.random().toString(16).slice(2)}_${Date.now()}`,
+      jobId: job.id,
+      systemId: existingSystem.id,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
 
-  if (!suggestedName.trim()) {
-    alert("Suggested system name is required.");
-    return;
+      existing: {
+        type: existingSystem.type ?? "",
+        subtype: existingSystem.subtype ?? "",
+        ageYears: existingSystem.ageYears ?? null,
+        operational: existingSystem.operational ?? "",
+        wear: existingSystem.wear ?? null,
+        maintenance: existingSystem.maintenance ?? "",
+      },
+
+      suggested: {
+        name: suggestedName.trim(),
+
+        // Optional catalog reference (future-ready)
+        catalogSystemId: null,
+
+        estCost: parseNum(estCost),
+        estAnnualSavings: parseNum(estAnnualSavings),
+        estPaybackYears: parseNum(estPaybackYears),
+        notes: notes.trim(),
+      },
+    };
+
+    upsertLocalSnapshot(draft);
+
+    // back to job page where Saved Snapshots should show it
+    router.push(`/admin/jobs/${job.id}?snapSaved=1`);
   }
 
-  const draft: SnapshotDraft = {
-    id: `snap_${Math.random().toString(16).slice(2)}_${Date.now()}`,
-    jobId: job.id,
-    systemId: existingSystem.id,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-
-    existing: {
-      type: existingSystem.type ?? "",
-      subtype: existingSystem.subtype ?? "",
-      ageYears: existingSystem.ageYears ?? null,
-      operational: existingSystem.operational ?? "",
-      wear: existingSystem.wear ?? null,
-      maintenance: existingSystem.maintenance ?? "",
-    },
-
-    suggested: {
-      name: suggestedName.trim(),
-
-      // Optional catalog reference (future-ready)
-      catalogSystemId: null,
-
-      estCost: parseNum(estCost),
-      estAnnualSavings: parseNum(estAnnualSavings),
-      estPaybackYears: parseNum(estPaybackYears),
-      notes: notes.trim(),
-    },
-  };
-
-  upsertLocalSnapshot(draft);
-
-  // back to job page where Saved Snapshots should show it
-  router.push(`/admin/jobs/${job.id}?snapSaved=1`);
-}
-
+  // Missing query params
   if (!jobId || !systemId) {
     return (
       <div className="rei-card" style={{ display: "grid", gap: 10 }}>
@@ -116,6 +103,7 @@ export default function NewSnapshotClient() {
     );
   }
 
+  // Job not found
   if (!job) {
     return (
       <div className="rei-card" style={{ display: "grid", gap: 10 }}>
@@ -130,6 +118,7 @@ export default function NewSnapshotClient() {
     );
   }
 
+  // Existing system not found
   if (!existingSystem) {
     return (
       <div className="rei-card" style={{ display: "grid", gap: 10 }}>
