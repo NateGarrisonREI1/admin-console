@@ -171,10 +171,12 @@ export default function JobReportPage() {
     pagesEl?.addEventListener("scroll", onScroll);
     window.addEventListener("resize", onResize);
 
-    const global = LEAF_SS_CONFIG.global;
+    const effectiveConfig = getEffectiveLeafConfig();
+const global = effectiveConfig.global;
+const msgLib = effectiveConfig.messageLibrary;
     const globalSlider = global.slider;
     const globalIncentives = global.incentives;
-    const msgLib = LEAF_SS_CONFIG.messageLibrary;
+
 
     const clamp = (v: number, min: number, max: number) =>
       Math.min(max, Math.max(min, v));
