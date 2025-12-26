@@ -4,27 +4,26 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
-import { MOCK_JOBS, type Job } from "../../_data/mockJobs";
-import { findLocalJob } from "../../_data/localJobs";
-import { loadLocalSnapshots, snapshotsForJob, type SnapshotDraft } from "../../_data/localSnapshots";
+import { MOCK_JOBS, type Job } from "../../../_data/mockJobs";
+import { findLocalJob } from "../../../_data/localJobs";
+import { loadLocalSnapshots, snapshotsForJob, type SnapshotDraft } from "../../../_data/localSnapshots";
 
+// IMPORTANT: Use relative import so you don’t depend on @ alias yet.
+// From: src/app/admin/jobs/[jobId]/report/page.tsx
+// To:   src/lib/incentives/incentiveRules.ts
 import {
   getIncentivesForSnapshot,
   type IncentiveProgram,
   type IncentiveForm,
-} from "@/lib/incentives/incentiveRules";
-
-/**
- * Mock LEAF Report Preview
- * - Reads Job + Snapshots from local storage (same as job page)
- * - Renders clean sections per snapshot
- * - Incentives rendered via rules engine (no hard-coded PDFs in UI)
- * - Copy/wording is adjustable via the COPY object below
- */
+} from "../../../../../lib/incentives/incentiveRules";
 
 function formatMoney(n: number) {
   try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 0,
+    }).format(n);
   } catch {
     return `$${Math.round(n).toLocaleString()}`;
   }
@@ -36,11 +35,7 @@ function formatDate(iso: string) {
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 
-function cx(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(" ");
-}
-
-/** ✅ All wording lives here (easy future editing) */
+/** ✅ ALL wording lives here so you can change “rebate info” text anytime */
 const COPY = {
   pageTitle: "Mock LEAF Report Preview",
   backToJob: "← Back to Job",
@@ -48,7 +43,7 @@ const COPY = {
 
   reportIntroTitle: "Report Summary",
   reportIntroBody:
-    "This is a mock LEAF report generated from the job profile and saved snapshots. The incentives, forms, and rebate ranges shown are rule-driven placeholders and will become fully dynamic later.",
+    "This is a mock LEAF report generated from the job profile and saved snapshots. Incentives and forms are rule-driven placeholders for now.",
 
   sectionTitle: "Upgrade Recommendation",
   existingLabel: "Existing",
@@ -63,7 +58,7 @@ const COPY = {
   totalsLabel: "Estimated total incentives",
   totalsSuffixEstimated: " (estimated)",
   disclaimer:
-    "Note: Incentive amounts and eligibility vary by location, equipment efficiency, program funding, and contractor participation. This section is intentionally rule-driven so the wording and links can be updated without changing the report UI.",
+    "Note: Incentive amounts and eligibility vary by location, efficiency, program funding, and contractor participation. This section is rule-driven so wording and links can be updated without changing report UI.",
 
   emptyTitle: "Nothing to preview yet",
   emptyBody: "Create at least one snapshot for this job, then generate the mock report.",
@@ -102,7 +97,6 @@ export default function JobReportPage() {
   const reportId = (job as any).reportId ?? job.id;
   const address = (job as any).address ?? (job as any).propertyAddress ?? "—";
 
-  // Context for incentives (future: real provider + state)
   const ctx = {
     stateCode: (job as any).stateCode,
     city: (job as any).city,
@@ -118,7 +112,9 @@ export default function JobReportPage() {
             <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>
               {COPY.pageTitle} — {reportId}
             </div>
-            <div style={{ color: "var(--muted)" }}>{(job as any).customerName ?? "Customer"} • {address}</div>
+            <div style={{ color: "var(--muted)" }}>
+              {(job as any).customerName ?? "Customer"} • {address}
+            </div>
             <div style={{ height: 10 }} />
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", color: "var(--muted)", fontSize: 12 }}>
               <div>
@@ -177,7 +173,6 @@ export default function JobReportPage() {
         </>
       )}
 
-      {/* FOOTER HELPERS */}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button className="rei-btn" type="button" onClick={() => setBump((n) => n + 1)}>
           Refresh report data
@@ -200,14 +195,11 @@ function SnapshotSection({
   const suggestedTitle = snap.suggested.name ?? "Suggested Upgrade";
 
   const cost = typeof snap.suggested.estCost === "number" ? formatMoney(snap.suggested.estCost) : "—";
-  const savings =
-    typeof snap.suggested.estAnnualSavings === "number" ? formatMoney(snap.suggested.estAnnualSavings) : "—";
-  const payback =
-    typeof snap.suggested.estPaybackYears === "number" ? `${snap.suggested.estPaybackYears} yrs` : "—";
+  const savings = typeof snap.suggested.estAnnualSavings === "number" ? formatMoney(snap.suggested.estAnnualSavings) : "—";
+  const payback = typeof snap.suggested.estPaybackYears === "number" ? `${snap.suggested.estPaybackYears} yrs` : "—";
 
   return (
     <div className="rei-card" style={{ display: "grid", gap: 12 }}>
-      {/* Section header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
         <div>
           <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4 }}>{COPY.sectionTitle}</div>
@@ -221,43 +213,17 @@ function SnapshotSection({
         </div>
       </div>
 
-      {/* Existing vs Suggested */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 14,
-            padding: 12,
-            background: "rgba(239,68,68,.03)",
-          }}
-        >
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(239,68,68,.03)" }}>
           <div style={{ fontWeight: 900, marginBottom: 6 }}>{COPY.existingLabel}</div>
           <div style={{ fontWeight: 900 }}>{existingTitle}</div>
           <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
             Fuel: {snap.existing.fuel ?? "—"} • Age: {snap.existing.ageYears ?? "—"} yrs • Condition:{" "}
             {snap.existing.operational ?? "—"}
           </div>
-          {snap.existing.notes ? (
-            <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12, lineHeight: 1.4 }}>
-              {snap.existing.notes}
-            </div>
-          ) : null}
         </div>
 
-        <div
-          style={{
-            border: "1px solid rgba(67,164,25,.35)",
-            borderRadius: 14,
-            padding: 12,
-            background: "rgba(67,164,25,.05)",
-          }}
-        >
+        <div style={{ border: "1px solid rgba(67,164,25,.35)", borderRadius: 14, padding: 12, background: "rgba(67,164,25,.05)" }}>
           <div style={{ fontWeight: 900, marginBottom: 6 }}>{COPY.suggestedLabel}</div>
           <div style={{ fontWeight: 900 }}>{suggestedTitle}</div>
           <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
@@ -267,14 +233,7 @@ function SnapshotSection({
         </div>
       </div>
 
-      {/* Incentives */}
-      <div
-        style={{
-          border: "1px solid var(--border)",
-          borderRadius: 14,
-          padding: 12,
-        }}
-      >
+      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
           <div>
             <div style={{ fontWeight: 900, marginBottom: 4 }}>{COPY.incentivesTitle}</div>
@@ -286,9 +245,7 @@ function SnapshotSection({
             <div style={{ fontWeight: 900 }}>
               {formatMoney(incentives.totals.min)}–{formatMoney(incentives.totals.max)}
               {incentives.totals.estimated ? (
-                <span style={{ color: "var(--muted)", fontWeight: 700 }}>
-                  {COPY.totalsSuffixEstimated}
-                </span>
+                <span style={{ color: "var(--muted)", fontWeight: 700 }}>{COPY.totalsSuffixEstimated}</span>
               ) : null}
             </div>
           </div>
@@ -301,20 +258,9 @@ function SnapshotSection({
           <ProgramsBlock programs={incentives.programs} />
         </div>
 
-        {incentives.notes?.length ? (
-          <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
-            <div style={{ fontWeight: 900, color: "var(--text)", marginBottom: 6 }}>Notes</div>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
-              {incentives.notes.map((n, idx) => (
-                <li key={idx}>{n}</li>
-              ))}
-            </ul>
-
-            <div style={{ marginTop: 10 }}>{COPY.disclaimer}</div>
-          </div>
-        ) : (
-          <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>{COPY.disclaimer}</div>
-        )}
+        <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+          {COPY.disclaimer}
+        </div>
       </div>
     </div>
   );
