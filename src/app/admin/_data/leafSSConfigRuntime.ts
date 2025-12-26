@@ -1,4 +1,4 @@
-import { LEAF_SS_CONFIG } from "./leafSSConfig";
+import { loadLeafSSMasterConfig } from "./leafSSConfigStore";
 
 export type LeafTierKey = "good" | "better" | "best";
 export type CostClass = "unreal_low" | "low" | "in" | "likely_over" | "over";
