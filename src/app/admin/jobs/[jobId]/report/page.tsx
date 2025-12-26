@@ -27,7 +27,8 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function formatIncentiveAmount(amount?: IncentiveAmount): string | null {
+function formatIncentiveAmount(amount?: any): string | null {
+  
   if (!amount) return null;
 
   if (amount.kind === "text") return amount.value;
