@@ -1,10 +1,12 @@
-import { Suspense } from "react";
 import NewSnapshotClient from "./NewSnapshotClient";
 
-export default function NewSnapshotPage() {
-  return (
-    <Suspense fallback={<div className="rei-card">Loading snapshot…</div>}>
-      <NewSnapshotClient />
-    </Suspense>
-  );
+export default function Page({
+  searchParams,
+}: {
+  searchParams?: { jobId?: string; systemId?: string };
+}) {
+  const jobId = searchParams?.jobId ?? "";
+  const systemId = searchParams?.systemId ?? "";
+
+  return <NewSnapshotClient jobId={jobId} systemId={systemId} />;
 }
