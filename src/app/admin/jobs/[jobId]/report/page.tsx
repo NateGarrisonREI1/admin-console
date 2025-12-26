@@ -107,20 +107,20 @@ export default function JobReportPage() {
         (r: any) => !(r as any).disabled
       );
 
-   return {
-  id: s?.id || `page_${idx}`,
-  existingType,
-  existingSubtype,
-  ageYears: s?.existing?.ageYears ?? null,
-  wear: s?.existing?.wear ?? null,
-  suggestedName: String(s?.suggested?.name || "Suggested upgrade").trim(),
-  estCost: s?.suggested?.estCost ?? null,
-  estAnnualSavings: s?.suggested?.estAnnualSavings ?? null,
-  estPaybackYears: s?.suggested?.estPaybackYears ?? null,
-  catalogSystemId: catalogId || null,
-  tags,
-  incentives,
-};
+       return {
+        id: s?.id || `page_${idx}`,
+        catalogSystemId: catalogId, // ✅ pass through so runtime can apply catalog overrides
+        existingType,
+        existingSubtype,
+        ageYears: s?.existing?.ageYears ?? null,
+        wear: s?.existing?.wear ?? null,
+        suggestedName: String(s?.suggested?.name || "Suggested upgrade").trim(),
+        estCost: s?.suggested?.estCost ?? null,
+        estAnnualSavings: s?.suggested?.estAnnualSavings ?? null,
+        estPaybackYears: s?.suggested?.estPaybackYears ?? null,
+        tags,
+        incentives,
+      };
 
     });
   }, [snaps]);
