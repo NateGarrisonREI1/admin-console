@@ -11,9 +11,27 @@ export default function LeafSSConfigPage() {
   const [config, setConfig] = useState<any | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    setConfig(loadLeafSSMasterConfig());
-  }, []);
+ useEffect(() => {
+  const cfg = loadLeafSSMasterConfig();
+
+  // 🔐 Ensure tiers exist (backward compatible)
+  cfg.global.tiers ??= {
+    good: {
+      leafPriceRange: { min: 3000, max: 7000 },
+      baseMonthlySavings: { min: 150, max: 250 },
+    },
+    better: {
+      leafPriceRange: { min: 7000, max: 11000 },
+      baseMonthlySavings: { min: 250, max: 400 },
+    },
+    best: {
+      leafPriceRange: { min: 11000, max: 15000 },
+      baseMonthlySavings: { min: 400, max: 600 },
+    },
+  };
+
+  setConfig(cfg);
+}, []);
 
   if (!config) {
     return <div style={{ padding: 24 }}>Loading LEAF config…</div>;
