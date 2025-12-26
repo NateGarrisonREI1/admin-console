@@ -239,3 +239,22 @@
     transform: rotate(360deg);
   }
 }
+/* Worksheet responsive grid */
+.rei-formGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+}
+
+@media (max-width: 1200px) {
+  .rei-formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .rei-formGrid {
+    grid-template-columns: 1fr;
+  }
+}
