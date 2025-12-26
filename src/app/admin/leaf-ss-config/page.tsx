@@ -21,6 +21,7 @@ export default function LeafSSConfigPage() {
 
   const g = config.global;
 
+  /* ---------- CONFIG UPDATE HELPER ---------- */
   function update(path: string[], value: any) {
     setConfig((prev: any) => {
       const next = structuredClone(prev);
@@ -46,14 +47,14 @@ export default function LeafSSConfigPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, padding: 24 }}>
+    <div style={{ maxWidth: 960, padding: 24 }}>
       <h1 style={{ fontSize: 22, fontWeight: 800 }}>
         LEAF System Snapshot — Master Config
       </h1>
 
       <p style={{ color: "#555", marginTop: 6 }}>
-        Changes here affect <b>all LEAF System Snapshot reports</b>.
-        Snapshot-level overrides will layer on top.
+        Changes here affect <b>all LEAF System Snapshot reports</b>. Snapshot-level
+        overrides will layer on top.
       </p>
 
       {/* BRAND */}
@@ -68,7 +69,7 @@ export default function LeafSSConfigPage() {
         />
       </Section>
 
-      {/* SLIDER */}
+      {/* PRICE SLIDER */}
       <Section title="Price Slider">
         <Row>
           <Field
@@ -89,82 +90,78 @@ export default function LeafSSConfigPage() {
         </Row>
       </Section>
 
-      {/* ───────────────────────────────────────────── */}
-{/* Tier Configuration */}
-{/* ───────────────────────────────────────────── */}
-<section className="configSection">
-  <h3 className="configSectionTitle">Tier Configuration</h3>
-  <p className="configSectionHint">
-    These ranges define the <b>Good / Better / Best</b> pricing bands and baseline
-    savings used in every LEAF System Snapshot.
-  </p>
+      {/* TIERS */}
+      <Section title="Tier Configuration">
+        <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
+          Defines the <b>Good / Better / Best</b> pricing bands and baseline
+          savings used in every LEAF System Snapshot.
+        </p>
 
-  {(["good", "better", "best"] as const).map((tier) => (
-    <div key={tier} className="configCard">
-      <h4 className="configCardTitle">
-        {tier === "good" && "🟢 Good Tier"}
-        {tier === "better" && "🔵 Better Tier"}
-        {tier === "best" && "🟣 Best Tier"}
-      </h4>
+        {(["good", "better", "best"] as const).map((tier) => (
+          <div
+            key={tier}
+            style={{
+              border: "1px solid #ddd",
+              borderRadius: 12,
+              padding: 16,
+              marginBottom: 16,
+              background: "#fafafa",
+            }}
+          >
+            <h3 style={{ marginBottom: 12 }}>
+              {tier === "good" && "🟢 Good Tier"}
+              {tier === "better" && "🔵 Better Tier"}
+              {tier === "best" && "🟣 Best Tier"}
+            </h3>
 
-      <div className="configGrid">
-        {/* Price Range */}
-        <div>
-          <label>Min price ($)</label>
-          <input
-            type="number"
-            value={config.global.tiers[tier].leafPriceRange.min}
-            onChange={(e) =>
-              updateConfig((c) => {
-                c.global.tiers[tier].leafPriceRange.min = Number(e.target.value);
-              })
-            }
-          />
-        </div>
+            <Row>
+              <Field
+                label="Min price ($)"
+                value={g.tiers[tier].leafPriceRange.min}
+                onChange={(v) =>
+                  update(
+                    ["global", "tiers", tier, "leafPriceRange", "min"],
+                    v
+                  )
+                }
+              />
+              <Field
+                label="Max price ($)"
+                value={g.tiers[tier].leafPriceRange.max}
+                onChange={(v) =>
+                  update(
+                    ["global", "tiers", tier, "leafPriceRange", "max"],
+                    v
+                  )
+                }
+              />
+            </Row>
 
-        <div>
-          <label>Max price ($)</label>
-          <input
-            type="number"
-            value={config.global.tiers[tier].leafPriceRange.max}
-            onChange={(e) =>
-              updateConfig((c) => {
-                c.global.tiers[tier].leafPriceRange.max = Number(e.target.value);
-              })
-            }
-          />
-        </div>
-
-        {/* Savings Range */}
-        <div>
-          <label>Base savings min ($/month)</label>
-          <input
-            type="number"
-            value={config.global.tiers[tier].baseMonthlySavings.min}
-            onChange={(e) =>
-              updateConfig((c) => {
-                c.global.tiers[tier].baseMonthlySavings.min = Number(e.target.value);
-              })
-            }
-          />
-        </div>
-
-        <div>
-          <label>Base savings max ($/month)</label>
-          <input
-            type="number"
-            value={config.global.tiers[tier].baseMonthlySavings.max}
-            onChange={(e) =>
-              updateConfig((c) => {
-                c.global.tiers[tier].baseMonthlySavings.max = Number(e.target.value);
-              })
-            }
-          />
-        </div>
-      </div>
-    </div>
-  ))}
-</section>
+            <Row>
+              <Field
+                label="Base savings min ($/month)"
+                value={g.tiers[tier].baseMonthlySavings.min}
+                onChange={(v) =>
+                  update(
+                    ["global", "tiers", tier, "baseMonthlySavings", "min"],
+                    v
+                  )
+                }
+              />
+              <Field
+                label="Base savings max ($/month)"
+                value={g.tiers[tier].baseMonthlySavings.max}
+                onChange={(v) =>
+                  update(
+                    ["global", "tiers", tier, "baseMonthlySavings", "max"],
+                    v
+                  )
+                }
+              />
+            </Row>
+          </div>
+        ))}
+      </Section>
 
       {/* COST CLASSIFICATION */}
       <Section title="Quote Classification">
@@ -202,7 +199,7 @@ export default function LeafSSConfigPage() {
         </Row>
       </Section>
 
-      {/* SAVINGS RULE */}
+      {/* SAVINGS SENSITIVITY */}
       <Section title="Savings Sensitivity">
         <Row>
           <Field
@@ -241,7 +238,7 @@ export default function LeafSSConfigPage() {
         </Row>
       </Section>
 
-      {/* UI TEXT */}
+      {/* UI COPY */}
       <Section title="UI Copy">
         <TextField
           label="Header title"
@@ -292,7 +289,7 @@ export default function LeafSSConfigPage() {
   );
 }
 
-/* ---------- UI helpers ---------- */
+/* ---------- UI HELPERS ---------- */
 
 function Section({
   title,
@@ -321,7 +318,7 @@ function Section({
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: "flex", gap: 16 }}>{children}</div>;
+  return <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>{children}</div>;
 }
 
 function Label({ children }: { children: React.ReactNode }) {
