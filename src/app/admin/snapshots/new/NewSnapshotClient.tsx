@@ -75,7 +75,6 @@ function toNumberMaybe(v: any): number | null {
 }
 
 function midpointFromRange(v: any): number | null {
-  // supports {min,max} or {low,high} or {from,to}
   if (!v || typeof v !== "object") return null;
   const a = toNumberMaybe(v.min ?? v.low ?? v.from);
   const b = toNumberMaybe(v.max ?? v.high ?? v.to);
@@ -134,31 +133,27 @@ function normalizeCatalog(raw: any[]): CatalogItem[] {
         x.oneLiner ??
         undefined;
 
-      /**
-       * COST normalizing (support a LOT of likely keys)
-       * - flat number
-       * - string like "$14,000"
-       * - range object like {min,max}
-       */
+      // ✅ FIX: support your real schema: defaultAssumptions.estCost / estAnnualSavings / estPaybackYears
+      const da = x.defaultAssumptions ?? {};
+
       const defaultCost = firstNumber(
+        da.estCost,
         x.defaultCost,
         x.estCost,
         x.cost,
         x.price,
         x.estimatedCost,
         x.totalCost,
-        x.installCost, // some catalogs store install cost only
-        x.unitCost, // some store unit cost only
+        x.installCost,
+        x.unitCost,
         x.costRange,
-        x.leafRange, // if you store LEAF min/max range
+        x.leafRange,
         x.priceRange,
         x.range
       );
 
-      /**
-       * SAVINGS / YEAR normalizing
-       */
       const defaultSavingsYr = firstNumber(
+        da.estAnnualSavings,
         x.defaultSavingsYr,
         x.estSavingsYr,
         x.savingsYr,
@@ -171,10 +166,8 @@ function normalizeCatalog(raw: any[]): CatalogItem[] {
         x.savingsRange
       );
 
-      /**
-       * PAYBACK (years)
-       */
       const defaultPaybackYears = firstNumber(
+        da.estPaybackYears,
         x.defaultPaybackYears,
         x.paybackYears,
         x.payback,
@@ -185,6 +178,7 @@ function normalizeCatalog(raw: any[]): CatalogItem[] {
 
       const defaultNotes = String(
         x.defaultNotes ??
+          da.notes ??
           x.notes ??
           x.longNotes ??
           x.details ??
@@ -192,7 +186,7 @@ function normalizeCatalog(raw: any[]): CatalogItem[] {
           ""
       )
         .trim()
-        .slice(0, 5000); // keep safe
+        .slice(0, 5000);
 
       return {
         id,
@@ -264,7 +258,11 @@ export default function NewSnapshotClient({
     setSuggestedName((prev) => (prev.trim() ? prev : selectedCatalog.name));
 
     // ✅ numeric fields: OVERWRITE so it’s obvious it worked
-    setEstCost(selectedCatalog.defaultCost !== null && selectedCatalog.defaultCost !== undefined ? String(selectedCatalog.defaultCost) : "");
+    setEstCost(
+      selectedCatalog.defaultCost !== null && selectedCatalog.defaultCost !== undefined
+        ? String(selectedCatalog.defaultCost)
+        : ""
+    );
     setEstAnnualSavings(
       selectedCatalog.defaultSavingsYr !== null && selectedCatalog.defaultSavingsYr !== undefined
         ? String(selectedCatalog.defaultSavingsYr)
