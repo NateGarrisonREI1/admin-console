@@ -243,8 +243,9 @@ function initLeafPage(root: Element) {
   // ✅ TS-safe alias (non-null forever in this closure)
   const slider = priceSlider;
 
-  const pageIndex = Number(root.getAttribute("data-page-index") || "0");
-  const snapshot = getSnapshotByIndex(pageIndex);
+const pageIndex = Number(root.getAttribute("data-page-index") || "0");
+const catalogId = root.getAttribute("data-catalog-id") || null;
+const snapshot = getSnapshotByIndex(pageIndex, catalogId);
 
   let tierKey: LeafTierKey = "better";
 
@@ -784,7 +785,12 @@ function initLeafPage(root: Element) {
         <div id="pages" className="snapScroll">
           {pages.map((p, idx) => (
             <div key={p.id} className="snapPage">
-              <main className="leafPage leaf-page" data-page-index={idx}>
+              <main
+  className="leafPage leaf-page"
+  data-page-index={idx}
+  data-catalog-id={p.catalogSystemId || ""}
+/>
+
                 {/* HERO */}
                 <section className="glass">
                   <div className="h1">
