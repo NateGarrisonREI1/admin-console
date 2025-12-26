@@ -76,13 +76,16 @@ export default function NewSnapshotClient() {
       },
 
       suggested: {
-        name: suggestedName.trim(),
-        estCost: parseNum(estCost),
-        estAnnualSavings: parseNum(estAnnualSavings),
-        estPaybackYears: parseNum(estPaybackYears),
-        notes: notes.trim(),
-      },
-    };
+  name: suggestedName.trim(),
+
+  // Optional catalog reference (future-ready)
+  catalogSystemId: null,
+
+  estCost: parseNum(estCost),
+  estAnnualSavings: parseNum(estAnnualSavings),
+  estPaybackYears: parseNum(estPaybackYears),
+  notes: notes.trim(),
+},
 
     upsertLocalSnapshot(draft);
 
