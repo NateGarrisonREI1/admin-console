@@ -1,396 +1,202 @@
+// src/lib/incentives/incentiveRules.ts
 /**
- * src/lib/incentives/incentiveRules.ts
+ * Incentives + rebate “rules” (V0)
+ * ---------------------------------------------------------
+ * This is intentionally simple + editable.
  *
- * Central incentive + form rules for LEAF report mock.
- * - Today: hardcoded data + simple rule matching
- * - Later: replace RULES + copy blocks with Supabase-driven config
+ * Goals:
+ * - Attach “resources” (pdf links, websites) to system types
+ * - Attach editable “copy” blocks (wording text) to system types
+ * - Keep amounts flexible (ranges, “typical”, etc.)
+ * - Provide ONE function your UI can call:
+ *     getIncentivesForSystemType(systemType, context?)
+ *
+ * Later:
+ * - Replace hardcoded arrays with DB (Supabase) tables
+ * - Add state/utility rules, income qualification, effective dates, etc.
  */
-
-export type IncentiveLevel = "federal" | "state" | "utility" | "local" | "other";
-
-export type IncentiveForm = {
-  id: string;
-  title: string;
-  url: string;
-  note?: string; // editable wording
-  tags?: string[];
-};
 
 export type IncentiveLink = {
   label: string;
   url: string;
 };
 
-export type IncentiveProgram = {
+export type IncentiveAmount =
+  | { kind: "range"; min: number; max: number; unit?: "one_time" | "per_year" | "percent" }
+  | { kind: "flat"; value: number; unit?: "one_time" | "per_year" | "percent" }
+  | { kind: "text"; value: string };
+
+export type IncentiveResource = {
   id: string;
-  level: IncentiveLevel;
-  title: string;
-  note?: string; // editable wording
-  // You can support either a fixed amount OR a range
-  amount?: number;
-  min?: number;
-  max?: number;
+  programName: string;
+  level: "federal" | "state" | "utility" | "local" | "other";
+  // what system types this applies to (normalized matching)
+  appliesTo: string[]; // ex: ["hvac", "water_heater", "windows"]
+  // optional tighter matching if you want it
+  tags?: string[]; // ex: ["heat_pump", "gas_furnace", "tankless"]
+  amount?: IncentiveAmount;
+  shortBlurb: string; // 1–2 lines in UI
+  details?: string; // longer info text (editable)
   links?: IncentiveLink[];
-  tags?: string[];
-};
-
-export type IncentiveTotals = {
-  min: number;
-  max: number;
-  estimated: boolean; // true if these are typical estimates
-};
-
-export type IncentiveResult = {
-  totals: IncentiveTotals;
-  forms: IncentiveForm[];
-  programs: IncentiveProgram[];
-  copy: {
-    // Editable “info text” blocks for the incentives area
-    heading: string;
-    subheading: string;
-    disclaimer: string;
-  };
-};
-
-export type SnapshotLike = {
-  existing?: {
-    type?: string;
-    subtype?: string;
-    fuel?: string;
-  };
-  suggested?: {
-    name?: string;
-    notes?: string;
-    catalogSystemId?: string | null;
-  };
+  // future: date windows, income caps, location filters, etc.
 };
 
 export type IncentiveContext = {
-  stateCode?: string; // e.g. "OR"
-  city?: string;
-  utilityProvider?: string;
+  state?: string; // "OR"
+  utility?: string; // "PGE"
+  zipcode?: string;
+  // optional tags from the system (subtype/fuel/etc)
+  tags?: string[];
 };
 
-/**
- * All editable wording lives here.
- * Later: store these in a DB table + load by tenant/project.
- */
-const COPY = {
-  heading: "Incentives & Rebates",
-  subheading:
-    "These values are generated from rules. Later you’ll attach exact programs, eligibility, forms, and rebate values per system type and location.",
-  disclaimer:
-    "Note: Incentive amounts and eligibility vary by location, efficiency, program funding, and contractor participation. This section is rule-driven so wording and links can be updated without changing report UI.",
+// -------------------------
+// Editable “copy” blocks
+// -------------------------
+export type IncentiveCopyBlock = {
+  key: string;
+  title: string;
+  body: string; // editable wording
 };
 
-/**
- * Canonical forms library (PDFs / rebate finders / etc).
- * You can attach these to rules by `id`.
- */
-const FORMS: Record<string, IncentiveForm> = {
-  irs_5695: {
-    id: "irs_5695",
-    title: "IRS Form 5695 (Residential Energy Credits)",
-    url: "https://www.irs.gov/pub/irs-pdf/f5695.pdf",
-    note: "Used for claiming qualifying federal energy tax credits.",
-    tags: ["federal", "tax-credit"],
-  },
-  energystar_rebate_finder: {
-    id: "energystar_rebate_finder",
-    title: "ENERGY STAR Rebate Finder",
-    url: "https://www.energystar.gov/rebate-finder",
-    note: "Search rebates by ZIP code and product type.",
-    tags: ["federal", "state", "utility", "lookup"],
-  },
-  doe_energysaver: {
-    id: "doe_energysaver",
-    title: "DOE Energy Saver Guide",
-    url: "https://www.energy.gov/energysaver",
-    note: "General guidance on efficiency upgrades.",
-    tags: ["education"],
-  },
-};
-
-/**
- * Canonical programs library.
- * You can attach these to rules by `id`.
- *
- * NOTE: These are intentionally “typical ranges” for now.
- * Later: replace with location-specific tables.
- */
-const PROGRAMS: Record<string, IncentiveProgram> = {
-  fed_energy_credit_typical: {
-    id: "fed_energy_credit_typical",
-    level: "federal",
-    title: "Federal Energy Tax Credit (typical)",
-    note: "Often 20–30% depending on measure and program year; homeowner claims when filing taxes.",
-    min: 600,
-    max: 2000,
-    links: [{ label: "IRS Form 5695", url: FORMS.irs_5695.url }],
-    tags: ["federal", "tax-credit"],
-  },
-
-  utility_rebate_typical: {
-    id: "utility_rebate_typical",
-    level: "utility",
-    title: "Utility / Local Rebate (typical)",
-    note: "May require participating contractor and specific equipment tiers.",
-    min: 250,
-    max: 750,
-    tags: ["utility", "rebate"],
-  },
-
-  state_rebate_typical: {
-    id: "state_rebate_typical",
-    level: "state",
-    title: "State Program Rebate (typical)",
-    note: "Availability varies by state and funding windows.",
-    min: 500,
-    max: 1500,
-    tags: ["state", "rebate"],
-  },
-
-  heat_pump_bonus: {
-    id: "heat_pump_bonus",
-    level: "utility",
-    title: "Heat Pump Upgrade Bonus (typical)",
-    note: "Often higher incentives when switching from fossil fuel to heat pump.",
-    min: 800,
-    max: 3000,
-    tags: ["hvac", "heat-pump", "utility"],
-  },
-
-  envelope_weatherization: {
-    id: "envelope_weatherization",
-    level: "state",
-    title: "Weatherization / Envelope Incentive (typical)",
-    note: "Insulation + air sealing programs commonly bundle rebates.",
-    min: 400,
-    max: 1200,
-    tags: ["insulation", "air-sealing", "envelope"],
-  },
-
-  windows_credit: {
-    id: "windows_credit",
-    level: "federal",
-    title: "Windows & Doors Credit (typical)",
-    note: "Often capped; check U-factor/SHGC requirements and program caps.",
-    min: 200,
-    max: 600,
-    tags: ["windows", "doors", "federal"],
-  },
-
-  water_heater_credit: {
-    id: "water_heater_credit",
-    level: "federal",
-    title: "Water Heater Credit (typical)",
-    note: "Higher for heat pump water heaters vs standard replacements.",
-    min: 300,
-    max: 2000,
-    tags: ["water-heater", "federal"],
-  },
-};
-
-/**
- * RULES
- * Match on snapshot existing type/subtype/fuel keywords.
- *
- * You can add/edit wording by:
- * - updating PROGRAMS / FORMS entries
- * - adding/changing rules here
- */
-type Rule = {
-  id: string;
-  match: {
-    // simple keyword matching
-    anyTypeIncludes?: string[];
-    anySubtypeIncludes?: string[];
-    anyFuelIncludes?: string[];
-  };
-  attach: {
-    forms?: string[]; // ids from FORMS
-    programs?: string[]; // ids from PROGRAMS
-  };
-};
-
-const RULES: Rule[] = [
-  // HVAC general
+export const INCENTIVE_COPY: IncentiveCopyBlock[] = [
   {
-    id: "hvac_general",
-    match: { anyTypeIncludes: ["hvac"] },
-    attach: {
-      forms: ["energystar_rebate_finder"],
-      programs: ["utility_rebate_typical", "state_rebate_typical", "fed_energy_credit_typical"],
-    },
+    key: "general_disclaimer",
+    title: "Important",
+    body:
+      "Incentives change often and can run out. LEAF shows typical programs based on system type. Your contractor confirms eligibility, paperwork, and final amounts.",
   },
-
-  // Heat pump (HVAC subtype keywords)
   {
-    id: "hvac_heat_pump",
-    match: { anyTypeIncludes: ["hvac"], anySubtypeIncludes: ["heat pump", "mini split", "ductless"] },
-    attach: {
-      forms: ["energystar_rebate_finder", "irs_5695"],
-      programs: ["heat_pump_bonus", "fed_energy_credit_typical", "utility_rebate_typical"],
-    },
+    key: "federal_tax_credit_blurb",
+    title: "Federal tax credits",
+    body:
+      "Federal credits are typically claimed by the homeowner when filing taxes. Keep invoices and product documentation. Contractor can help confirm qualifying equipment.",
   },
-
-  // Gas furnace
   {
-    id: "hvac_gas_furnace",
-    match: { anyTypeIncludes: ["hvac"], anySubtypeIncludes: ["furnace"], anyFuelIncludes: ["gas", "natural gas"] },
-    attach: {
-      forms: ["energystar_rebate_finder"],
-      programs: ["utility_rebate_typical", "state_rebate_typical"],
-    },
-  },
-
-  // Water heater
-  {
-    id: "water_heater",
-    match: { anyTypeIncludes: ["water heater"] },
-    attach: {
-      forms: ["energystar_rebate_finder", "irs_5695"],
-      programs: ["water_heater_credit", "utility_rebate_typical"],
-    },
-  },
-
-  // Windows
-  {
-    id: "windows",
-    match: { anyTypeIncludes: ["window", "windows"] },
-    attach: {
-      forms: ["energystar_rebate_finder", "irs_5695"],
-      programs: ["windows_credit"],
-    },
-  },
-
-  // Doors
-  {
-    id: "doors",
-    match: { anyTypeIncludes: ["door", "doors"] },
-    attach: {
-      forms: ["energystar_rebate_finder", "irs_5695"],
-      programs: ["windows_credit"],
-    },
-  },
-
-  // Insulation / envelope
-  {
-    id: "insulation_envelope",
-    match: { anyTypeIncludes: ["insulation", "envelope", "air sealing", "air-sealing"] },
-    attach: {
-      forms: ["energystar_rebate_finder", "irs_5695"],
-      programs: ["envelope_weatherization", "fed_energy_credit_typical"],
-    },
+    key: "utility_rebate_blurb",
+    title: "Utility rebates",
+    body:
+      "Utility rebates may require participating contractors and specific efficiency requirements. Some apply at point-of-sale; others require submitting paperwork after install.",
   },
 ];
 
+// -------------------------
+// System type normalization
+// -------------------------
 /**
- * Public API: given a snapshot and context, return the incentive block payload.
+ * Your systems in the app show things like:
+ * - HVAC
+ * - Water Heater
+ * - Windows
+ *
+ * Normalize those into keys so rules are stable.
  */
-export function getIncentivesForSnapshot(snapshot: SnapshotLike, ctx?: IncentiveContext): IncentiveResult {
-  const type = norm(snapshot?.existing?.type);
-  const subtype = norm(snapshot?.existing?.subtype);
-  const fuel = norm(snapshot?.existing?.fuel);
+export function normalizeSystemType(input: string): string {
+  const s = (input || "").trim().toLowerCase();
 
-  const matchedRuleIds = matchRules({ type, subtype, fuel });
+  // common groupings
+  if (s.includes("hvac") || s.includes("heating") || s.includes("cooling") || s.includes("furnace")) return "hvac";
+  if (s.includes("water heater") || s.includes("waterheater") || s.includes("wh")) return "water_heater";
+  if (s.includes("window")) return "windows";
+  if (s.includes("door")) return "doors";
+  if (s.includes("insulation")) return "insulation";
+  if (s.includes("solar")) return "solar";
+  if (s.includes("ev") || s.includes("charger")) return "ev_charging";
+  if (s.includes("lighting")) return "lighting";
+  if (s.includes("appliance") || s.includes("fridge") || s.includes("washer") || s.includes("dryer")) return "appliances";
 
-  // Collect forms/programs from matched rules
-  const formIds = new Set<string>();
-  const programIds = new Set<string>();
+  // fallback: safe slug
+  return s.replace(/\s+/g, "_");
+}
 
-  for (const rule of RULES) {
-    if (!matchedRuleIds.includes(rule.id)) continue;
-    (rule.attach.forms ?? []).forEach((id) => formIds.add(id));
-    (rule.attach.programs ?? []).forEach((id) => programIds.add(id));
+// -------------------------
+// Incentive library (V0)
+// -------------------------
+/**
+ * These are “starter” entries so your UI has something to render.
+ * You will likely replace most of these with real state/utility programs soon.
+ *
+ * IMPORTANT: amounts here are placeholders / examples.
+ */
+export const INCENTIVE_LIBRARY: IncentiveResource[] = [
+  // ---------------- FEDERAL (examples) ----------------
+  {
+    id: "fed-irs-5695",
+    programName: "IRS Form 5695 (Residential Clean Energy Credits)",
+    level: "federal",
+    appliesTo: ["solar", "ev_charging"],
+    amount: { kind: "text", value: "Varies (tax credit form / eligibility dependent)" },
+    shortBlurb: "Common IRS form used to claim certain residential energy credits.",
+    details:
+      "Use this form when claiming eligible residential energy credits. Eligibility depends on equipment type and current federal rules.",
+    links: [{ label: "IRS Form 5695 (PDF)", url: "https://www.irs.gov/pub/irs-pdf/f5695.pdf" }],
+  },
+
+  // HVAC / Heat pump “placeholder”
+  {
+    id: "fed-hvac-credit-placeholder",
+    programName: "Federal efficiency credit (placeholder)",
+    level: "federal",
+    appliesTo: ["hvac", "water_heater"],
+    amount: { kind: "text", value: "Often a % or capped amount depending on equipment" },
+    shortBlurb: "Federal credits may apply to high-efficiency HVAC and water heating.",
+    details:
+      "Federal credits change year-to-year. Replace this entry with the exact credit rules you want to reference (by product type / certification).",
+    links: [{ label: "ENERGY STAR Rebate Finder", url: "https://www.energystar.gov/rebate-finder" }],
+  },
+
+  // ---------------- STATE (examples) ----------------
+  {
+    id: "state-or-placeholder",
+    programName: "State program (placeholder)",
+    level: "state",
+    appliesTo: ["hvac", "water_heater", "windows", "insulation"],
+    amount: { kind: "text", value: "$500–$1,500 typical (varies)" },
+    shortBlurb: "State programs often offer rebates for qualifying upgrades (varies by funding).",
+    details:
+      "Replace this with Oregon-specific programs (or your target state). You can later filter by context.state/zipcode.",
+  },
+
+  // ---------------- UTILITY / LOCAL (examples) ----------------
+  {
+    id: "utility-placeholder",
+    programName: "Utility rebate (placeholder)",
+    level: "utility",
+    appliesTo: ["hvac", "water_heater", "insulation", "windows", "lighting"],
+    amount: { kind: "text", value: "$250–$750 typical (varies)" },
+    shortBlurb: "Utilities often provide rebates for efficiency upgrades.",
+    details:
+      "Utility programs vary by provider and can require approved contractors. Replace with real PGE/PacifiCorp/etc rules as you add them.",
+  },
+];
+
+// -------------------------
+// Main exported function
+// -------------------------
+/**
+ * This is what your report page imports.
+ * It returns all incentive resources that match the system type + optional context tags.
+ */
+export function getIncentivesForSystemType(
+  systemType: string,
+  context?: IncentiveContext
+): IncentiveResource[] {
+  const key = normalizeSystemType(systemType);
+  const ctxTags = (context?.tags || []).map((t) => (t || "").toLowerCase().trim()).filter(Boolean);
+
+  // 1) match by system type
+  let results = INCENTIVE_LIBRARY.filter((r) => r.appliesTo.includes(key));
+
+  // 2) optional tag filtering (if a rule has tags, at least one must match)
+  if (ctxTags.length) {
+    results = results.filter((r) => {
+      if (!r.tags || r.tags.length === 0) return true;
+      const ruleTags = r.tags.map((t) => t.toLowerCase().trim());
+      return ruleTags.some((t) => ctxTags.includes(t));
+    });
   }
 
-  // Always include rebate finder (useful global default)
-  formIds.add("energystar_rebate_finder");
+  // 3) future: filter by state/utility/zip
+  // if (context?.state) { ... }
 
-  const forms = uniqBy(
-    [...formIds].map((id) => FORMS[id]).filter(Boolean),
-    (f) => f.id
-  );
-
-  const programs = uniqBy(
-    [...programIds].map((id) => PROGRAMS[id]).filter(Boolean),
-    (p) => p.id
-  );
-
-  const totals = computeTotals(programs);
-
-  // You can later use ctx (stateCode/utilityProvider) to tweak:
-  // - filter programs by state
-  // - swap links by utility provider
-  // For now, ctx is unused intentionally.
-
-  return {
-    totals,
-    forms,
-    programs,
-    copy: { ...COPY },
-  };
-}
-
-/* -----------------------
-   Helpers
------------------------ */
-
-function norm(v?: string) {
-  return (v ?? "").trim().toLowerCase();
-}
-
-function includesAny(haystack: string, needles?: string[]) {
-  if (!needles?.length) return true;
-  return needles.some((n) => haystack.includes(n.toLowerCase()));
-}
-
-function matchRules(input: { type: string; subtype: string; fuel: string }) {
-  const hits: string[] = [];
-
-  for (const rule of RULES) {
-    const tOk = includesAny(input.type, rule.match.anyTypeIncludes);
-    const stOk = includesAny(input.subtype, rule.match.anySubtypeIncludes);
-    const fOk = includesAny(input.fuel, rule.match.anyFuelIncludes);
-
-    if (tOk && stOk && fOk) hits.push(rule.id);
-  }
-
-  return hits;
-}
-
-function computeTotals(programs: IncentiveProgram[]): IncentiveTotals {
-  let min = 0;
-  let max = 0;
-
-  for (const p of programs) {
-    if (typeof p.amount === "number") {
-      min += p.amount;
-      max += p.amount;
-      continue;
-    }
-    if (typeof p.min === "number") min += p.min;
-    if (typeof p.max === "number") max += p.max;
-  }
-
-  // If nothing matched, keep it as “estimated typical”
-  const estimated = true;
-
-  // Avoid weird case where max < min
-  if (max < min) max = min;
-
-  return { min, max, estimated };
-}
-
-function uniqBy<T>(items: T[], keyFn: (t: T) => string): T[] {
-  const seen = new Set<string>();
-  const out: T[] = [];
-  for (const it of items) {
-    const k = keyFn(it);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(it);
-  }
-  return out;
+  return results;
 }
