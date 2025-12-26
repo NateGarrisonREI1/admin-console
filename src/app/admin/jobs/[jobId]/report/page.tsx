@@ -57,7 +57,6 @@ export default function JobReportPage() {
     }
   }, [jobId]);
 
-  // Build “pages” from snapshots (cap to 3 for now to match your UI)
   const pages = useMemo(() => {
     const list = Array.isArray(snaps) ? snaps : [];
     return list.slice(0, 3).map((s, idx) => {
@@ -68,12 +67,10 @@ export default function JobReportPage() {
       const catalog = catalogId ? (MOCK_SYSTEMS as any[]).find((x) => x.id === catalogId) : null;
       const tags: string[] = (catalog?.tags || []).map((t: any) => normalizeTag(String(t || ""))).filter(Boolean);
 
-      const incentives = getIncentivesForSystemType(existingType, { tags })
-        .filter((r: any) => !(r as any).disabled);
+      const incentives = getIncentivesForSystemType(existingType, { tags }).filter((r: any) => !(r as any).disabled);
 
       return {
         id: s?.id || `page_${idx}`,
-        pageIndex: idx,
         existingType,
         existingSubtype,
         ageYears: s?.existing?.ageYears ?? null,
@@ -88,7 +85,6 @@ export default function JobReportPage() {
     });
   }, [snaps]);
 
-  // Your HTML’s JS moved into useEffect so it behaves the same in Next.js
   useEffect(() => {
     const pagesEl = document.getElementById("pages");
     const pagerEl = document.getElementById("pager");
@@ -129,7 +125,7 @@ export default function JobReportPage() {
     pagesEl?.addEventListener("scroll", onScroll);
     window.addEventListener("resize", onResize);
 
-    // ---- Slider logic (your exact script behavior) ----
+    // ---- Slider logic ----
     const LEAF_PRICE_MIN = 5000;
     const LEAF_PRICE_MAX = 7000;
     const BASE_SAVINGS_MIN = 19;
@@ -160,14 +156,7 @@ export default function JobReportPage() {
     }
 
     function setBadge(el: HTMLElement, tone: "good" | "warn" | "bad" | "neutral", text: string) {
-      const tones: Record<string, string> = {
-        good: "bg-emerald-500/15 text-emerald-200 border border-emerald-500/30",
-        warn: "bg-yellow-500/15 text-yellow-200 border border-yellow-500/30",
-        bad: "bg-red-500/15 text-red-200 border border-red-500/25",
-        neutral: "bg-neutral-800/60 text-neutral-200 border border-neutral-700",
-      };
-      const isSquare = el.classList.contains("rounded-md");
-      el.className = `text-[11px] px-3 py-1 ${isSquare ? "rounded-md" : "rounded-full"} ${tones[tone] || tones.neutral}`;
+      el.setAttribute("data-tone", tone);
       el.textContent = text;
     }
 
@@ -175,20 +164,14 @@ export default function JobReportPage() {
       const span = sliderMax - sliderMin;
       const L = ((okMin - sliderMin) / span) * 100;
       const R = ((okMax - sliderMin) / span) * 100;
-      (okEl as any).style.left = `${clamp(L, 0, 100)}%`;
-      (okEl as any).style.width = `${Math.max(0, clamp(R, 0, 100) - clamp(L, 0, 100))}%`;
+      okEl.style.left = `${clamp(L, 0, 100)}%`;
+      okEl.style.width = `${Math.max(0, clamp(R, 0, 100) - clamp(L, 0, 100))}%`;
     }
 
     function setFill(fillEl: HTMLElement, sliderMin: number, sliderMax: number, value: number) {
       const span = sliderMax - sliderMin;
       const pct = ((value - sliderMin) / span) * 100;
-      (fillEl as any).style.width = `${clamp(pct, 0, 100)}%`;
-    }
-
-    function setMarker(markerEl: HTMLElement, sliderMin: number, sliderMax: number, value: number) {
-      const span = sliderMax - sliderMin;
-      const pct = ((value - sliderMin) / span) * 100;
-      (markerEl as any).style.left = `${clamp(pct, 0, 100)}%`;
+      fillEl.style.width = `${clamp(pct, 0, 100)}%`;
     }
 
     function computeNetCostRange(installCost: number) {
@@ -199,6 +182,11 @@ export default function JobReportPage() {
 
     function formatMoneyRange(a: number, b: number) {
       return `${formatMoney(a)}–${formatMoney(b)}`;
+    }
+
+    function renderList(el: HTMLElement | null, items: string[]) {
+      if (!el) return;
+      el.innerHTML = (items || []).map((t) => `<li>${t}</li>`).join("");
     }
 
     function quickReadMessage(costClass: string) {
@@ -257,7 +245,7 @@ export default function JobReportPage() {
       return {
         tone: "warn",
         headline: "Major caution — this looks overpriced for the category.",
-        why: ["This is significantly above typical replacement pricing.", "Before committing, compare at least one more itemized bid.", ...premiumWhy],
+        why: ["This is significantly above typical replacement pricing.", "Before committing, compare at least one itemized bid.", ...premiumWhy],
         qVisible: ["Can you itemize the quote (equipment, labor, permits, extras) line-by-line?", "What would the ‘standard replacement’ option cost and what changes?"],
         qMore: [
           "Are there scope items here that belong in a separate project (duct redesign, electrical upgrades)?",
@@ -266,18 +254,13 @@ export default function JobReportPage() {
       };
     }
 
-    function renderList(el: HTMLElement | null, items: string[]) {
-      if (!el) return;
-      el.innerHTML = (items || []).map((t) => `<li>${t}</li>`).join("");
-    }
-
     function initLeafPage(root: Element) {
       const $ = (sel: string) => root.querySelector(sel) as HTMLElement | null;
+
       const priceSlider = root.querySelector<HTMLInputElement>('[data-el="priceSlider"]');
       if (!priceSlider) return;
 
       const priceValue = $('[data-el="priceValue"]');
-      const staticPriceValue = $('[data-el="staticPriceValue"]');
       const costBadge = $('[data-el="costBadge"]');
       const overallBadge = $('[data-el="overallBadge"]');
       const overallHeadline = $('[data-el="overallHeadline"]');
@@ -286,61 +269,33 @@ export default function JobReportPage() {
       const qVisible = $('[data-el="quickReadQuestionsVisible"]');
       const qMore = $('[data-el="quickReadQuestionsMore"]');
 
-      const decisionBadge = $('[data-el="decisionBadge"]');
+      const msNetCostRange = $('[data-el="msNetCostRange"]');
+      const msSavingsRange = $('[data-el="msSavingsRange"]');
+      const heroSavingsPill = $('[data-el="heroSavingsPill"]');
+
       const priceBandOK = $('[data-el="priceBandOK"]');
       const priceBandFill = $('[data-el="priceBandFill"]');
-      const priceBandMinLabel = $('[data-el="priceBandMinLabel"]');
-      const priceBandMaxLabel = $('[data-el="priceBandMaxLabel"]');
 
       const dynSavings = $('[data-el="dynamicSavingsRange"]');
-      const summarySavings = $('[data-el="summarySavingsRange"]');
-      const heroSavingsPill = $('[data-el="heroSavingsPill"]');
-      const msSavingsRange = $('[data-el="msSavingsRange"]');
-
-      const msInstallCost = $('[data-el="msInstallCost"]');
-      const msNetCostRange = $('[data-el="msNetCostRange"]');
-      const msValueCheck = $('[data-el="msValueCheck"]');
-      const msMeaning = $('[data-el="msMeaning"]');
-      const msSummaryHeadline = $('[data-el="msSummaryHeadline"]');
-      const msSummaryText = $('[data-el="msSummaryText"]');
-
       const resetBtn = $('[data-el="resetBtn"]');
-      const priceBandTrack = $('[data-el="priceBandTrack"]');
-
-      const staticCostFill = $('[data-el="staticCostFill"]');
-      const staticCostOK = $('[data-el="staticCostOK"]');
-      const staticCostMarker = $('[data-el="staticCostMarker"]');
-      const staticCostMinLabel = $('[data-el="staticCostMinLabel"]');
-      const staticCostMaxLabel = $('[data-el="staticCostMaxLabel"]');
 
       function updateUI() {
         const price = Number(priceSlider.value);
 
         if (priceValue) priceValue.textContent = formatMoney(price);
-        if (staticPriceValue) staticPriceValue.textContent = formatMoney(price);
-        if (msInstallCost) msInstallCost.textContent = formatMoney(price);
 
         const dyn = dynamicSavingsRange(price);
         const savText = `$${dyn.min}–$${dyn.max}/mo`;
 
         if (dynSavings) dynSavings.textContent = savText;
-        if (summarySavings) summarySavings.textContent = `$${dyn.min}–$${dyn.max}`;
-        if (heroSavingsPill) heroSavingsPill.textContent = `Save ~$${dyn.min}–$${dyn.max}/mo`;
         if (msSavingsRange) msSavingsRange.textContent = savText;
-
-        if (priceBandMinLabel) priceBandMinLabel.textContent = formatMoney(LEAF_PRICE_MIN);
-        if (priceBandMaxLabel) priceBandMaxLabel.textContent = formatMoney(LEAF_PRICE_MAX);
+        if (heroSavingsPill) heroSavingsPill.textContent = `Save ~$${dyn.min}–$${dyn.max}/mo`;
 
         if (priceBandOK) setBand(priceBandOK, Number(priceSlider.min), Number(priceSlider.max), LEAF_PRICE_MIN, LEAF_PRICE_MAX);
         if (priceBandFill) setFill(priceBandFill, Number(priceSlider.min), Number(priceSlider.max), price);
 
-        if (staticCostMinLabel) staticCostMinLabel.textContent = formatMoney(LEAF_PRICE_MIN);
-        if (staticCostMaxLabel) staticCostMaxLabel.textContent = formatMoney(LEAF_PRICE_MAX);
-        if (staticCostOK) setBand(staticCostOK, Number(priceSlider.min), Number(priceSlider.max), LEAF_PRICE_MIN, LEAF_PRICE_MAX);
-        if (staticCostFill) setFill(staticCostFill, Number(priceSlider.min), Number(priceSlider.max), price);
-        if (staticCostMarker) setMarker(staticCostMarker, Number(priceSlider.min), Number(priceSlider.max), price);
-
         const costClass = classifyCost(price);
+
         if (costBadge) {
           if (costClass === "unreal_low") setBadge(costBadge, "bad", "Unrealistic");
           else if (costClass === "low") setBadge(costBadge, "warn", "Low (verify scope)");
@@ -350,7 +305,6 @@ export default function JobReportPage() {
         }
 
         const msg = quickReadMessage(costClass);
-
         if (overallBadge) {
           if (costClass === "over") setBadge(overallBadge, "bad", "Major caution 🚩");
           else if ((msg as any).tone === "good") setBadge(overallBadge, "good", "Looks good ✅");
@@ -366,44 +320,6 @@ export default function JobReportPage() {
         const netMin = Math.min(net.netLow, net.netHigh);
         const netMax = Math.max(net.netLow, net.netHigh);
         if (msNetCostRange) msNetCostRange.textContent = formatMoneyRange(netMin, netMax);
-
-        if (msValueCheck && msMeaning) {
-          if (costClass === "in") {
-            msValueCheck.textContent = "Within range ✅";
-            msMeaning.textContent = "Quotes in-range usually indicate predictable scope + fair pricing.";
-          } else if (costClass === "low") {
-            msValueCheck.textContent = "Below range ⚠️";
-            msMeaning.textContent = "Could be a great deal — just confirm it’s a full scope replacement quote.";
-          } else if (costClass === "unreal_low") {
-            msValueCheck.textContent = "Very low 🚩";
-            msMeaning.textContent = "High chance something is missing. Get scope in writing before scheduling.";
-          } else if (costClass === "likely_over") {
-            msValueCheck.textContent = "Above range ⚠️";
-            msMeaning.textContent = "Premium cost can bump savings slightly, but ROI may drop. Ask what justifies the cost.";
-          } else {
-            msValueCheck.textContent = "Far above range 🚩";
-            msMeaning.textContent = "This is likely overpriced. Compare another itemized bid before committing.";
-          }
-        }
-
-        if (decisionBadge && msSummaryHeadline && msSummaryText) {
-          if (costClass === "over") {
-            setBadge(decisionBadge, "bad", "Unclear 🚩");
-            msSummaryHeadline.textContent = "This needs a closer look.";
-            msSummaryText.textContent =
-              "The quote is well above typical range. Request an itemized scope and compare at least one more bid.";
-          } else if (costClass === "in") {
-            setBadge(decisionBadge, "good", "Likely yes ✅");
-            msSummaryHeadline.textContent = "This looks financially reasonable.";
-            msSummaryText.textContent =
-              "If the contractor quote lands within the LEAF range, this is typically a strong replacement decision.";
-          } else {
-            setBadge(decisionBadge, "warn", "Likely yes (with clarity) ⚠️");
-            msSummaryHeadline.textContent = "This can still make sense — confirm a few details.";
-            msSummaryText.textContent =
-              "Use the questions above to confirm scope and what’s driving price. Premium cost can bump savings slightly, but ROI often drops if price rises too fast.";
-          }
-        }
       }
 
       function resetToLeafMid() {
@@ -420,7 +336,6 @@ export default function JobReportPage() {
 
       updateUI();
 
-      // cleanup for this page root
       return () => {
         priceSlider.removeEventListener("input", onInput);
         resetBtn?.removeEventListener("click", onReset);
@@ -433,7 +348,6 @@ export default function JobReportPage() {
       if (typeof c === "function") cleanups.push(c);
     });
 
-    // Ensure pager label correct on load
     setActiveDot(0);
 
     return () => {
@@ -444,165 +358,343 @@ export default function JobReportPage() {
     };
   }, [pages.length]);
 
-  if (!jobId) {
-    return <div className="p-6">Missing jobId</div>;
-  }
-
-  if (!job) {
-    return <div className="p-6">Job not found</div>;
-  }
-
-  if (!pages.length) {
-    return <div className="p-6">No snapshots yet</div>;
-  }
+  if (!jobId) return <div style={{ padding: 24 }}>Missing jobId</div>;
+  if (!job) return <div style={{ padding: 24 }}>Job not found</div>;
+  if (!pages.length) return <div style={{ padding: 24 }}>No snapshots yet</div>;
 
   return (
     <>
-      {/* Your original CSS (moved into Next) */}
+      {/* Full styling (no Tailwind required) */}
       <style jsx global>{`
         :root { --leaf:#43a419; }
-        body{ -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-        .glass{ background: rgba(24,24,27,.78); backdrop-filter: blur(12px); }
-        .soft-shadow{ box-shadow: 0 18px 45px rgba(0,0,0,.42); }
-        .pop{ transition: transform .18s ease; }
-        .pop:hover{ transform: translateY(-1px) scale(1.01); }
-        summary::-webkit-details-marker{ display:none; }
 
-        input[type="range"]{ -webkit-appearance:none; appearance:none; width:100%; height:32px; background:transparent; outline:none; position:relative; z-index:3; }
-        input[type="range"]::-webkit-slider-runnable-track{ height:12px; background:transparent; border-radius:999px; }
-        input[type="range"]::-moz-range-track{ height:12px; background:transparent; border-radius:999px; }
+        /* isolate from v0 admin css */
+        .leafRoot {
+          background: #000;
+          color: #fff;
+          min-height: 100vh;
+          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        }
+
+        .leafHeader {
+          position: sticky;
+          top: 0;
+          z-index: 30;
+          background: rgba(0,0,0,.70);
+          border-bottom: 1px solid rgba(38,38,38,1);
+          backdrop-filter: blur(10px);
+        }
+        .leafHeaderInner{
+          max-width: 420px;
+          margin: 0 auto;
+          padding: 12px 16px;
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap: 12px;
+        }
+        .leafTitle { font-size: 13px; font-weight: 700; }
+        .leafSub { font-size: 11px; color: rgba(163,163,163,1); margin-top: 2px; }
+
+        .dot{
+          width: 8px; height: 8px;
+          border-radius: 999px;
+          background: rgba(255,255,255,.22);
+          border: 1px solid rgba(255,255,255,.18);
+          cursor:pointer;
+          transition: transform .15s ease, background .15s ease;
+        }
+        .dot.active{
+          background: rgba(67,164,25,.95);
+          border-color: rgba(67,164,25,.75);
+          transform: scale(1.12);
+        }
+
+        .snapScroll{
+          display:flex;
+          overflow-x:auto;
+          scroll-snap-type: x mandatory;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
+        }
+        .snapScroll::-webkit-scrollbar{ display:none; }
+        .snapPage{
+          scroll-snap-align: center;
+          width: 100%;
+          flex: 0 0 100%;
+        }
+
+        .leafPage{
+          max-width: 420px;
+          margin: 0 auto;
+          padding: 18px 16px 120px;
+          display:flex;
+          flex-direction:column;
+          gap: 14px;
+        }
+
+        .glass{
+          background: rgba(24,24,27,.78);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(38,38,38,1);
+          border-radius: 24px;
+          box-shadow: 0 18px 45px rgba(0,0,0,.42);
+          padding: 14px;
+        }
+
+        .sectionTitleRow{
+          display:flex; align-items:center; justify-content:space-between;
+          gap: 10px; margin-bottom: 10px;
+        }
+        .h1{ font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
+        .h2{ font-size: 13px; font-weight: 700; }
+        .subText{ font-size: 11px; color: rgba(163,163,163,1); margin-top: 6px; }
+        .pillRow{ display:flex; gap: 8px; flex-wrap:wrap; margin-top: 10px; }
+        .pill{
+          font-size: 12px;
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(67,164,25,.35);
+          background: rgba(67,164,25,.18);
+          color: #fff;
+          font-weight: 700;
+        }
+        .pillLeaf{
+          background: var(--leaf);
+          color: #000;
+          border-color: rgba(0,0,0,.25);
+        }
+        .chip{
+          font-size: 11px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(16,185,129,.30);
+          background: rgba(16,185,129,.15);
+          color: rgba(209,250,229,1);
+          font-weight: 700;
+          white-space: nowrap;
+        }
+        .chipRed{
+          border-color: rgba(239,68,68,.25);
+          background: rgba(239,68,68,.15);
+          color: rgba(254,202,202,1);
+        }
+
+        .cardRow{ display:flex; gap: 12px; }
+        .thumb{
+          width: 92px; height: 92px;
+          border-radius: 22px;
+          border: 1px solid rgba(38,38,38,1);
+          background: rgba(10,10,10,.7);
+          flex: 0 0 auto;
+        }
+        .cardMeta{ font-size: 12px; line-height: 1.35; }
+        .cardMeta b{ font-weight: 800; }
+
+        /* Slider block */
+        .sliderBox{
+          border-radius: 18px;
+          border: 1px solid rgba(38,38,38,1);
+          background: rgba(10,10,10,.65);
+          padding: 12px;
+          margin-top: 10px;
+        }
+        .rowBetween{ display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+        .smallLabel{ font-size: 12px; color: rgba(163,163,163,1); }
+        .priceText{ font-size: 14px; font-weight: 800; }
+
+        /* badges via data-tone */
+        .badge{
+          font-size: 11px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(16,185,129,.30);
+          background: rgba(16,185,129,.15);
+          color: rgba(209,250,229,1);
+          font-weight: 700;
+          white-space: nowrap;
+        }
+        .badgeSquare{ border-radius: 10px; }
+        .badge[data-tone="warn"]{
+          border-color: rgba(234,179,8,.30);
+          background: rgba(234,179,8,.15);
+          color: rgba(254,249,195,1);
+        }
+        .badge[data-tone="bad"]{
+          border-color: rgba(239,68,68,.25);
+          background: rgba(239,68,68,.15);
+          color: rgba(254,202,202,1);
+        }
+        .badge[data-tone="neutral"]{
+          border-color: rgba(82,82,82,1);
+          background: rgba(38,38,38,.6);
+          color: rgba(229,229,229,1);
+        }
+
+        .btnSmall{
+          font-size: 11px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          border: 1px solid rgba(38,38,38,1);
+          background: rgba(10,10,10,.65);
+          color: #fff;
+          cursor:pointer;
+        }
+
+        /* Range band visuals */
+        .sliderWrap{ position: relative; padding-top: 10px; }
+        input[type="range"]{
+          -webkit-appearance: none;
+          appearance: none;
+          width: 100%;
+          height: 32px;
+          background: transparent;
+          outline: none;
+          position: relative;
+          z-index: 3;
+        }
         input[type="range"]::-webkit-slider-thumb{
-          -webkit-appearance:none; appearance:none; width:30px; height:30px; border-radius:999px;
-          background: var(--leaf); border:2px solid rgba(0,0,0,.55);
+          -webkit-appearance: none;
+          appearance: none;
+          width: 30px;
+          height: 30px;
+          border-radius: 999px;
+          background: var(--leaf);
+          border: 2px solid rgba(0,0,0,.55);
           box-shadow: 0 12px 22px rgba(0,0,0,.45), 0 0 0 6px rgba(67,164,25,.12);
-          cursor:pointer; margin-top:1px; transform: translateZ(0);
+          cursor: pointer;
+          margin-top: 1px;
         }
-        input[type="range"]::-moz-range-thumb{
-          width:30px; height:30px; border-radius:999px; background: var(--leaf);
-          border:2px solid rgba(0,0,0,.55);
-          box-shadow: 0 12px 22px rgba(0,0,0,.45), 0 0 0 6px rgba(67,164,25,.12);
-          cursor:pointer; transform: translateZ(0);
-        }
-
-        .slider-wrap{ position:relative; padding-top:6px; padding-bottom:6px; }
-
-        .range-band{
-          position:absolute; left:0; right:0; top:50%; transform: translateY(-50%);
-          height:14px; border-radius:999px;
+        .rangeBand{
+          position: absolute;
+          left: 0; right: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          height: 14px;
+          border-radius: 999px;
           background: rgba(255,255,255,.08);
           border: 1px solid rgba(255,255,255,.10);
-          overflow:hidden; z-index:1;
+          overflow: hidden;
+          z-index: 1;
         }
-        .range-band .fill{
-          position:absolute; top:0; bottom:0; left:0; width:0%;
-          border-radius:999px; background: rgba(67,164,25,.18);
-          z-index:0; transition: width .06s linear;
+        .rangeBand .fill{
+          position: absolute;
+          top: 0; bottom: 0; left: 0;
+          width: 0%;
+          border-radius: 999px;
+          background: rgba(67,164,25,.18);
+          transition: width .06s linear;
         }
-        .range-band .ok{
-          position:absolute; top:0; bottom:0; left:0%; width:0%;
-          border-radius:999px;
+        .rangeBand .ok{
+          position: absolute;
+          top: 0; bottom: 0;
+          left: 0%;
+          width: 0%;
+          border-radius: 999px;
           background: linear-gradient(90deg, rgba(67,164,25,.18), rgba(67,164,25,.55), rgba(67,164,25,.18));
           border: 1px solid rgba(67,164,25,.55);
           box-shadow: 0 0 0 1px rgba(0,0,0,.25) inset, 0 0 16px rgba(67,164,25,.22);
-          z-index:2; pointer-events:none;
+          pointer-events: none;
         }
 
-        .range-band .marker{
-          position:absolute; top:-6px; width:0; height:26px;
-          border-left: 2px solid rgba(255,255,255,.75);
-          filter: drop-shadow(0 4px 10px rgba(0,0,0,.55));
-          z-index:3; pointer-events:none;
+        details summary{ list-style: none; }
+        summary::-webkit-details-marker{ display:none; }
+        .summaryRow{ display:flex; align-items:center; justify-content:space-between; gap: 12px; cursor:pointer; }
+        .summaryHint{ font-size: 11px; color: rgba(163,163,163,1); }
+
+        .incentiveCard{
+          border-radius: 18px;
+          border: 1px solid rgba(38,38,38,1);
+          background: rgba(10,10,10,.65);
+          padding: 12px;
         }
-        .range-band .marker::after{
-          content:""; position:absolute; left:-6px; top:-2px; width:12px; height:12px; border-radius:999px;
-          background: var(--leaf); border:2px solid rgba(0,0,0,.55);
-          box-shadow: 0 10px 18px rgba(0,0,0,.40), 0 0 0 6px rgba(67,164,25,.10);
+        .incentiveTitle{ font-size: 12px; font-weight: 800; }
+        .incentiveBlurb{ margin-top: 6px; font-size: 11px; color: rgba(163,163,163,1); }
+
+        .ctaBar{
+          position: fixed;
+          bottom: 0; left: 0; right: 0;
+          background: rgba(0,0,0,.80);
+          border-top: 1px solid rgba(38,38,38,1);
+          backdrop-filter: blur(10px);
         }
-
-        .band-label{ font-size:10px; color: rgba(255,255,255,.45); display:flex; justify-content:space-between; margin-top:6px; }
-
-        .snap-scroll{ scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
-        .snap-scroll::-webkit-scrollbar{ display:none; }
-        .snap-page{ scroll-snap-align:center; width:100%; flex: 0 0 100%; }
-
-        .dot{ width:8px; height:8px; border-radius:999px; background: rgba(255,255,255,.22); border:1px solid rgba(255,255,255,.18);
-          transition: transform .15s ease, background .15s ease; }
-        .dot.active{ background: rgba(67,164,25,.95); border-color: rgba(67,164,25,.75); transform: scale(1.12); }
+        .ctaInner{
+          max-width: 420px;
+          margin: 0 auto;
+          padding: 12px 16px;
+        }
+        .ctaBtn{
+          width: 100%;
+          border: 0;
+          border-radius: 999px;
+          padding: 12px 14px;
+          font-size: 13px;
+          font-weight: 800;
+          background: var(--leaf);
+          color: #000;
+          cursor:pointer;
+        }
+        .ctaNote{ margin-top: 6px; font-size: 11px; color: rgba(163,163,163,1); text-align:center; }
       `}</style>
 
-      <div className="bg-black text-white min-h-screen">
-        {/* HEADER */}
-        <header className="sticky top-0 z-30 bg-black/70 border-b border-neutral-800 backdrop-blur">
-          <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="leafRoot">
+        {/* Header */}
+        <header className="leafHeader">
+          <div className="leafHeaderInner">
             <div>
-              <div className="text-sm font-semibold">LEAF System Snapshot</div>
-              <div className="text-[11px] text-neutral-400">
+              <div className="leafTitle">LEAF System Snapshot</div>
+              <div className="leafSub">
                 <span id="pageLabel">Snapshot 1 of {pages.length}</span>
               </div>
             </div>
-
-            <div className="flex items-center gap-2" id="pager">
+            <div id="pager" style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {pages.map((p, i) => (
-                <button
-                  key={p.id}
-                  className={`dot ${i === 0 ? "active" : ""}`}
-                  aria-label={`Go to snapshot ${i + 1}`}
-                  data-page={i}
-                />
+                <button key={p.id} className={`dot ${i === 0 ? "active" : ""}`} data-page={i} aria-label={`Go to snapshot ${i + 1}`} />
               ))}
             </div>
           </div>
         </header>
 
-        {/* SWIPE CONTAINER */}
-        <div id="pages" className="snap-scroll overflow-x-auto flex">
+        {/* Pages */}
+        <div id="pages" className="snapScroll">
           {pages.map((p) => (
-            <div className="snap-page" key={p.id}>
-              <main className="leaf-page max-w-md mx-auto px-4 pt-5 pb-28 space-y-4">
+            <div key={p.id} className="snapPage">
+              <main className="leafPage leaf-page">
                 {/* HERO */}
-                <section className="glass rounded-3xl p-4 border border-neutral-800 soft-shadow pop">
-                  <div className="text-lg font-extrabold tracking-tight mb-1" data-el="heroSystemTitle">
-                    {p.existingType ? `🔥 ${p.existingType} • ${p.existingSubtype || ""}` : "🔥 System"}
+                <section className="glass">
+                  <div className="h1">
+                    🔥 {p.existingType || "System"} • {p.existingSubtype || "Unknown"}
                   </div>
-                  <div className="text-sm font-semibold text-neutral-200" data-el="heroSystemSubtitle">
-                    {p.existingSubtype ? `Upgrade for: ${p.existingSubtype}` : "Direct-replacement upgrade"}
+                  <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4, color: "rgba(229,229,229,1)" }}>
+                    Upgrade for: {p.existingSubtype || "Mixed / Unknown"}
                   </div>
-
-                  <div className="text-xs text-neutral-300 mt-1">
+                  <div className="subText">
                     LEAF provides ranges so you can evaluate contractor quotes with confidence.
                   </div>
 
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <span
-                      data-el="heroSavingsPill"
-                      className="px-3 py-1 rounded-full bg-[var(--leaf)] text-black text-xs font-semibold"
-                    >
+                  <div className="pillRow">
+                    <span className="pill pillLeaf" data-el="heroSavingsPill">
                       Save ~$19–$35/mo
                     </span>
-                    <span className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-200 text-xs border border-emerald-500/30">
-                      ~30–45% less CO₂
-                    </span>
+                    <span className="pill">~30–45% less CO₂</span>
                   </div>
 
-                  <div className="text-[11px] text-neutral-400 mt-2">
+                  <div className="subText">
                     Note: higher-priced systems can increase savings slightly — but ROI can drop if the added cost doesn’t pay back over time.
                   </div>
                 </section>
 
                 {/* CURRENT */}
-                <section className="glass rounded-3xl p-4 border border-red-500/30 soft-shadow pop">
-                  <div className="flex justify-between mb-3">
-                    <div className="text-sm font-semibold">📷 Current system</div>
-                    <span className="text-[11px] px-3 py-1 rounded-full bg-red-500/15 text-red-200 border border-red-500/25">
-                      Near end of life
-                    </span>
+                <section className="glass" style={{ borderColor: "rgba(239,68,68,.30)" }}>
+                  <div className="sectionTitleRow">
+                    <div className="h2">📷 Current system</div>
+                    <span className="chip chipRed">Near end of life</span>
                   </div>
-                  <div className="flex gap-3">
-                    <div className="w-24 h-24 rounded-3xl overflow-hidden border border-neutral-800 bg-neutral-900" />
-                    <div className="flex-1 text-xs space-y-1">
-                      <div className="font-semibold">
-                        {p.existingSubtype ? `Existing ${p.existingSubtype}` : "Existing system"}
-                      </div>
+
+                  <div className="cardRow">
+                    <div className="thumb" />
+                    <div className="cardMeta">
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Existing {p.existingSubtype || "system"}</div>
                       <div>Age: <b>{p.ageYears ?? "—"} yrs</b></div>
                       <div>Wear: <b>{p.wear ?? "—"}/5</b></div>
                     </div>
@@ -610,17 +702,18 @@ export default function JobReportPage() {
                 </section>
 
                 {/* RECOMMENDED */}
-                <section className="glass rounded-3xl p-4 border border-[var(--leaf)]/35 soft-shadow pop">
-                  <div className="flex justify-between mb-3">
-                    <div className="text-sm font-semibold">✨ Recommended upgrade</div>
-                    <span className="text-[11px] px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
-                      High efficiency
-                    </span>
+                <section className="glass" style={{ borderColor: "rgba(67,164,25,.35)" }}>
+                  <div className="sectionTitleRow">
+                    <div className="h2">✨ Recommended upgrade</div>
+                    <span className="chip">High efficiency</span>
                   </div>
-                  <div className="flex gap-3">
-                    <div className="w-24 h-24 rounded-3xl overflow-hidden border border-neutral-800 bg-neutral-900" />
-                    <div className="flex-1 text-xs space-y-1">
-                      <div className="font-semibold" data-el="recommendedName">{p.suggestedName}</div>
+
+                  <div className="cardRow">
+                    <div className="thumb" />
+                    <div className="cardMeta">
+                      <div style={{ fontWeight: 800, marginBottom: 6 }} data-el="recommendedName">
+                        {p.suggestedName}
+                      </div>
                       <div>Estimated cost: <b>{money(p.estCost)}</b></div>
                       <div>Est. savings / yr: <b>{money(p.estAnnualSavings)}</b></div>
                       <div>Payback: <b>{p.estPaybackYears ?? "—"} yrs</b></div>
@@ -628,186 +721,126 @@ export default function JobReportPage() {
                   </div>
                 </section>
 
-                {/* SLIDER SECTION (unchanged behavior) */}
-                <section className="glass rounded-3xl p-4 border border-neutral-800 soft-shadow pop">
-                  <div className="flex items-start justify-between gap-3">
+                {/* SLIDER */}
+                <section className="glass">
+                  <div className="rowBetween" style={{ alignItems: "flex-start" }}>
                     <div>
-                      <div className="text-sm font-semibold">🎚️ Test your quote</div>
-                      <div className="text-[11px] text-neutral-400 mt-1">
+                      <div className="h2">🎚️ Test your quote</div>
+                      <div className="subText">
                         Slide the price. Savings bumps slightly with higher system cost — but ROI can drop if price rises faster than savings.
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button data-el="resetBtn" className="text-[11px] px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 pop">
-                        Reset
-                      </button>
-                      <span data-el="overallBadge" className="text-[11px] px-3 py-1 rounded-md bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
-                        Looks good ✅
-                      </span>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button className="btnSmall" data-el="resetBtn">Reset</button>
+                      <span className="badge badgeSquare" data-tone="good" data-el="overallBadge">Looks good ✅</span>
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-2xl bg-neutral-900 border border-neutral-800 p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-neutral-400">Contractor price</div>
-                      <div className="flex items-center gap-2">
-                        <span data-el="costBadge" className="text-[11px] px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
-                          Within range
-                        </span>
-                        <div className="text-sm font-bold" data-el="priceValue">$6,000</div>
+                  <div className="sliderBox">
+                    <div className="rowBetween">
+                      <div className="smallLabel">Contractor price</div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <span className="badge" data-tone="good" data-el="costBadge">Within range</span>
+                        <div className="priceText" data-el="priceValue">$6,000</div>
                       </div>
                     </div>
 
-                    <div className="mt-3 slider-wrap">
-                      <div className="range-band" aria-hidden="true" data-el="priceBandTrack">
-                        <div data-el="priceBandFill" className="fill"></div>
-                        <div data-el="priceBandOK" className="ok"></div>
+                    <div className="sliderWrap">
+                      <div className="rangeBand" aria-hidden="true">
+                        <div className="fill" data-el="priceBandFill"></div>
+                        <div className="ok" data-el="priceBandOK"></div>
                       </div>
                       <input data-el="priceSlider" type="range" min="3000" max="15000" step="100" defaultValue="6000" />
-                      <div className="band-label">
-                        <span data-el="priceBandMinLabel">$5,000</span>
-                        <span data-el="priceBandMaxLabel">$7,000</span>
-                      </div>
                     </div>
 
-                    <div className="mt-2 text-[11px] text-neutral-400">
+                    <div className="subText" style={{ marginTop: 10 }}>
                       LEAF price range: <b>$5,000–$7,000</b>
                     </div>
-                    <div className="mt-2 text-[11px] text-neutral-400">
+                    <div className="subText">
                       Estimated savings at this price: <b data-el="dynamicSavingsRange">$19–$35/mo</b>
                     </div>
                   </div>
 
-                  <div className="mt-3 rounded-2xl bg-black/30 border border-neutral-800 p-3">
-                    <div className="text-xs text-neutral-400">Quick read</div>
-                    <div className="text-sm font-semibold mt-1" data-el="overallHeadline">This looks like a solid deal.</div>
-
-                    <div className="mt-2 text-[11px] text-neutral-300">
-                      <div className="font-semibold text-neutral-200">Good questions to ask the contractor</div>
-                      <ul data-el="quickReadQuestionsVisible" className="list-disc list-inside mt-1 space-y-1"></ul>
+                  <div className="sliderBox" style={{ background: "rgba(0,0,0,.30)" }}>
+                    <div className="smallLabel">Quick read</div>
+                    <div style={{ fontWeight: 800, marginTop: 6 }} data-el="overallHeadline">
+                      This looks like a solid deal.
                     </div>
 
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-[11px] text-emerald-300">
+                    <div style={{ marginTop: 10, fontSize: 11, color: "rgba(229,229,229,1)" }}>
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Good questions to ask the contractor</div>
+                      <ul data-el="quickReadQuestionsVisible" style={{ paddingLeft: 16, margin: 0 }} />
+                    </div>
+
+                    <details style={{ marginTop: 10 }}>
+                      <summary style={{ cursor: "pointer", fontSize: 11, color: "rgba(110,231,183,1)", fontWeight: 700 }}>
                         Why this message + more questions
                       </summary>
-
-                      <div className="mt-2 text-[11px] text-neutral-300 space-y-3">
-                        <div>
-                          <div className="font-semibold text-neutral-200">Why LEAF is saying this</div>
-                          <ul data-el="quickReadWhy" className="list-disc list-inside mt-1 space-y-1"></ul>
-                        </div>
-
-                        <div>
-                          <div className="font-semibold text-neutral-200">More questions (optional)</div>
-                          <ul data-el="quickReadQuestionsMore" className="list-disc list-inside mt-1 space-y-1"></ul>
-                        </div>
+                      <div style={{ marginTop: 10, fontSize: 11, color: "rgba(229,229,229,1)" }}>
+                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Why LEAF is saying this</div>
+                        <ul data-el="quickReadWhy" style={{ paddingLeft: 16, margin: 0 }} />
+                        <div style={{ height: 10 }} />
+                        <div style={{ fontWeight: 800, marginBottom: 6 }}>More questions (optional)</div>
+                        <ul data-el="quickReadQuestionsMore" style={{ paddingLeft: 16, margin: 0 }} />
                       </div>
                     </details>
                   </div>
                 </section>
 
-                {/* INCENTIVES (NOW REAL + DYNAMIC) */}
-                <details className="glass rounded-3xl p-4 border border-neutral-800 soft-shadow pop">
-                  <summary className="cursor-pointer">
-                    <div className="flex justify-between items-center">
-                      <div className="text-sm font-semibold">🏷️ Incentives & rebates</div>
-                      <span className="text-[11px] text-neutral-400">Tap for details</span>
+                {/* INCENTIVES (REAL) */}
+                <details className="glass">
+                  <summary className="summaryRow">
+                    <div>
+                      <div className="h2">🏷️ Incentives & rebates</div>
+                      <div className="subText" style={{ marginTop: 4 }}>
+                        {p.incentives.length
+                          ? `${p.incentives.length} incentive${p.incentives.length === 1 ? "" : "s"} matched`
+                          : "No incentives matched"}
+                      </div>
                     </div>
-                    <div className="mt-2 text-xs font-bold">
-                      {p.incentives.length ? `${p.incentives.length} incentive${p.incentives.length === 1 ? "" : "s"} matched` : "No incentives matched"}
-                    </div>
-                    <div className="text-[11px] text-neutral-400 mt-1">Federal • State • Utility</div>
+                    <div className="summaryHint">Tap for details</div>
                   </summary>
 
-                  <div className="mt-4 space-y-3 text-xs">
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                     {p.incentives.length === 0 ? (
-                      <div className="text-[11px] text-neutral-400">
+                      <div className="subText">
                         No incentives matched this upgrade. Check Incentives tags + this system type.
                       </div>
                     ) : (
                       p.incentives.map((r) => {
                         const amt = incentiveAmountText(r);
                         return (
-                          <div key={r.id} className="rounded-2xl bg-neutral-900 border border-neutral-800 p-3">
-                            <div className="font-semibold">
+                          <div key={r.id} className="incentiveCard">
+                            <div className="incentiveTitle">
                               {r.programName}
-                              {amt ? <span className="text-neutral-300 font-normal"> — {amt}</span> : null}
+                              {amt ? <span style={{ fontWeight: 600, color: "rgba(229,229,229,1)" }}> — {amt}</span> : null}
                             </div>
-                            {(r as any).shortBlurb ? (
-                              <div className="text-[11px] text-neutral-400 mt-1">{(r as any).shortBlurb}</div>
-                            ) : null}
+                            {(r as any).shortBlurb ? <div className="incentiveBlurb">{(r as any).shortBlurb}</div> : null}
                           </div>
                         );
                       })
                     )}
-
-                    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-3">
-                      <div className="font-semibold">🔗 Helpful links</div>
-                      <div className="mt-2 flex flex-col gap-2">
-                        <a href="https://www.irs.gov/pub/irs-pdf/f5695.pdf" target="_blank" className="text-emerald-300 underline text-[11px]">
-                          IRS Form 5695 (PDF)
-                        </a>
-                        <a href="https://www.energystar.gov/rebate-finder" target="_blank" className="text-emerald-300 underline text-[11px]">
-                          ENERGY STAR Rebate Finder
-                        </a>
-                      </div>
-                    </div>
-
-                    <div className="text-[11px] text-neutral-400">
-                      LEAF identifies likely incentives based on system type and location. Contractors confirm eligibility,
-                      pricing, and paperwork requirements.
-                    </div>
                   </div>
                 </details>
 
-                {/* DOES THIS MAKE SENSE */}
-                <section className="glass rounded-3xl p-4 border border-neutral-800 soft-shadow pop">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">🧠 Does this decision make sense?</div>
-                    <span data-el="decisionBadge" className="text-[11px] px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-200 border border-emerald-500/30">
-                      Likely yes ✅
-                    </span>
+                {/* DECISION */}
+                <section className="glass">
+                  <div className="rowBetween">
+                    <div className="h2">🧠 Does this decision make sense?</div>
+                    <span className="badge" data-tone="good">Likely yes ✅</span>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-3">
-                      <div className="text-neutral-400">Install cost (slider)</div>
-                      <div className="text-base font-bold" data-el="msInstallCost">$6,000</div>
+                  <div className="sliderBox" style={{ marginTop: 12 }}>
+                    <div className="rowBetween">
+                      <div className="smallLabel">Estimated net cost (after incentives)</div>
+                      <div className="priceText" data-el="msNetCostRange">$3,500–$4,500</div>
                     </div>
-
-                    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-3">
-                      <div className="text-neutral-400">Estimated savings (at this price)</div>
-                      <div className="text-base font-bold" data-el="msSavingsRange">$19–$35/mo</div>
-                      <div className="text-[11px] text-neutral-400 mt-1">Higher cost can bump savings slightly, but ROI may drop.</div>
+                    <div className="subText" style={{ marginTop: 8 }}>
+                      Based on incentive estimates shown above (contractor confirms final eligibility).
                     </div>
-
-                    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-3 col-span-2">
-                      <div className="text-neutral-400">Estimated net cost (after incentives)</div>
-                      <div className="text-base font-bold" data-el="msNetCostRange">$3,500–$4,500</div>
-                      <div className="text-[11px] text-neutral-400 mt-1">
-                        Based on incentive estimates shown above (contractor confirms final eligibility).
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-3">
-                      <div className="text-neutral-400">Quote value check</div>
-                      <div className="text-base font-bold" data-el="msValueCheck">Within range ✅</div>
-                    </div>
-                    <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-3">
-                      <div className="text-neutral-400">What this means</div>
-                      <div className="text-[11px] text-neutral-300 mt-1" data-el="msMeaning">
-                        Quotes in-range usually indicate predictable scope + fair pricing.
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 rounded-2xl bg-black/30 border border-neutral-800 p-3">
-                    <div className="text-xs text-neutral-400">Decision summary</div>
-                    <div className="text-sm font-semibold mt-1" data-el="msSummaryHeadline">This looks financially reasonable.</div>
-                    <div className="text-[11px] text-neutral-300 mt-1" data-el="msSummaryText">
-                      If the contractor quote lands within the LEAF range, this is typically a strong replacement decision.
+                    <div className="subText" style={{ marginTop: 8 }}>
+                      Estimated savings (at this price): <b data-el="msSavingsRange">$19–$35/mo</b>
                     </div>
                   </div>
                 </section>
@@ -817,14 +850,10 @@ export default function JobReportPage() {
         </div>
 
         {/* CTA */}
-        <div className="fixed bottom-0 inset-x-0 bg-black/80 border-t border-neutral-800 backdrop-blur">
-          <div className="max-w-md mx-auto px-4 py-3">
-            <button className="w-full bg-[var(--leaf)] text-black font-semibold py-3 rounded-full text-sm pop">
-              🔎 Get an exact bid from a contractor
-            </button>
-            <div className="text-[11px] text-neutral-400 text-center mt-1">
-              Compare the quote against your LEAF range
-            </div>
+        <div className="ctaBar">
+          <div className="ctaInner">
+            <button className="ctaBtn">🔎 Get an exact bid from a contractor</button>
+            <div className="ctaNote">Compare the quote against your LEAF range</div>
           </div>
         </div>
       </div>
