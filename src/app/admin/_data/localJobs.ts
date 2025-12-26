@@ -33,3 +33,8 @@ export function findLocalJob(jobId: string): Job | null {
 export function updateLocalJob(job: Job) {
   upsertLocalJob(job);
 }
+export function deleteLocalJob(jobId: string) {
+  const jobs = loadLocalJobs();
+  const next = jobs.filter((j) => j.id !== jobId);
+  saveLocalJobs(next);
+}
