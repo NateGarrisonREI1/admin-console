@@ -46,6 +46,31 @@ function incentiveAmountText(r: IncentiveResource): string {
   }
   return "";
 }
+function getEffectiveLeafConfig() {
+  if (typeof window === "undefined") return LEAF_SS_CONFIG;
+
+  try {
+    const raw = window.localStorage.getItem("LEAF_SS_CONFIG_OVERRIDE");
+    if (!raw) return LEAF_SS_CONFIG;
+
+    const override = JSON.parse(raw);
+
+    return {
+      ...LEAF_SS_CONFIG,
+      ...override,
+      global: {
+        ...LEAF_SS_CONFIG.global,
+        ...(override.global || {}),
+      },
+      messageLibrary: {
+        ...LEAF_SS_CONFIG.messageLibrary,
+        ...(override.messageLibrary || {}),
+      },
+    };
+  } catch {
+    return LEAF_SS_CONFIG;
+  }
+}
 
 export default function JobReportPage() {
   const params = useParams<{ jobId: string }>();
