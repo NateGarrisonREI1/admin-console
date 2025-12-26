@@ -89,6 +89,83 @@ export default function LeafSSConfigPage() {
         </Row>
       </Section>
 
+      {/* ───────────────────────────────────────────── */}
+{/* Tier Configuration */}
+{/* ───────────────────────────────────────────── */}
+<section className="configSection">
+  <h3 className="configSectionTitle">Tier Configuration</h3>
+  <p className="configSectionHint">
+    These ranges define the <b>Good / Better / Best</b> pricing bands and baseline
+    savings used in every LEAF System Snapshot.
+  </p>
+
+  {(["good", "better", "best"] as const).map((tier) => (
+    <div key={tier} className="configCard">
+      <h4 className="configCardTitle">
+        {tier === "good" && "🟢 Good Tier"}
+        {tier === "better" && "🔵 Better Tier"}
+        {tier === "best" && "🟣 Best Tier"}
+      </h4>
+
+      <div className="configGrid">
+        {/* Price Range */}
+        <div>
+          <label>Min price ($)</label>
+          <input
+            type="number"
+            value={config.global.tiers[tier].leafPriceRange.min}
+            onChange={(e) =>
+              updateConfig((c) => {
+                c.global.tiers[tier].leafPriceRange.min = Number(e.target.value);
+              })
+            }
+          />
+        </div>
+
+        <div>
+          <label>Max price ($)</label>
+          <input
+            type="number"
+            value={config.global.tiers[tier].leafPriceRange.max}
+            onChange={(e) =>
+              updateConfig((c) => {
+                c.global.tiers[tier].leafPriceRange.max = Number(e.target.value);
+              })
+            }
+          />
+        </div>
+
+        {/* Savings Range */}
+        <div>
+          <label>Base savings min ($/month)</label>
+          <input
+            type="number"
+            value={config.global.tiers[tier].baseMonthlySavings.min}
+            onChange={(e) =>
+              updateConfig((c) => {
+                c.global.tiers[tier].baseMonthlySavings.min = Number(e.target.value);
+              })
+            }
+          />
+        </div>
+
+        <div>
+          <label>Base savings max ($/month)</label>
+          <input
+            type="number"
+            value={config.global.tiers[tier].baseMonthlySavings.max}
+            onChange={(e) =>
+              updateConfig((c) => {
+                c.global.tiers[tier].baseMonthlySavings.max = Number(e.target.value);
+              })
+            }
+          />
+        </div>
+      </div>
+    </div>
+  ))}
+</section>
+
       {/* COST CLASSIFICATION */}
       <Section title="Quote Classification">
         <Row>
