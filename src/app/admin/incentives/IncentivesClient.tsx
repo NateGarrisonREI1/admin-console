@@ -15,6 +15,9 @@ import {
   clearLocalIncentiveOverrides,
 } from "../_data/localIncentives";
 
+// ✅ Catalog import for match preview
+import { MOCK_SYSTEMS } from "../_data/mockSystems";
+
 const SYSTEM_TYPES = [
   { key: "hvac", label: "HVAC" },
   { key: "water_heater", label: "Water Heater" },
@@ -29,6 +32,37 @@ const SYSTEM_TYPES = [
 
 const LEVELS: IncentiveResource["level"][] = ["federal", "state", "utility", "local", "other"];
 
+// ✅ Common tags per system type (chips)
+const TAG_SUGGESTIONS: Record<string, string[]> = {
+  hvac: [
+    "heat_pump",
+    "ducted",
+    "ductless",
+    "mini_split",
+    "gas_furnace",
+    "high_efficiency",
+    "thermostat",
+    "variable_speed",
+  ],
+  water_heater: [
+    "hpwh",
+    "heat_pump",
+    "tank",
+    "tankless",
+    "electric",
+    "gas",
+    "high_efficiency",
+    "recirc",
+  ],
+  windows: ["double_pane", "triple_pane", "low_e", "retrofit", "new_construction"],
+  doors: ["weatherstripping", "insulated_door", "air_sealing"],
+  insulation: ["attic", "wall", "crawlspace", "basement", "air_sealing"],
+  lighting: ["led", "controls", "occupancy_sensor"],
+  solar: ["pv", "battery", "inverter"],
+  ev_charging: ["level_2", "panel_upgrade"],
+  appliances: ["energy_star", "heat_pump_dryer", "induction"],
+};
+
 function uid() {
   return `custom-${Math.random().toString(16).slice(2)}-${Date.now()}`;
 }
@@ -37,10 +71,18 @@ function clone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x));
 }
 
+function normalizeTag(t: string): string {
+  return String(t || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^\w_]/g, "");
+}
+
 function parseTags(input: string): string[] {
   return input
     .split(",")
-    .map((t) => t.trim())
+    .map((t) => normalizeTag(t))
     .filter(Boolean);
 }
 
@@ -61,6 +103,39 @@ function buildAmount(kind: string, a: string, b: string, unit: string): Incentiv
   return { kind: "text", value: a || "" };
 }
 
+// ✅ convert catalog category to system key
+function categoryToKey(cat: string): string {
+  const s = String(cat || "").toLowerCase().trim();
+  if (s.includes("hvac")) return "hvac";
+  if (s.includes("water")) return "water_heater";
+  if (s.includes("window")) return "windows";
+  if (s.includes("door")) return "doors";
+  if (s.includes("insulation")) return "insulation";
+  if (s.includes("lighting")) return "lighting";
+  if (s.includes("solar")) return "solar";
+  if (s.includes("ev")) return "ev_charging";
+  if (s.includes("appliance")) return "appliances";
+  return s.replace(/\s+/g, "_");
+}
+
+// ✅ matching logic mirrors the incentives matcher:
+// - must match system type
+// - if rule.tags empty => matches all in that system type
+// - else matches if ANY rule tag overlaps ANY catalog tag
+function matchesCatalog(rule: IncentiveResource, systemKey: string) {
+  const wantKey = systemKey;
+  const ruleTags = (rule.tags ?? []).map(normalizeTag).filter(Boolean);
+
+  const candidates = MOCK_SYSTEMS.filter((c: any) => categoryToKey(c.category) === wantKey);
+
+  return candidates.filter((c: any) => {
+    const catTags = (c.tags ?? []).map(normalizeTag).filter(Boolean);
+    if (!ruleTags.length) return true;
+    if (!catTags.length) return false;
+    return ruleTags.some((t) => catTags.includes(t));
+  });
+}
+
 export default function IncentivesClient() {
   const [selectedSystemKey, setSelectedSystemKey] = useState<string>("hvac");
 
@@ -69,6 +144,8 @@ export default function IncentivesClient() {
   const systemOverrides = useMemo(() => {
     return overrides.filter((r) => r.appliesTo.includes(selectedSystemKey));
   }, [overrides, selectedSystemKey]);
+
+  const suggestions = TAG_SUGGESTIONS[selectedSystemKey] ?? [];
 
   function save() {
     saveLocalIncentiveOverrides(overrides);
@@ -111,6 +188,19 @@ export default function IncentivesClient() {
     setOverrides((prev) => prev.filter((r) => r.id !== id));
   }
 
+  function addTagToRule(ruleId: string, tag: string) {
+    const t = normalizeTag(tag);
+    if (!t) return;
+    setOverrides((prev) =>
+      prev.map((r) => {
+        if (r.id !== ruleId) return r;
+        const current = (r.tags ?? []).map(normalizeTag).filter(Boolean);
+        if (current.includes(t)) return r;
+        return { ...r, tags: [...current, t] };
+      })
+    );
+  }
+
   return (
     <div className="rei-card" style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
@@ -148,8 +238,7 @@ export default function IncentivesClient() {
       </div>
 
       <div style={{ color: "var(--muted)", fontSize: 12 }}>
-        These incentives override the built-in library. Use tags (comma-separated) to target specific catalog cases like{" "}
-        <code>heat_pump</code>, <code>tankless</code>, <code>hpwh</code>.
+        These incentives override the built-in library. Use tags to target specific suggested upgrades (from the catalog).
       </div>
 
       <div style={{ display: "grid", gap: 10 }}>
@@ -161,6 +250,12 @@ export default function IncentivesClient() {
 
         {systemOverrides.map((r) => {
           const amt = amountToString(r.amount);
+
+          // ✅ live match preview against catalog
+          const matches = matchesCatalog(r, selectedSystemKey);
+          const top3 = matches.slice(0, 3).map((x: any) => x.name);
+          const extra = matches.length - top3.length;
+
           return (
             <div
               key={r.id}
@@ -217,9 +312,54 @@ export default function IncentivesClient() {
                   <input
                     value={(r.tags ?? []).join(", ")}
                     onChange={(e) => update(r.id, { tags: parseTags(e.target.value) })}
-                    placeholder="heat_pump, ducted"
+                    placeholder={suggestions.length ? suggestions.slice(0, 3).join(", ") : "heat_pump, ducted"}
                     style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
                   />
+
+                  {/* ✅ Tag suggestion chips */}
+                  {suggestions.length ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {suggestions.map((t) => {
+                        const active = (r.tags ?? []).map(normalizeTag).includes(normalizeTag(t));
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => addTagToRule(r.id, t)}
+                            title="Click to add tag"
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 999,
+                              border: "1px solid #e5e7eb",
+                              background: active ? "#eaffea" : "#f9fafb",
+                              cursor: "pointer",
+                              fontSize: 12,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {t}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {/* ✅ Match preview */}
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                    <b>Matches catalog:</b>{" "}
+                    {matches.length === 0 ? (
+                      <span style={{ color: "#b91c1c", fontWeight: 800 }}>None</span>
+                    ) : (
+                      <span style={{ fontWeight: 700 }}>
+                        {top3.join(" • ")}
+                        {extra > 0 ? ` • +${extra} more` : ""}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
+                    Tip: tags should match the catalog system tags (e.g. <code>heat_pump</code>, <code>hpwh</code>).
+                  </div>
                 </div>
 
                 <div style={{ display: "grid", gap: 6 }}>
