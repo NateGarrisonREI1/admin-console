@@ -255,91 +255,96 @@ export default function JobReportPage() {
     }
 
     function initLeafPage(root: Element) {
-      const $ = (sel: string) => root.querySelector(sel) as HTMLElement | null;
+  const $ = (sel: string) => root.querySelector(sel) as HTMLElement | null;
 
-      const priceSlider = root.querySelector<HTMLInputElement>('[data-el="priceSlider"]');
-      if (!priceSlider) return;
+  // ✅ Make TS happy: strongly type this as an INPUT and guard it.
+  const priceSlider = root.querySelector<HTMLInputElement>('[data-el="priceSlider"]');
+  if (!priceSlider) return () => {};
 
-      const priceValue = $('[data-el="priceValue"]');
-      const costBadge = $('[data-el="costBadge"]');
-      const overallBadge = $('[data-el="overallBadge"]');
-      const overallHeadline = $('[data-el="overallHeadline"]');
+  const priceValue = $('[data-el="priceValue"]');
+  const costBadge = $('[data-el="costBadge"]');
+  const overallBadge = $('[data-el="overallBadge"]');
+  const overallHeadline = $('[data-el="overallHeadline"]');
 
-      const quickReadWhy = $('[data-el="quickReadWhy"]');
-      const qVisible = $('[data-el="quickReadQuestionsVisible"]');
-      const qMore = $('[data-el="quickReadQuestionsMore"]');
+  const quickReadWhy = $('[data-el="quickReadWhy"]');
+  const qVisible = $('[data-el="quickReadQuestionsVisible"]');
+  const qMore = $('[data-el="quickReadQuestionsMore"]');
 
-      const msNetCostRange = $('[data-el="msNetCostRange"]');
-      const msSavingsRange = $('[data-el="msSavingsRange"]');
-      const heroSavingsPill = $('[data-el="heroSavingsPill"]');
+  const msNetCostRange = $('[data-el="msNetCostRange"]');
+  const msSavingsRange = $('[data-el="msSavingsRange"]');
+  const heroSavingsPill = $('[data-el="heroSavingsPill"]');
 
-      const priceBandOK = $('[data-el="priceBandOK"]');
-      const priceBandFill = $('[data-el="priceBandFill"]');
+  const priceBandOK = $('[data-el="priceBandOK"]');
+  const priceBandFill = $('[data-el="priceBandFill"]');
 
-      const dynSavings = $('[data-el="dynamicSavingsRange"]');
-      const resetBtn = $('[data-el="resetBtn"]');
+  const dynSavings = $('[data-el="dynamicSavingsRange"]');
+  const resetBtn = $('[data-el="resetBtn"]');
 
-      function updateUI() {
-        const price = Number(priceSlider.value);
+  function updateUI() {
+    const price = Number(priceSlider.value);
 
-        if (priceValue) priceValue.textContent = formatMoney(price);
+    if (priceValue) priceValue.textContent = formatMoney(price);
 
-        const dyn = dynamicSavingsRange(price);
-        const savText = `$${dyn.min}–$${dyn.max}/mo`;
+    const dyn = dynamicSavingsRange(price);
+    const savText = `$${dyn.min}–$${dyn.max}/mo`;
 
-        if (dynSavings) dynSavings.textContent = savText;
-        if (msSavingsRange) msSavingsRange.textContent = savText;
-        if (heroSavingsPill) heroSavingsPill.textContent = `Save ~$${dyn.min}–$${dyn.max}/mo`;
+    if (dynSavings) dynSavings.textContent = savText;
+    if (msSavingsRange) msSavingsRange.textContent = savText;
+    if (heroSavingsPill) heroSavingsPill.textContent = `Save ~$${dyn.min}–$${dyn.max}/mo`;
 
-        if (priceBandOK) setBand(priceBandOK, Number(priceSlider.min), Number(priceSlider.max), LEAF_PRICE_MIN, LEAF_PRICE_MAX);
-        if (priceBandFill) setFill(priceBandFill, Number(priceSlider.min), Number(priceSlider.max), price);
+    if (priceBandOK) setBand(priceBandOK, Number(priceSlider.min), Number(priceSlider.max), LEAF_PRICE_MIN, LEAF_PRICE_MAX);
+    if (priceBandFill) setFill(priceBandFill, Number(priceSlider.min), Number(priceSlider.max), price);
 
-        const costClass = classifyCost(price);
+    const costClass = classifyCost(price);
 
-        if (costBadge) {
-          if (costClass === "unreal_low") setBadge(costBadge, "bad", "Unrealistic");
-          else if (costClass === "low") setBadge(costBadge, "warn", "Low (verify scope)");
-          else if (costClass === "over") setBadge(costBadge, "bad", "Overpriced");
-          else if (costClass === "likely_over") setBadge(costBadge, "warn", "Likely overpriced");
-          else setBadge(costBadge, "good", "Within range");
-        }
+    if (costBadge) {
+      if (costClass === "unreal_low") setBadge(costBadge, "bad", "Unrealistic");
+      else if (costClass === "low") setBadge(costBadge, "warn", "Low (verify scope)");
+      else if (costClass === "over") setBadge(costBadge, "bad", "Overpriced");
+      else if (costClass === "likely_over") setBadge(costBadge, "warn", "Likely overpriced");
+      else setBadge(costBadge, "good", "Within range");
+    }
 
-        const msg = quickReadMessage(costClass);
-        if (overallBadge) {
-          if (costClass === "over") setBadge(overallBadge, "bad", "Major caution 🚩");
-          else if ((msg as any).tone === "good") setBadge(overallBadge, "good", "Looks good ✅");
-          else setBadge(overallBadge, "warn", "Proceed smart ⚠️");
-        }
-        if (overallHeadline) overallHeadline.textContent = (msg as any).headline;
+    const msg = quickReadMessage(costClass);
 
-        renderList(quickReadWhy, (msg as any).why);
-        renderList(qVisible, (msg as any).qVisible);
-        renderList(qMore, (msg as any).qMore);
+    if (overallBadge) {
+      if (costClass === "over") setBadge(overallBadge, "bad", "Major caution 🚩");
+      else if ((msg as any).tone === "good") setBadge(overallBadge, "good", "Looks good ✅");
+      else setBadge(overallBadge, "warn", "Proceed smart ⚠️");
+    }
 
-        const net = computeNetCostRange(price);
-        const netMin = Math.min(net.netLow, net.netHigh);
-        const netMax = Math.max(net.netLow, net.netHigh);
-        if (msNetCostRange) msNetCostRange.textContent = formatMoneyRange(netMin, netMax);
-      }
+    if (overallHeadline) overallHeadline.textContent = (msg as any).headline;
 
-      function resetToLeafMid() {
-        const mid = Math.round((LEAF_PRICE_MIN + LEAF_PRICE_MAX) / 2);
-        priceSlider.value = String(mid);
-        updateUI();
-      }
+    renderList(quickReadWhy, (msg as any).why);
+    renderList(qVisible, (msg as any).qVisible);
+    renderList(qMore, (msg as any).qMore);
 
-      const onInput = () => updateUI();
-      const onReset = () => resetToLeafMid();
+    const net = computeNetCostRange(price);
+    const netMin = Math.min(net.netLow, net.netHigh);
+    const netMax = Math.max(net.netLow, net.netHigh);
+    if (msNetCostRange) msNetCostRange.textContent = formatMoneyRange(netMin, netMax);
+  }
 
-      priceSlider.addEventListener("input", onInput);
-      resetBtn?.addEventListener("click", onReset);
+  function resetToLeafMid() {
+    const mid = Math.round((LEAF_PRICE_MIN + LEAF_PRICE_MAX) / 2);
+    priceSlider.value = String(mid);
+    updateUI();
+  }
 
-      updateUI();
+  const onInput = () => updateUI();
+  const onReset = () => resetToLeafMid();
 
-      return () => {
-        priceSlider.removeEventListener("input", onInput);
-        resetBtn?.removeEventListener("click", onReset);
-      };
+  priceSlider.addEventListener("input", onInput);
+  resetBtn?.addEventListener("click", onReset);
+
+  updateUI();
+
+  // ✅ cleanup (nice long-term)
+  return () => {
+    priceSlider.removeEventListener("input", onInput);
+    resetBtn?.removeEventListener("click", onReset);
+  };
+
     }
 
     const cleanups: Array<() => void> = [];
