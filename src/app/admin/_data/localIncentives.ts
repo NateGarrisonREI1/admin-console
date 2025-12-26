@@ -1,6 +1,7 @@
 "use client";
 
-import type { IncentiveResource } from "@/lib/incentives/incentiveRules";
+// ✅ relative import (no @ alias)
+import type { IncentiveResource } from "../../../lib/incentives/incentiveRules";
 
 const LS_KEY = "rei.incentives.overrides.v1";
 
