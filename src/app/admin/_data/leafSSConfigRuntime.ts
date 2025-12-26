@@ -1,13 +1,81 @@
 import { loadLeafSSMasterConfig } from "./leafSSConfigStore";
+import { MOCK_SYSTEMS, type CatalogSystem, type LeafTierKey } from "./mockSystems";
 
-export type LeafTierKey = "good" | "better" | "best";
 export type CostClass = "unreal_low" | "low" | "in" | "likely_over" | "over";
 
-export function getSnapshotByIndex(i: number) {
-  const master = getMasterConfig();
-  const snaps = master.snapshots || [];
+function clone<T>(x: T): T {
+  return typeof structuredClone === "function" ? structuredClone(x) : JSON.parse(JSON.stringify(x));
+}
+
+function getCatalogSystemById(id: string | null | undefined): CatalogSystem | null {
+  if (!id) return null;
+  return (MOCK_SYSTEMS as any[]).find((s) => s?.id === id) || null;
+}
+
+function mergeSnapshotWithCatalog(snapshot: any, catalog: CatalogSystem | null) {
+  if (!snapshot || !catalog?.leafSSOverrides) return snapshot;
+
+  const out = clone(snapshot);
+  const overrides = catalog.leafSSOverrides;
+
+  // ensure tiers exist
+  out.tiers = out.tiers || {};
+
+  // merge tier overrides
+  const tierKeys: LeafTierKey[] = ["good", "better", "best"];
+  for (const t of tierKeys) {
+    const tierOverride = overrides.tiers?.[t];
+    if (!tierOverride) continue;
+
+    out.tiers[t] = out.tiers[t] || {};
+    if (tierOverride.leafPriceRange) {
+      out.tiers[t].leafPriceRange = {
+        ...(out.tiers[t].leafPriceRange || {}),
+        ...tierOverride.leafPriceRange,
+      };
+    }
+    if (tierOverride.baseMonthlySavings) {
+      out.tiers[t].baseMonthlySavings = {
+        ...(out.tiers[t].baseMonthlySavings || {}),
+        ...tierOverride.baseMonthlySavings,
+      };
+    }
+
+    // optional: recommended card labels per tier
+    if (tierOverride.recommendedName || tierOverride.statusPillText) {
+      out.recommendedSystemCard = out.recommendedSystemCard || {};
+      out.recommendedSystemCard.recommendedNameByTier =
+        out.recommendedSystemCard.recommendedNameByTier || {};
+      out.recommendedSystemCard.statusPillTextByTier =
+        out.recommendedSystemCard.statusPillTextByTier || {};
+
+      if (tierOverride.recommendedName) {
+        out.recommendedSystemCard.recommendedNameByTier[t] = tierOverride.recommendedName;
+      }
+      if (tierOverride.statusPillText) {
+        out.recommendedSystemCard.statusPillTextByTier[t] = tierOverride.statusPillText;
+      }
+    }
+  }
+
+  return out;
+}
+
+function getMasterConfig() {
+  return loadLeafSSMasterConfig();
+}
+
+/**
+ * ✅ NEW SIGNATURE:
+ * pass catalogSystemId to apply catalog overrides for this snapshot only
+ */
+export function getSnapshotByIndex(i: number, catalogSystemId?: string | null) {
+  const cfg = getMasterConfig();
+  const snaps = cfg?.snapshots || [];
   const idx = Math.max(0, Math.min(snaps.length - 1, i));
-  return snaps[idx];
+  const base = snaps[idx];
+  const catalog = getCatalogSystemById(catalogSystemId);
+  return mergeSnapshotWithCatalog(base, catalog);
 }
 
 export function getTier(snapshot: any, tier: LeafTierKey) {
@@ -46,7 +114,4 @@ export function dynamicSavingsRangeFromRule(args: {
   const steps = stepSizeDollars > 0 ? Math.floor(over / stepSizeDollars) : 0;
   const bump = steps * bumpPerStepMonthlyDollars;
   return { min: baseMin + bump, max: baseMax + bump };
-}
-function getMasterConfig() {
-  return loadLeafSSMasterConfig();
 }
