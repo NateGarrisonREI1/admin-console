@@ -62,7 +62,6 @@ export default function Worksheet({ job, onJobUpdated }: Props) {
 
     onJobUpdated(nextJob);
 
-    // reset a couple fields for faster entry
     setSubtype("");
     setAgeYears("");
     setWear(3);
@@ -77,14 +76,8 @@ export default function Worksheet({ job, onJobUpdated }: Props) {
         REI-only v1: add existing systems here. These become the source for LEAF System Snapshots.
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1.1fr 1.6fr 0.8fr 0.9fr 0.8fr 1fr",
-          gap: 10,
-          alignItems: "end",
-        }}
-      >
+      {/* Responsive grid: 3 cols on wide screens, 2 cols on medium, 1 col on small */}
+      <div className="rei-formGrid">
         <Field label="System Type">
           <select className="rei-search" value={type} onChange={(e) => setType(e.target.value)}>
             {SYSTEM_TYPES.map((t) => (
