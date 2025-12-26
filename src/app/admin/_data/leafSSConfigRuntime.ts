@@ -1,5 +1,8 @@
 import { loadLeafSSMasterConfig } from "./leafSSConfigStore";
-import { MOCK_SYSTEMS, type CatalogSystem, type LeafTierKey } from "./mockSystems";
+import { MOCK_SYSTEMS, type CatalogSystem } from "./mockSystems";
+
+export type LeafTierKey = "good" | "better" | "best";
+
 
 export type CostClass = "unreal_low" | "low" | "in" | "likely_over" | "over";
 
