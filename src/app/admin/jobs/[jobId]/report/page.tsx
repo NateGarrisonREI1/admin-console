@@ -8,63 +8,30 @@ import { MOCK_JOBS, type Job } from "../../../_data/mockJobs";
 import { findLocalJob } from "../../../_data/localJobs";
 import { loadLocalSnapshots, snapshotsForJob, type SnapshotDraft } from "../../../_data/localSnapshots";
 
-// IMPORTANT: Use relative import so you don’t depend on @ alias yet.
-// From: src/app/admin/jobs/[jobId]/report/page.tsx
-// To:   src/lib/incentives/incentiveRules.ts
+// OPTIONAL (future-ready incentives rules)
+// If you don’t want this yet, you can delete this import and the Incentives section below.
+// Path from: src/app/admin/jobs/[jobId]/report/page.tsx -> src/lib/incentives/incentiveRules.ts
 import {
-  getIncentivesForSnapshot,
-  type IncentiveProgram,
-  type IncentiveForm,
+  getIncentivesForSystemType,
+  type IncentiveResource,
 } from "../../../../../lib/incentives/incentiveRules";
 
-function formatMoney(n: number) {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }).format(n);
-  } catch {
-    return `$${Math.round(n).toLocaleString()}`;
-  }
+function formatMoney(n: number | null | undefined) {
+  if (n === null || n === undefined) return "—";
+  if (!Number.isFinite(n)) return "—";
+  return `$${Math.round(n).toLocaleString("en-US")}`;
 }
 
 function formatDate(iso: string) {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
 }
 
-/** ✅ ALL wording lives here so you can change “rebate info” text anytime */
-const COPY = {
-  pageTitle: "Mock LEAF Report Preview",
-  backToJob: "← Back to Job",
-  sendReport: "Send Report (coming soon)",
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
 
-  reportIntroTitle: "Report Summary",
-  reportIntroBody:
-    "This is a mock LEAF report generated from the job profile and saved snapshots. Incentives and forms are rule-driven placeholders for now.",
-
-  sectionTitle: "Upgrade Recommendation",
-  existingLabel: "Existing",
-  suggestedLabel: "Suggested",
-  snapshotMeta: (updatedAt: string) => `Last updated: ${formatDate(updatedAt)}`,
-
-  incentivesTitle: "Incentives & Rebates",
-  incentivesSubtitle:
-    "These incentives are generated from rules. Later, you’ll attach exact programs, eligibility, forms, and rebate values per system type.",
-  formsTitle: "Forms / Links",
-  rebatesTitle: "Programs",
-  totalsLabel: "Estimated total incentives",
-  totalsSuffixEstimated: " (estimated)",
-  disclaimer:
-    "Note: Incentive amounts and eligibility vary by location, efficiency, program funding, and contractor participation. This section is rule-driven so wording and links can be updated without changing report UI.",
-
-  emptyTitle: "Nothing to preview yet",
-  emptyBody: "Create at least one snapshot for this job, then generate the mock report.",
-};
-
-export default function JobReportPage() {
+export default function MockLeafReportPage() {
   const params = useParams();
   const jobId = (params?.jobId as string) || "";
 
@@ -73,12 +40,72 @@ export default function JobReportPage() {
     return findLocalJob(jobId) ?? MOCK_JOBS.find((j) => j.id === jobId) ?? null;
   }, [jobId]);
 
-  const [bump, setBump] = useState(0);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
 
   const snapshots: SnapshotDraft[] = useMemo(() => {
     loadLocalSnapshots();
     return jobId ? snapshotsForJob(jobId) : [];
-  }, [jobId, bump]);
+  }, [jobId]);
+
+  const total = snapshots.length;
+  const activeIndex = clamp(pageIndex, 0, Math.max(0, total - 1));
+  const active = total > 0 ? snapshots[activeIndex] : null;
+
+  function setActive(i: number) {
+    setPageIndex(clamp(i, 0, Math.max(0, total - 1)));
+  }
+
+  function setPriceForSnapshot(snapshotId: string, value: number) {
+    setPriceOverrides((prev) => ({ ...prev, [snapshotId]: value }));
+  }
+
+  // Simple “LEAF-style” default ranges for now (mock)
+  // Later this will come from your snapshot math / catalog rules.
+  function getLeafRangeFor(snap: SnapshotDraft) {
+    // You can adjust these per system type later.
+    // For now: HVAC is pricier than Doors, etc.
+    const t = (snap.existing.type || "").toLowerCase();
+    if (t.includes("hvac")) return { min: 5000, max: 7000 };
+    if (t.includes("water")) return { min: 1800, max: 3800 };
+    if (t.includes("window")) return { min: 9000, max: 18000 };
+    if (t.includes("door")) return { min: 800, max: 2400 };
+    if (t.includes("lighting")) return { min: 400, max: 2400 };
+    return { min: 1500, max: 6000 };
+  }
+
+  function getSavingsRangeFor(price: number, leafMin: number, leafMax: number) {
+    // mock: base savings range, bumps slightly as price goes up above max
+    const baseMin = 19;
+    const baseMax = 35;
+
+    const over = Math.max(0, price - leafMax);
+    const steps = Math.floor(over / 1000);
+    const bump = steps * 2;
+
+    return { min: baseMin + bump, max: baseMax + bump };
+  }
+
+  function getQuoteBadge(price: number, leafMin: number, leafMax: number) {
+    const unrealLow = leafMin - 500;
+    const overPriced = leafMax + 3000;
+
+    if (price < unrealLow) return { tone: "bad" as const, text: "Unrealistic" };
+    if (price < leafMin) return { tone: "warn" as const, text: "Low (verify scope)" };
+    if (price > overPriced) return { tone: "bad" as const, text: "Overpriced" };
+    if (price > leafMax) return { tone: "warn" as const, text: "Likely overpriced" };
+    return { tone: "good" as const, text: "Within range" };
+  }
+
+  function badgeStyle(tone: "good" | "warn" | "bad" | "neutral") {
+    const map: Record<string, React.CSSProperties> = {
+      good: { background: "rgba(16,185,129,.14)", border: "1px solid rgba(16,185,129,.35)", color: "#a7f3d0" },
+      warn: { background: "rgba(234,179,8,.14)", border: "1px solid rgba(234,179,8,.35)", color: "#fde68a" },
+      bad: { background: "rgba(239,68,68,.14)", border: "1px solid rgba(239,68,68,.35)", color: "#fecaca" },
+      neutral: { background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.86)" },
+    };
+    return map[tone] ?? map.neutral;
+  }
 
   if (!job) {
     return (
@@ -94,301 +121,312 @@ export default function JobReportPage() {
     );
   }
 
-  const reportId = (job as any).reportId ?? job.id;
-  const address = (job as any).address ?? (job as any).propertyAddress ?? "—";
+  if (snapshots.length === 0) {
+    return (
+      <div style={{ display: "grid", gap: 14 }}>
+        <div className="rei-card">
+          <div style={{ fontWeight: 900, fontSize: 16 }}>Mock LEAF Report Preview</div>
+          <div style={{ color: "var(--muted)", marginTop: 8 }}>
+            No snapshots found for this job yet. Create at least 1 snapshot to generate a report.
+          </div>
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link className="rei-btn" href={`/admin/jobs/${job.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+              ← Back to Job
+            </Link>
+            <Link className="rei-btn rei-btnPrimary" href="/admin/snapshots" style={{ textDecoration: "none", textAlign: "center" }}>
+              Go to Snapshots
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const ctx = {
-    stateCode: (job as any).stateCode,
-    city: (job as any).city,
-    utilityProvider: (job as any).utilityProvider,
-  };
+  // Active snapshot derived values
+  const leaf = active ? getLeafRangeFor(active) : { min: 0, max: 0 };
+  const sliderMin = Math.max(0, leaf.min - 2000);
+  const sliderMax = leaf.max + 8000;
+
+  const defaultPrice = Math.round((leaf.min + leaf.max) / 2);
+  const price = active ? (priceOverrides[active.id] ?? active.suggested.estCost ?? defaultPrice) : defaultPrice;
+
+  const savings = getSavingsRangeFor(price, leaf.min, leaf.max);
+  const quoteBadge = getQuoteBadge(price, leaf.min, leaf.max);
+
+  // Incentives (future-ready, editable rules)
+  const incentiveResources: IncentiveResource[] = active
+    ? getIncentivesForSystemType(active.existing.type, active.existing.subtype)
+    : [];
+
+  const existingTitle = active ? `${active.existing.type} — ${active.existing.subtype}` : "Existing";
+  const suggestedTitle = active ? (active.suggested.name || "Suggested") : "Suggested";
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      {/* HEADER */}
-      <div className="rei-card">
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+      {/* TOP BAR */}
+      <div className="rei-card" style={{ background: "black", color: "white", border: "1px solid rgba(255,255,255,.12)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 6 }}>
-              {COPY.pageTitle} — {reportId}
+            <div style={{ fontWeight: 900, fontSize: 16 }}>Mock LEAF Report Preview</div>
+            <div style={{ opacity: 0.75, marginTop: 4, fontSize: 12 }}>
+              {job.customerName} • {job.reportId} • {job.address ?? "—"}
             </div>
-            <div style={{ color: "var(--muted)" }}>
-              {(job as any).customerName ?? "Customer"} • {address}
-            </div>
-            <div style={{ height: 10 }} />
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", color: "var(--muted)", fontSize: 12 }}>
-              <div>
-                <b style={{ color: "var(--text)" }}>Sq Ft:</b> {(job as any).sqft ?? "—"}
-              </div>
-              <div>
-                <b style={{ color: "var(--text)" }}>Year Built:</b> {(job as any).yearBuilt ?? "—"}
-              </div>
-              <div>
-                <b style={{ color: "var(--text)" }}>Snapshots:</b> {snapshots.length}
-              </div>
+            <div style={{ opacity: 0.65, marginTop: 6, fontSize: 12 }}>
+              Snapshot {activeIndex + 1} of {snapshots.length} • Updated {active ? formatDate(active.updatedAt) : "—"}
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <Link
               href={`/admin/jobs/${job.id}`}
               className="rei-btn"
-              style={{ textDecoration: "none", color: "inherit" }}
+              style={{ textDecoration: "none", color: "inherit", background: "rgba(255,255,255,.08)", borderColor: "rgba(255,255,255,.12)" }}
             >
-              {COPY.backToJob}
+              ← Back
             </Link>
 
             <button
-              className="rei-btn rei-btnPrimary"
               type="button"
-              onClick={() => alert("Send Report placeholder — coming next")}
+              className="rei-btn rei-btnPrimary"
+              onClick={() => alert("Send Report (placeholder). Next: email + PDF + storage.")}
             >
-              {COPY.sendReport}
+              Send Report
             </button>
           </div>
         </div>
-      </div>
 
-      {/* INTRO */}
-      <div className="rei-card">
-        <div style={{ fontWeight: 900, marginBottom: 6 }}>{COPY.reportIntroTitle}</div>
-        <div style={{ color: "var(--muted)", lineHeight: 1.5 }}>{COPY.reportIntroBody}</div>
-      </div>
+        {/* Pager */}
+        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            className="rei-btn"
+            type="button"
+            onClick={() => setActive(activeIndex - 1)}
+            disabled={activeIndex === 0}
+            style={{ opacity: activeIndex === 0 ? 0.5 : 1 }}
+          >
+            ← Prev
+          </button>
 
-      {/* EMPTY STATE */}
-      {snapshots.length === 0 ? (
-        <div className="rei-card">
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>{COPY.emptyTitle}</div>
-          <div style={{ color: "var(--muted)" }}>{COPY.emptyBody}</div>
-          <div style={{ height: 12 }} />
-          <Link href={`/admin/jobs/${job.id}`} className="rei-btn" style={{ textDecoration: "none", color: "inherit" }}>
-            {COPY.backToJob}
-          </Link>
-        </div>
-      ) : (
-        <>
-          {snapshots.map((snap) => (
-            <SnapshotSection key={snap.id} snap={snap} ctx={ctx} />
-          ))}
-        </>
-      )}
+          <button
+            className="rei-btn"
+            type="button"
+            onClick={() => setActive(activeIndex + 1)}
+            disabled={activeIndex === snapshots.length - 1}
+            style={{ opacity: activeIndex === snapshots.length - 1 ? 0.5 : 1 }}
+          >
+            Next →
+          </button>
 
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button className="rei-btn" type="button" onClick={() => setBump((n) => n + 1)}>
-          Refresh report data
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SnapshotSection({
-  snap,
-  ctx,
-}: {
-  snap: SnapshotDraft;
-  ctx: { stateCode?: string; city?: string; utilityProvider?: string };
-}) {
-  const incentives = useMemo(() => getIncentivesForSnapshot(snap as any, ctx), [snap, ctx]);
-
-  const existingTitle = `${snap.existing.type ?? "System"} • ${snap.existing.subtype ?? "—"}`;
-  const suggestedTitle = snap.suggested.name ?? "Suggested Upgrade";
-
-  const cost = typeof snap.suggested.estCost === "number" ? formatMoney(snap.suggested.estCost) : "—";
-  const savings = typeof snap.suggested.estAnnualSavings === "number" ? formatMoney(snap.suggested.estAnnualSavings) : "—";
-  const payback = typeof snap.suggested.estPaybackYears === "number" ? `${snap.suggested.estPaybackYears} yrs` : "—";
-
-  return (
-    <div className="rei-card" style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-        <div>
-          <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 4 }}>{COPY.sectionTitle}</div>
-          <div style={{ color: "var(--muted)", fontSize: 12 }}>{COPY.snapshotMeta(snap.updatedAt)}</div>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <Pill label="Est. Cost" value={cost} />
-          <Pill label="Savings/yr" value={savings} />
-          <Pill label="Payback" value={payback} />
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12, background: "rgba(239,68,68,.03)" }}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>{COPY.existingLabel}</div>
-          <div style={{ fontWeight: 900 }}>{existingTitle}</div>
-          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
-            Fuel: {snap.existing.fuel ?? "—"} • Age: {snap.existing.ageYears ?? "—"} yrs • Condition:{" "}
-            {snap.existing.operational ?? "—"}
-          </div>
-        </div>
-
-        <div style={{ border: "1px solid rgba(67,164,25,.35)", borderRadius: 14, padding: 12, background: "rgba(67,164,25,.05)" }}>
-          <div style={{ fontWeight: 900, marginBottom: 6 }}>{COPY.suggestedLabel}</div>
-          <div style={{ fontWeight: 900 }}>{suggestedTitle}</div>
-          <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>
-            Source: {snap.suggested.catalogSystemId ? "Catalog" : "Manual"} • Notes:{" "}
-            {snap.suggested.notes ? snap.suggested.notes : "—"}
+          <div style={{ marginLeft: 10, display: "flex", gap: 8 }}>
+            {snapshots.map((s, i) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setActive(i)}
+                aria-label={`Go to snapshot ${i + 1}`}
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,.18)",
+                  background: i === activeIndex ? "rgba(67,164,25,.95)" : "rgba(255,255,255,.16)",
+                  cursor: "pointer",
+                }}
+              />
+            ))}
           </div>
         </div>
       </div>
 
-      <div style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontWeight: 900, marginBottom: 4 }}>{COPY.incentivesTitle}</div>
-            <div style={{ color: "var(--muted)", fontSize: 12, lineHeight: 1.4 }}>{COPY.incentivesSubtitle}</div>
-          </div>
-
-          <div style={{ textAlign: "right" }}>
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>{COPY.totalsLabel}</div>
-            <div style={{ fontWeight: 900 }}>
-              {formatMoney(incentives.totals.min)}–{formatMoney(incentives.totals.max)}
-              {incentives.totals.estimated ? (
-                <span style={{ color: "var(--muted)", fontWeight: 700 }}>{COPY.totalsSuffixEstimated}</span>
-              ) : null}
-            </div>
-          </div>
+      {/* HERO */}
+      <div className="rei-card" style={{ background: "black", color: "white", border: "1px solid rgba(255,255,255,.12)" }}>
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>
+          {active?.existing.type} • {active?.existing.subtype}
         </div>
+        <div style={{ opacity: 0.8, fontWeight: 700 }}>{active?.suggested.name || "Suggested upgrade"}</div>
 
         <div style={{ height: 10 }} />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <FormsBlock forms={incentives.forms} />
-          <ProgramsBlock programs={incentives.programs} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <span
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: "#43a419",
+              color: "black",
+              fontWeight: 800,
+              fontSize: 12,
+            }}
+          >
+            Save ~${savings.min}–${savings.max}/mo
+          </span>
+
+          <span style={{ padding: "6px 10px", borderRadius: 999, ...badgeStyle("neutral"), fontSize: 12 }}>
+            ~30–45% less CO₂ (mock)
+          </span>
+
+          <span style={{ padding: "6px 10px", borderRadius: 999, ...badgeStyle(quoteBadge.tone), fontSize: 12 }}>
+            {quoteBadge.text}
+          </span>
         </div>
 
-        <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
-          {COPY.disclaimer}
+        <div style={{ opacity: 0.65, fontSize: 12, marginTop: 10 }}>
+          Note: higher-priced systems can increase savings slightly — but ROI can drop if the added cost doesn’t pay back over time.
         </div>
       </div>
-    </div>
-  );
-}
 
-function Pill({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 999,
-        padding: "8px 10px",
-        background: "rgba(16,24,40,.03)",
-        display: "flex",
-        gap: 8,
-        alignItems: "baseline",
-        whiteSpace: "nowrap",
-      }}
-    >
-      <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 800 }}>{label}:</span>
-      <span style={{ fontSize: 12, color: "var(--text)", fontWeight: 900 }}>{value}</span>
-    </div>
-  );
-}
+      {/* EXISTING vs SUGGESTED */}
+      <div className="rei-card" style={{ background: "black", color: "white", border: "1px solid rgba(255,255,255,.12)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {/* Existing */}
+          <div style={{ border: "1px solid rgba(239,68,68,.25)", borderRadius: 16, padding: 14, background: "rgba(255,255,255,.04)" }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>📷 Current system</div>
 
-function FormsBlock({ forms }: { forms: IncentiveForm[] }) {
-  return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
-      <div style={{ fontWeight: 900, marginBottom: 8 }}>{COPY.formsTitle}</div>
+            <div style={{ fontWeight: 900 }}>{existingTitle}</div>
+            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 12, marginTop: 4 }}>
+              Age: {active?.existing.ageYears ?? "—"} yrs • Wear: {active?.existing.wear ?? "—"}/5
+              <br />
+              Maintenance: {active?.existing.maintenance ?? "—"} • Operational: {active?.existing.operational ?? "—"}
+            </div>
 
-      {forms?.length ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          {forms.map((f) => (
-            <a
-              key={f.id}
-              href={f.url}
-              target="_blank"
-              rel="noreferrer"
-              className="rei-btn"
-              style={{
-                textDecoration: "none",
-                color: "inherit",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 900 }}>{f.title}</div>
-                {f.note ? <div style={{ color: "var(--muted)", fontSize: 12 }}>{f.note}</div> : null}
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+              Annual cost: <b>$350–$450</b> (mock)
+              <br />
+              Carbon: <b>3,400–4,000 lbs/yr</b> (mock)
+            </div>
+          </div>
+
+          {/* Suggested */}
+          <div style={{ border: "1px solid rgba(67,164,25,.35)", borderRadius: 16, padding: 14, background: "rgba(255,255,255,.04)" }}>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>✨ Recommended upgrade</div>
+
+            <div style={{ fontWeight: 900 }}>{suggestedTitle}</div>
+            <div style={{ color: "rgba(255,255,255,.72)", fontSize: 12, marginTop: 4 }}>
+              Estimated install cost: <b>{formatMoney(price)}</b>
+              <br />
+              Estimated yearly savings: <b>{formatMoney(active?.suggested.estAnnualSavings ?? null)}</b>
+            </div>
+
+            {active?.suggested.notes ? (
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+                Notes: <span style={{ opacity: 0.9 }}>{active.suggested.notes}</span>
               </div>
-              <div style={{ color: "var(--muted)" }}>↗</div>
-            </a>
-          ))}
+            ) : null}
+          </div>
         </div>
-      ) : (
-        <div style={{ color: "var(--muted)", fontSize: 12 }}>No forms mapped yet.</div>
-      )}
-    </div>
-  );
-}
+      </div>
 
-function ProgramsBlock({ programs }: { programs: IncentiveProgram[] }) {
-  function fmt(p: IncentiveProgram) {
-    if (typeof p.amount === "number") return formatMoney(p.amount);
-    const min = typeof p.min === "number" ? p.min : 0;
-    const max = typeof p.max === "number" ? p.max : 0;
-    if (min === 0 && max === 0) return "—";
-    if (min === max) return formatMoney(min);
-    return `${formatMoney(min)}–${formatMoney(max)}`;
-  }
+      {/* COST SLIDER / QUOTE TEST */}
+      <div className="rei-card" style={{ background: "black", color: "white", border: "1px solid rgba(255,255,255,.12)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontWeight: 900 }}>🎚️ Test your quote</div>
+            <div style={{ opacity: 0.7, fontSize: 12, marginTop: 4 }}>
+              Adjust the contractor price. Savings bumps slightly with higher cost — but ROI can drop if price rises faster than savings.
+            </div>
+          </div>
 
-  const levelLabel: Record<IncentiveProgram["level"], string> = {
-    federal: "Federal",
-    state: "State",
-    utility: "Utility",
-    local: "Local",
-    other: "Other",
-  };
+          <button
+            className="rei-btn"
+            type="button"
+            onClick={() => active && setPriceForSnapshot(active.id, defaultPrice)}
+            style={{ background: "rgba(255,255,255,.08)", borderColor: "rgba(255,255,255,.12)", color: "white" }}
+          >
+            Reset
+          </button>
+        </div>
 
-  return (
-    <div style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12 }}>
-      <div style={{ fontWeight: 900, marginBottom: 8 }}>{COPY.rebatesTitle}</div>
+        <div style={{ height: 12 }} />
 
-      {programs?.length ? (
-        <div style={{ display: "grid", gap: 10 }}>
-          {programs.map((p) => (
-            <div
-              key={p.id}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 12,
-                padding: 10,
-                background: "rgba(16,24,40,.02)",
+        <div style={{ border: "1px solid rgba(255,255,255,.12)", borderRadius: 16, padding: 12, background: "rgba(255,255,255,.04)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Contractor price</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ padding: "6px 10px", borderRadius: 999, ...badgeStyle(quoteBadge.tone), fontSize: 12 }}>
+                {quoteBadge.text}
+              </span>
+              <div style={{ fontWeight: 900 }}>{formatMoney(price)}</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <input
+              type="range"
+              min={sliderMin}
+              max={sliderMax}
+              step={100}
+              value={price}
+              onChange={(e) => {
+                if (!active) return;
+                setPriceForSnapshot(active.id, Number(e.target.value));
               }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                <div>
-                  <div style={{ fontWeight: 900 }}>{p.title}</div>
-                  <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                    {levelLabel[p.level]}
-                    {p.note ? ` • ${p.note}` : ""}
-                  </div>
-                </div>
-                <div style={{ fontWeight: 900, whiteSpace: "nowrap" }}>{fmt(p)}</div>
-              </div>
+              style={{ width: "100%" }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, opacity: 0.65 }}>
+              <span>{formatMoney(leaf.min)}</span>
+              <span>{formatMoney(leaf.max)}</span>
+            </div>
+          </div>
 
-              {p.links?.length ? (
-                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {p.links.map((l) => (
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+            Estimated savings at this price: <b>${savings.min}–${savings.max}/mo</b>
+          </div>
+        </div>
+      </div>
+
+      {/* INCENTIVES (editable rules live in src/lib/incentives/incentiveRules.ts) */}
+      <div className="rei-card" style={{ background: "black", color: "white", border: "1px solid rgba(255,255,255,.12)" }}>
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>🏷️ Incentives & rebates</div>
+        <div style={{ opacity: 0.7, fontSize: 12, marginBottom: 12 }}>
+          This section is driven by editable rules. Later: rules per state/utility, eligibility logic, and dynamic amounts.
+        </div>
+
+        {incentiveResources.length === 0 ? (
+          <div style={{ opacity: 0.7, fontSize: 12 }}>
+            No incentive resources matched for this system type yet. (That’s normal until you add rules.)
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {incentiveResources.map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  border: "1px solid rgba(255,255,255,.12)",
+                  borderRadius: 14,
+                  padding: 12,
+                  background: "rgba(255,255,255,.04)",
+                }}
+              >
+                <div style={{ fontWeight: 900 }}>{r.title}</div>
+                <div style={{ opacity: 0.75, fontSize: 12, marginTop: 4 }}>{r.description}</div>
+
+                <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {r.typicalRange ? (
+                    <span style={{ padding: "6px 10px", borderRadius: 999, ...badgeStyle("neutral"), fontSize: 12 }}>
+                      Typical: {r.typicalRange}
+                    </span>
+                  ) : null}
+
+                  {r.linkLabel && r.href ? (
                     <a
-                      key={l.url}
-                      href={l.url}
+                      href={r.href}
                       target="_blank"
                       rel="noreferrer"
-                      style={{ color: "var(--leaf)", fontWeight: 900, fontSize: 12 }}
+                      style={{ color: "#86efac", textDecoration: "underline", fontSize: 12 }}
                     >
-                      {l.label} ↗
+                      {r.linkLabel}
                     </a>
-                  ))}
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
-          ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 12, fontSize: 11, opacity: 0.65 }}>
+          To edit wording / links / ranges: open <code>src/lib/incentives/incentiveRules.ts</code>
         </div>
-      ) : (
-        <div style={{ color: "var(--muted)", fontSize: 12 }}>No programs mapped yet.</div>
-      )}
+      </div>
     </div>
   );
 }
