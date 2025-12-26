@@ -4,9 +4,15 @@ import Link from "next/link";
 import { useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 
-import { MOCK_JOBS, type Job } from "../../../_data/mockJobs";
-import { findLocalJob } from "../../../_data/localJobs";
-import { loadLocalSnapshots, snapshotsForJob, type SnapshotDraft } from "../../../_data/localSnapshots";
+import { MOCK_JOBS, type Job } from "../../_data/mockJobs";
+import { findLocalJob } from "../../_data/localJobs";
+import {
+  deleteLocalSnapshot,
+  loadLocalSnapshots,
+  snapshotsForJob,
+  type SnapshotDraft,
+} from "../../_data/localSnapshots";
+
 
 /* ===========================
    SAFE INCENTIVE PLACEHOLDER
