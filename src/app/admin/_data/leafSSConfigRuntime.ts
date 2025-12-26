@@ -4,7 +4,8 @@ export type LeafTierKey = "good" | "better" | "best";
 export type CostClass = "unreal_low" | "low" | "in" | "likely_over" | "over";
 
 export function getSnapshotByIndex(i: number) {
-  const snaps = LEAF_SS_CONFIG.snapshots || [];
+  const master = getMasterConfig();
+  const snaps = master.snapshots || [];
   const idx = Math.max(0, Math.min(snaps.length - 1, i));
   return snaps[idx];
 }
