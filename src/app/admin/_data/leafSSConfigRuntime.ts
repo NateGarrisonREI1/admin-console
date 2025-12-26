@@ -46,3 +46,6 @@ export function dynamicSavingsRangeFromRule(args: {
   const bump = steps * bumpPerStepMonthlyDollars;
   return { min: baseMin + bump, max: baseMax + bump };
 }
+function getMasterConfig() {
+  return loadLeafSSMasterConfig();
+}
