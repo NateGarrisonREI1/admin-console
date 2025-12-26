@@ -489,4 +489,5 @@ export const LEAF_SS_CONFIG = {
       "All messages in quick read and decision blocks use messageLibrary + costClass.",
       "Green range band positions use the CURRENT tier leafPriceRange mapped into slider min/max percent space."
     ]
+  }
 } as const;
