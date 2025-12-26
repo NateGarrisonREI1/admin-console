@@ -65,7 +65,9 @@ export default function JobReportPage() {
 
       const catalogId = s?.suggested?.catalogSystemId || null;
       const catalog = catalogId ? (MOCK_SYSTEMS as any[]).find((x) => x.id === catalogId) : null;
-      const tags: string[] = (catalog?.tags || []).map((t: any) => normalizeTag(String(t || ""))).filter(Boolean);
+      const tags: string[] = (catalog?.tags || [])
+        .map((t: any) => normalizeTag(String(t || "")))
+        .filter(Boolean);
 
       const incentives = getIncentivesForSystemType(existingType, { tags }).filter((r: any) => !(r as any).disabled);
 
@@ -125,7 +127,7 @@ export default function JobReportPage() {
     pagesEl?.addEventListener("scroll", onScroll);
     window.addEventListener("resize", onResize);
 
-    // ---- Slider logic ----
+    // ---- Slider logic (still hardcoded for now; next step is to read from LEAF_SS_CONFIG) ----
     const LEAF_PRICE_MIN = 5000;
     const LEAF_PRICE_MAX = 7000;
     const BASE_SAVINGS_MIN = 19;
@@ -254,101 +256,101 @@ export default function JobReportPage() {
       };
     }
 
-    function initLeafPage(root: Element) {
-  const $ = (sel: string) => root.querySelector(sel) as HTMLElement | null;
+    function initLeafPage(root: HTMLElement) {
+      const $ = (sel: string) => root.querySelector(sel) as HTMLElement | null;
 
-  // ✅ Make TS happy: strongly type this as an INPUT and guard it.
-  const priceSlider = root.querySelector<HTMLInputElement>('[data-el="priceSlider"]');
-  if (!priceSlider) return () => {};
+      // ✅ Typed + guarded input element
+      const priceSlider = root.querySelector<HTMLInputElement>('[data-el="priceSlider"]');
+      if (!priceSlider) return () => {};
 
-  const priceValue = $('[data-el="priceValue"]');
-  const costBadge = $('[data-el="costBadge"]');
-  const overallBadge = $('[data-el="overallBadge"]');
-  const overallHeadline = $('[data-el="overallHeadline"]');
+      const priceValue = $('[data-el="priceValue"]');
+      const costBadge = $('[data-el="costBadge"]');
+      const overallBadge = $('[data-el="overallBadge"]');
+      const overallHeadline = $('[data-el="overallHeadline"]');
 
-  const quickReadWhy = $('[data-el="quickReadWhy"]');
-  const qVisible = $('[data-el="quickReadQuestionsVisible"]');
-  const qMore = $('[data-el="quickReadQuestionsMore"]');
+      const quickReadWhy = $('[data-el="quickReadWhy"]');
+      const qVisible = $('[data-el="quickReadQuestionsVisible"]');
+      const qMore = $('[data-el="quickReadQuestionsMore"]');
 
-  const msNetCostRange = $('[data-el="msNetCostRange"]');
-  const msSavingsRange = $('[data-el="msSavingsRange"]');
-  const heroSavingsPill = $('[data-el="heroSavingsPill"]');
+      const msNetCostRange = $('[data-el="msNetCostRange"]');
+      const msSavingsRange = $('[data-el="msSavingsRange"]');
+      const heroSavingsPill = $('[data-el="heroSavingsPill"]');
 
-  const priceBandOK = $('[data-el="priceBandOK"]');
-  const priceBandFill = $('[data-el="priceBandFill"]');
+      const priceBandOK = $('[data-el="priceBandOK"]');
+      const priceBandFill = $('[data-el="priceBandFill"]');
 
-  const dynSavings = $('[data-el="dynamicSavingsRange"]');
-  const resetBtn = $('[data-el="resetBtn"]');
+      const dynSavings = $('[data-el="dynamicSavingsRange"]');
+      const resetBtn = $('[data-el="resetBtn"]');
 
-  function updateUI() {
-    const price = Number(priceSlider.value);
+      function updateUI() {
+        const price = Number(priceSlider.value);
 
-    if (priceValue) priceValue.textContent = formatMoney(price);
+        if (priceValue) priceValue.textContent = formatMoney(price);
 
-    const dyn = dynamicSavingsRange(price);
-    const savText = `$${dyn.min}–$${dyn.max}/mo`;
+        const dyn = dynamicSavingsRange(price);
+        const savText = `$${dyn.min}–$${dyn.max}/mo`;
 
-    if (dynSavings) dynSavings.textContent = savText;
-    if (msSavingsRange) msSavingsRange.textContent = savText;
-    if (heroSavingsPill) heroSavingsPill.textContent = `Save ~$${dyn.min}–$${dyn.max}/mo`;
+        if (dynSavings) dynSavings.textContent = savText;
+        if (msSavingsRange) msSavingsRange.textContent = savText;
+        if (heroSavingsPill) heroSavingsPill.textContent = `Save ~$${dyn.min}–$${dyn.max}/mo`;
 
-    if (priceBandOK) setBand(priceBandOK, Number(priceSlider.min), Number(priceSlider.max), LEAF_PRICE_MIN, LEAF_PRICE_MAX);
-    if (priceBandFill) setFill(priceBandFill, Number(priceSlider.min), Number(priceSlider.max), price);
+        if (priceBandOK) setBand(priceBandOK, Number(priceSlider.min), Number(priceSlider.max), LEAF_PRICE_MIN, LEAF_PRICE_MAX);
+        if (priceBandFill) setFill(priceBandFill, Number(priceSlider.min), Number(priceSlider.max), price);
 
-    const costClass = classifyCost(price);
+        const costClass = classifyCost(price);
 
-    if (costBadge) {
-      if (costClass === "unreal_low") setBadge(costBadge, "bad", "Unrealistic");
-      else if (costClass === "low") setBadge(costBadge, "warn", "Low (verify scope)");
-      else if (costClass === "over") setBadge(costBadge, "bad", "Overpriced");
-      else if (costClass === "likely_over") setBadge(costBadge, "warn", "Likely overpriced");
-      else setBadge(costBadge, "good", "Within range");
-    }
+        if (costBadge) {
+          if (costClass === "unreal_low") setBadge(costBadge, "bad", "Unrealistic");
+          else if (costClass === "low") setBadge(costBadge, "warn", "Low (verify scope)");
+          else if (costClass === "over") setBadge(costBadge, "bad", "Overpriced");
+          else if (costClass === "likely_over") setBadge(costBadge, "warn", "Likely overpriced");
+          else setBadge(costBadge, "good", "Within range");
+        }
 
-    const msg = quickReadMessage(costClass);
+        const msg = quickReadMessage(costClass);
 
-    if (overallBadge) {
-      if (costClass === "over") setBadge(overallBadge, "bad", "Major caution 🚩");
-      else if ((msg as any).tone === "good") setBadge(overallBadge, "good", "Looks good ✅");
-      else setBadge(overallBadge, "warn", "Proceed smart ⚠️");
-    }
+        if (overallBadge) {
+          if (costClass === "over") setBadge(overallBadge, "bad", "Major caution 🚩");
+          else if ((msg as any).tone === "good") setBadge(overallBadge, "good", "Looks good ✅");
+          else setBadge(overallBadge, "warn", "Proceed smart ⚠️");
+        }
 
-    if (overallHeadline) overallHeadline.textContent = (msg as any).headline;
+        if (overallHeadline) overallHeadline.textContent = (msg as any).headline;
 
-    renderList(quickReadWhy, (msg as any).why);
-    renderList(qVisible, (msg as any).qVisible);
-    renderList(qMore, (msg as any).qMore);
+        renderList(quickReadWhy, (msg as any).why);
+        renderList(qVisible, (msg as any).qVisible);
+        renderList(qMore, (msg as any).qMore);
 
-    const net = computeNetCostRange(price);
-    const netMin = Math.min(net.netLow, net.netHigh);
-    const netMax = Math.max(net.netLow, net.netHigh);
-    if (msNetCostRange) msNetCostRange.textContent = formatMoneyRange(netMin, netMax);
-  }
+        const net = computeNetCostRange(price);
+        const netMin = Math.min(net.netLow, net.netHigh);
+        const netMax = Math.max(net.netLow, net.netHigh);
+        if (msNetCostRange) msNetCostRange.textContent = formatMoneyRange(netMin, netMax);
+      }
 
-  function resetToLeafMid() {
-    const mid = Math.round((LEAF_PRICE_MIN + LEAF_PRICE_MAX) / 2);
-    priceSlider.value = String(mid);
-    updateUI();
-  }
+      function resetToLeafMid() {
+        const mid = Math.round((LEAF_PRICE_MIN + LEAF_PRICE_MAX) / 2);
+        priceSlider.value = String(mid);
+        updateUI();
+      }
 
-  const onInput = () => updateUI();
-  const onReset = () => resetToLeafMid();
+      const onInput = () => updateUI();
+      const onReset = () => resetToLeafMid();
 
-  priceSlider.addEventListener("input", onInput);
-  resetBtn?.addEventListener("click", onReset);
+      priceSlider.addEventListener("input", onInput);
+      resetBtn?.addEventListener("click", onReset);
 
-  updateUI();
+      updateUI();
 
-  // ✅ cleanup (nice long-term)
-  return () => {
-    priceSlider.removeEventListener("input", onInput);
-    resetBtn?.removeEventListener("click", onReset);
-  };
-
+      return () => {
+        priceSlider.removeEventListener("input", onInput);
+        resetBtn?.removeEventListener("click", onReset);
+      };
     }
 
     const cleanups: Array<() => void> = [];
-    document.querySelectorAll(".leaf-page").forEach((el) => {
+
+    // ✅ safer target: always initialize on the MAIN root for each snapshot page
+    document.querySelectorAll<HTMLElement>("main.leaf-page").forEach((el) => {
       const c = initLeafPage(el);
       if (typeof c === "function") cleanups.push(c);
     });
@@ -673,9 +675,7 @@ export default function JobReportPage() {
                   <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4, color: "rgba(229,229,229,1)" }}>
                     Upgrade for: {p.existingSubtype || "Mixed / Unknown"}
                   </div>
-                  <div className="subText">
-                    LEAF provides ranges so you can evaluate contractor quotes with confidence.
-                  </div>
+                  <div className="subText">LEAF provides ranges so you can evaluate contractor quotes with confidence.</div>
 
                   <div className="pillRow">
                     <span className="pill pillLeaf" data-el="heroSavingsPill">
@@ -700,8 +700,12 @@ export default function JobReportPage() {
                     <div className="thumb" />
                     <div className="cardMeta">
                       <div style={{ fontWeight: 800, marginBottom: 6 }}>Existing {p.existingSubtype || "system"}</div>
-                      <div>Age: <b>{p.ageYears ?? "—"} yrs</b></div>
-                      <div>Wear: <b>{p.wear ?? "—"}/5</b></div>
+                      <div>
+                        Age: <b>{p.ageYears ?? "—"} yrs</b>
+                      </div>
+                      <div>
+                        Wear: <b>{p.wear ?? "—"}/5</b>
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -719,9 +723,15 @@ export default function JobReportPage() {
                       <div style={{ fontWeight: 800, marginBottom: 6 }} data-el="recommendedName">
                         {p.suggestedName}
                       </div>
-                      <div>Estimated cost: <b>{money(p.estCost)}</b></div>
-                      <div>Est. savings / yr: <b>{money(p.estAnnualSavings)}</b></div>
-                      <div>Payback: <b>{p.estPaybackYears ?? "—"} yrs</b></div>
+                      <div>
+                        Estimated cost: <b>{money(p.estCost)}</b>
+                      </div>
+                      <div>
+                        Est. savings / yr: <b>{money(p.estAnnualSavings)}</b>
+                      </div>
+                      <div>
+                        Payback: <b>{p.estPaybackYears ?? "—"} yrs</b>
+                      </div>
                     </div>
                   </div>
                 </section>
@@ -737,8 +747,12 @@ export default function JobReportPage() {
                     </div>
 
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <button className="btnSmall" data-el="resetBtn">Reset</button>
-                      <span className="badge badgeSquare" data-tone="good" data-el="overallBadge">Looks good ✅</span>
+                      <button className="btnSmall" data-el="resetBtn">
+                        Reset
+                      </button>
+                      <span className="badge badgeSquare" data-tone="good" data-el="overallBadge">
+                        Looks good ✅
+                      </span>
                     </div>
                   </div>
 
@@ -746,8 +760,12 @@ export default function JobReportPage() {
                     <div className="rowBetween">
                       <div className="smallLabel">Contractor price</div>
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <span className="badge" data-tone="good" data-el="costBadge">Within range</span>
-                        <div className="priceText" data-el="priceValue">$6,000</div>
+                        <span className="badge" data-tone="good" data-el="costBadge">
+                          Within range
+                        </span>
+                        <div className="priceText" data-el="priceValue">
+                          $6,000
+                        </div>
                       </div>
                     </div>
 
@@ -809,11 +827,9 @@ export default function JobReportPage() {
 
                   <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                     {p.incentives.length === 0 ? (
-                      <div className="subText">
-                        No incentives matched this upgrade. Check Incentives tags + this system type.
-                      </div>
+                      <div className="subText">No incentives matched this upgrade. Check Incentives tags + this system type.</div>
                     ) : (
-                      p.incentives.map((r) => {
+                      p.incentives.map((r: any) => {
                         const amt = incentiveAmountText(r);
                         return (
                           <div key={r.id} className="incentiveCard">
@@ -833,13 +849,17 @@ export default function JobReportPage() {
                 <section className="glass">
                   <div className="rowBetween">
                     <div className="h2">🧠 Does this decision make sense?</div>
-                    <span className="badge" data-tone="good">Likely yes ✅</span>
+                    <span className="badge" data-tone="good">
+                      Likely yes ✅
+                    </span>
                   </div>
 
                   <div className="sliderBox" style={{ marginTop: 12 }}>
                     <div className="rowBetween">
                       <div className="smallLabel">Estimated net cost (after incentives)</div>
-                      <div className="priceText" data-el="msNetCostRange">$3,500–$4,500</div>
+                      <div className="priceText" data-el="msNetCostRange">
+                        $3,500–$4,500
+                      </div>
                     </div>
                     <div className="subText" style={{ marginTop: 8 }}>
                       Based on incentive estimates shown above (contractor confirms final eligibility).
