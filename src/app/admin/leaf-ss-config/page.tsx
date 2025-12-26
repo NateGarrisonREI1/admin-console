@@ -1,141 +1,300 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LEAF_SS_CONFIG } from "../_data/leafSSConfig";
+import {
+  loadLeafSSMasterConfig,
+  saveLeafSSMasterConfig,
+  resetLeafSSMasterConfig,
+} from "../_data/leafSSConfigStore";
 
-const STORAGE_KEY = "LEAF_SS_CONFIG_OVERRIDE";
+export default function LeafSSConfigPage() {
+  const [config, setConfig] = useState<any | null>(null);
+  const [saving, setSaving] = useState(false);
 
-export default function LeafSSConfigEditorPage() {
-  const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  // Load config on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      setText(stored);
-    } else {
-      setText(JSON.stringify(LEAF_SS_CONFIG, null, 2));
-    }
+    setConfig(loadLeafSSMasterConfig());
   }, []);
 
-  function handleSave() {
-    try {
-      const parsed = JSON.parse(text);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed, null, 2));
-      setError(null);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
-    } catch (e: any) {
-      setError(e.message || "Invalid JSON");
-    }
+  if (!config) {
+    return <div style={{ padding: 24 }}>Loading LEAF config…</div>;
   }
 
-  function handleReset() {
-    if (!confirm("Reset LEAF SS config to defaults? This cannot be undone.")) return;
-    localStorage.removeItem(STORAGE_KEY);
-    setText(JSON.stringify(LEAF_SS_CONFIG, null, 2));
-    setError(null);
+  const g = config.global;
+
+  function update(path: string[], value: any) {
+    setConfig((prev: any) => {
+      const next = structuredClone(prev);
+      let cur = next;
+      for (let i = 0; i < path.length - 1; i++) {
+        cur = cur[path[i]];
+      }
+      cur[path[path.length - 1]] = value;
+      return next;
+    });
+  }
+
+  function save() {
+    setSaving(true);
+    saveLeafSSMasterConfig(config);
+    setTimeout(() => setSaving(false), 600);
+  }
+
+  function resetAll() {
+    if (!confirm("Reset LEAF SS master config to defaults?")) return;
+    resetLeafSSMasterConfig();
+    setConfig(loadLeafSSMasterConfig());
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 960 }}>
+    <div style={{ maxWidth: 900, padding: 24 }}>
       <h1 style={{ fontSize: 22, fontWeight: 800 }}>
         LEAF System Snapshot — Master Config
       </h1>
 
-      <p style={{ marginTop: 8, color: "#666", maxWidth: 760 }}>
-        This is the global configuration that controls all LEAF System Snapshot
-        ranges, tiers, messaging, and logic. Changes here affect every report
-        instantly. Snapshot-specific overrides will layer on top of this.
+      <p style={{ color: "#555", marginTop: 6 }}>
+        Changes here affect <b>all LEAF System Snapshot reports</b>.
+        Snapshot-level overrides will layer on top.
       </p>
 
-      <div style={{ marginTop: 16 }}>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          spellCheck={false}
-          style={{
-            width: "100%",
-            minHeight: 520,
-            fontFamily:
-              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            fontSize: 13,
-            lineHeight: 1.5,
-            padding: 14,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-          }}
+      {/* BRAND */}
+      <Section title="Brand">
+        <Label>LEAF Brand Color</Label>
+        <input
+          type="color"
+          value={g.leafBrandColorHex}
+          onChange={(e) =>
+            update(["global", "leafBrandColorHex"], e.target.value)
+          }
         />
-      </div>
+      </Section>
 
-      {error && (
-        <div
-          style={{
-            marginTop: 10,
-            color: "#b91c1c",
-            fontWeight: 700,
-          }}
-        >
-          JSON Error: {error}
-        </div>
-      )}
+      {/* SLIDER */}
+      <Section title="Price Slider">
+        <Row>
+          <Field
+            label="Minimum price ($)"
+            value={g.slider.min}
+            onChange={(v) => update(["global", "slider", "min"], v)}
+          />
+          <Field
+            label="Maximum price ($)"
+            value={g.slider.max}
+            onChange={(v) => update(["global", "slider", "max"], v)}
+          />
+          <Field
+            label="Step ($)"
+            value={g.slider.step}
+            onChange={(v) => update(["global", "slider", "step"], v)}
+          />
+        </Row>
+      </Section>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginTop: 16,
-          alignItems: "center",
-        }}
-      >
+      {/* COST CLASSIFICATION */}
+      <Section title="Quote Classification">
+        <Row>
+          <Field
+            label="Unrealistic below range ($)"
+            value={g.rangesAndClassifications.costClassThresholds.unrealLowOffsetFromMin}
+            onChange={(v) =>
+              update(
+                [
+                  "global",
+                  "rangesAndClassifications",
+                  "costClassThresholds",
+                  "unrealLowOffsetFromMin",
+                ],
+                v
+              )
+            }
+          />
+          <Field
+            label="Overpriced above range ($)"
+            value={g.rangesAndClassifications.costClassThresholds.overpricedOffsetFromMax}
+            onChange={(v) =>
+              update(
+                [
+                  "global",
+                  "rangesAndClassifications",
+                  "costClassThresholds",
+                  "overpricedOffsetFromMax",
+                ],
+                v
+              )
+            }
+          />
+        </Row>
+      </Section>
+
+      {/* SAVINGS RULE */}
+      <Section title="Savings Sensitivity">
+        <Row>
+          <Field
+            label="Every $ above range"
+            value={g.rangesAndClassifications.dynamicSavingsRule.stepSizeDollars}
+            onChange={(v) =>
+              update(
+                [
+                  "global",
+                  "rangesAndClassifications",
+                  "dynamicSavingsRule",
+                  "stepSizeDollars",
+                ],
+                v
+              )
+            }
+          />
+          <Field
+            label="Adds savings ($ / month)"
+            value={
+              g.rangesAndClassifications.dynamicSavingsRule
+                .bumpPerStepMonthlyDollars
+            }
+            onChange={(v) =>
+              update(
+                [
+                  "global",
+                  "rangesAndClassifications",
+                  "dynamicSavingsRule",
+                  "bumpPerStepMonthlyDollars",
+                ],
+                v
+              )
+            }
+          />
+        </Row>
+      </Section>
+
+      {/* UI TEXT */}
+      <Section title="UI Copy">
+        <TextField
+          label="Header title"
+          value={g.uiText.headerTitle}
+          onChange={(v) => update(["global", "uiText", "headerTitle"], v)}
+        />
+        <TextField
+          label="Hero helper text"
+          value={g.uiText.heroHelper}
+          onChange={(v) => update(["global", "uiText", "heroHelper"], v)}
+        />
+        <TextField
+          label="Hero note"
+          value={g.uiText.heroNote}
+          onChange={(v) => update(["global", "uiText", "heroNote"], v)}
+        />
+      </Section>
+
+      {/* ACTIONS */}
+      <div style={{ marginTop: 32, display: "flex", gap: 12 }}>
         <button
-          onClick={handleSave}
+          onClick={save}
           style={{
-            padding: "10px 16px",
+            padding: "10px 18px",
             borderRadius: 999,
-            border: "none",
             background: "#43a419",
             color: "#000",
             fontWeight: 800,
-            cursor: "pointer",
+            border: 0,
           }}
         >
-          Save Config
+          {saving ? "Saving…" : "Save Config"}
         </button>
 
         <button
-          onClick={handleReset}
+          onClick={resetAll}
           style={{
-            padding: "10px 16px",
+            padding: "10px 18px",
             borderRadius: 999,
+            background: "#eee",
             border: "1px solid #ccc",
-            background: "#fff",
-            color: "#111",
-            fontWeight: 700,
-            cursor: "pointer",
           }}
         >
           Reset to Defaults
         </button>
-
-        {saved && (
-          <span style={{ color: "#15803d", fontWeight: 800 }}>
-            ✓ Saved
-          </span>
-        )}
       </div>
+    </div>
+  );
+}
 
-      <div style={{ marginTop: 20, fontSize: 13, color: "#555" }}>
-        <b>Notes:</b>
-        <ul style={{ marginTop: 6 }}>
-          <li>Edits here override the compiled config.</li>
-          <li>No redeploy required.</li>
-          <li>Invalid JSON will not save.</li>
-          <li>Future versions can persist this to DB.</li>
-        </ul>
+/* ---------- UI helpers ---------- */
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginTop: 28 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 800, marginBottom: 12 }}>
+        {title}
+      </h2>
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 14,
+          padding: 16,
+          background: "#fff",
+        }}
+      >
+        {children}
       </div>
+    </div>
+  );
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: "flex", gap: 16 }}>{children}</div>;
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+      {children}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div style={{ flex: 1 }}>
+      <Label>{label}</Label>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ width: "100%", padding: 8 }}
+      />
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div style={{ marginTop: 12 }}>
+      <Label>{label}</Label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width: "100%", padding: 8 }}
+      />
     </div>
   );
 }
