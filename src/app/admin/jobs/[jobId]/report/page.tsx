@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 
 import { MOCK_JOBS, type Job } from "../../../_data/mockJobs";
@@ -11,10 +11,7 @@ import { loadLocalSnapshots, snapshotsForJob, type SnapshotDraft } from "../../.
 // OPTIONAL (future-ready incentives rules)
 // If you don’t want this yet, you can delete this import and the Incentives section below.
 // Path from: src/app/admin/jobs/[jobId]/report/page.tsx -> src/lib/incentives/incentiveRules.ts
-import {
-  getIncentivesForSystemType,
-  type IncentiveResource,
-} from "../../../../../lib/incentives/incentiveRules";
+import { getIncentivesForSystemType, type IncentiveResource } from "../../../../../lib/incentives/incentiveRules";
 
 function formatMoney(n: number | null | undefined) {
   if (n === null || n === undefined) return "—";
@@ -98,11 +95,15 @@ export default function MockLeafReportPage() {
   }
 
   function badgeStyle(tone: "good" | "warn" | "bad" | "neutral") {
-    const map: Record<string, React.CSSProperties> = {
+    const map: Record<string, CSSProperties> = {
       good: { background: "rgba(16,185,129,.14)", border: "1px solid rgba(16,185,129,.35)", color: "#a7f3d0" },
       warn: { background: "rgba(234,179,8,.14)", border: "1px solid rgba(234,179,8,.35)", color: "#fde68a" },
       bad: { background: "rgba(239,68,68,.14)", border: "1px solid rgba(239,68,68,.35)", color: "#fecaca" },
-      neutral: { background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)", color: "rgba(255,255,255,.86)" },
+      neutral: {
+        background: "rgba(255,255,255,.08)",
+        border: "1px solid rgba(255,255,255,.12)",
+        color: "rgba(255,255,255,.86)",
+      },
     };
     return map[tone] ?? map.neutral;
   }
@@ -154,16 +155,14 @@ export default function MockLeafReportPage() {
   const quoteBadge = getQuoteBadge(price, leaf.min, leaf.max);
 
   // Incentives (future-ready, editable rules)
-const incentiveResources: IncentiveResource[] = active
-  ? getIncentivesForSystemType(active.existing.type, {
-      tags: [active.existing.subtype].filter(Boolean),
-    })
-  : [];
-
-
+  const incentiveResources: IncentiveResource[] = active
+    ? getIncentivesForSystemType(active.existing.type, {
+        tags: [active.existing.subtype].filter((v): v is string => Boolean(v)),
+      })
+    : [];
 
   const existingTitle = active ? `${active.existing.type} — ${active.existing.subtype}` : "Existing";
-  const suggestedTitle = active ? (active.suggested.name || "Suggested") : "Suggested";
+  const suggestedTitle = active ? active.suggested.name || "Suggested" : "Suggested";
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -184,7 +183,12 @@ const incentiveResources: IncentiveResource[] = active
             <Link
               href={`/admin/jobs/${job.id}`}
               className="rei-btn"
-              style={{ textDecoration: "none", color: "inherit", background: "rgba(255,255,255,.08)", borderColor: "rgba(255,255,255,.12)" }}
+              style={{
+                textDecoration: "none",
+                color: "inherit",
+                background: "rgba(255,255,255,.08)",
+                borderColor: "rgba(255,255,255,.12)",
+              }}
             >
               ← Back
             </Link>
@@ -283,7 +287,14 @@ const incentiveResources: IncentiveResource[] = active
       <div className="rei-card" style={{ background: "black", color: "white", border: "1px solid rgba(255,255,255,.12)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {/* Existing */}
-          <div style={{ border: "1px solid rgba(239,68,68,.25)", borderRadius: 16, padding: 14, background: "rgba(255,255,255,.04)" }}>
+          <div
+            style={{
+              border: "1px solid rgba(239,68,68,.25)",
+              borderRadius: 16,
+              padding: 14,
+              background: "rgba(255,255,255,.04)",
+            }}
+          >
             <div style={{ fontWeight: 900, marginBottom: 8 }}>📷 Current system</div>
 
             <div style={{ fontWeight: 900 }}>{existingTitle}</div>
@@ -301,7 +312,14 @@ const incentiveResources: IncentiveResource[] = active
           </div>
 
           {/* Suggested */}
-          <div style={{ border: "1px solid rgba(67,164,25,.35)", borderRadius: 16, padding: 14, background: "rgba(255,255,255,.04)" }}>
+          <div
+            style={{
+              border: "1px solid rgba(67,164,25,.35)",
+              borderRadius: 16,
+              padding: 14,
+              background: "rgba(255,255,255,.04)",
+            }}
+          >
             <div style={{ fontWeight: 900, marginBottom: 8 }}>✨ Recommended upgrade</div>
 
             <div style={{ fontWeight: 900 }}>{suggestedTitle}</div>
