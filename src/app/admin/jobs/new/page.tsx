@@ -1,31 +1,49 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Job } from "../../_data/mockJobs";
 import { upsertLocalJob } from "../../_data/localJobs";
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
 
 function makeMockJobId() {
   const n = Math.floor(Math.random() * 9000) + 1000;
   return `job_${n}`;
 }
 
-function normalizeZip(raw: string) {
-  const v = String(raw || "").trim();
-  // allow 12345 or 12345-6789
-  if (/^\d{5}$/.test(v)) return v;
-  if (/^\d{5}-\d{4}$/.test(v)) return v;
-  // tolerate users typing spaces
-  const compact = v.replace(/\s+/g, "");
-  if (/^\d{5}$/.test(compact)) return compact;
-  if (/^\d{5}-\d{4}$/.test(compact)) return compact;
-  return v; // return as-is (so UI shows what they typed)
+function loadGoogleMapsPlaces(apiKey: string): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  if (window.google?.maps?.places) return Promise.resolve();
+
+  // Already loading?
+  const existing = document.querySelector<HTMLScriptElement>('script[data-rei="gmaps"]');
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("Failed to load Google Maps script")));
+    });
+  }
+
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places`;
+    s.async = true;
+    s.defer = true;
+    s.dataset.rei = "gmaps";
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load Google Maps script"));
+    document.head.appendChild(s);
+  });
 }
 
-function isValidZip(raw: string) {
-  const v = String(raw || "").trim().replace(/\s+/g, "");
-  if (!v) return true; // optional
-  return /^\d{5}$/.test(v) || /^\d{5}-\d{4}$/.test(v);
+function getComponent(components: any[], type: string): string | "" {
+  const c = (components || []).find((x) => (x.types || []).includes(type));
+  return c?.short_name || c?.long_name || "";
 }
 
 export default function NewJobPage() {
@@ -39,11 +57,65 @@ export default function NewJobPage() {
   const [customerName, setCustomerName] = useState("");
   const [address, setAddress] = useState("");
   const [zip, setZip] = useState("");
+  const [stateCode, setStateCode] = useState("");
   const [sqft, setSqft] = useState("");
   const [yearBuilt, setYearBuilt] = useState("");
   const [reportId, setReportId] = useState(defaultReportId);
 
-  const canSubmit = customerName.trim().length > 1 && isValidZip(zip);
+  const [gmapsReady, setGmapsReady] = useState(false);
+  const addressRef = useRef<HTMLInputElement | null>(null);
+  const autocompleteRef = useRef<any>(null);
+
+  const canSubmit = customerName.trim().length > 1;
+
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!key) {
+      // No key => page still works, just no autocomplete
+      return;
+    }
+
+    let cancelled = false;
+
+    loadGoogleMapsPlaces(key)
+      .then(() => {
+        if (cancelled) return;
+        setGmapsReady(true);
+
+        // Initialize autocomplete once
+        if (!addressRef.current) return;
+        if (autocompleteRef.current) return;
+        if (!window.google?.maps?.places?.Autocomplete) return;
+
+        const ac = new window.google.maps.places.Autocomplete(addressRef.current, {
+          types: ["address"],
+          componentRestrictions: { country: "us" },
+          fields: ["address_components", "formatted_address"],
+        });
+
+        ac.addListener("place_changed", () => {
+          const place = ac.getPlace?.();
+          const formatted = place?.formatted_address || "";
+          const comps = place?.address_components || [];
+
+          const postal = getComponent(comps, "postal_code");
+          const admin1 = getComponent(comps, "administrative_area_level_1"); // OR, WA, etc.
+
+          if (formatted) setAddress(formatted);
+          if (postal) setZip(postal);
+          if (admin1) setStateCode(admin1);
+        });
+
+        autocompleteRef.current = ac;
+      })
+      .catch((err) => {
+        console.warn("[GMAPS] Autocomplete failed to load:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -52,25 +124,22 @@ export default function NewJobPage() {
     const jobId = makeMockJobId();
     const now = new Date().toISOString();
 
-    const zipNorm = normalizeZip(zip);
     const job: Job = {
       id: jobId,
       reportId: reportId.trim() || jobId,
       customerName: customerName.trim(),
       address: address.trim() || undefined,
-      // ✅ NEW: zip stored on job (non-breaking extra field)
-      zip: zipNorm.trim() ? zipNorm.trim() : undefined,
+      zip: zip.trim() || undefined,
+      state: stateCode.trim() || undefined,
       sqft: sqft.trim() ? Number(sqft) : undefined,
       yearBuilt: yearBuilt.trim() ? Number(yearBuilt) : undefined,
       createdAt: now,
-      systems: [], // worksheet will populate this later
-    } as any;
+      systems: [],
+    };
 
     upsertLocalJob(job);
     router.push(`/admin/jobs/${jobId}`);
   }
-
-  const zipOk = isValidZip(zip);
 
   return (
     <div className="rei-card" style={{ maxWidth: 860, margin: "0 auto" }}>
@@ -90,35 +159,38 @@ export default function NewJobPage() {
           />
         </Field>
 
-        {/* Address + ZIP on the same row (clean + matches your ask) */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 0.8fr", gap: 12 }}>
-          <Field label="Property Address">
+        <Field label={`Property Address${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ? (gmapsReady ? " (autocomplete on)" : " (loading autocomplete…)") : ""}`}>
+          <input
+            ref={addressRef}
+            className="rei-search"
+            style={{ minWidth: "100%" }}
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Start typing… (e.g., 995 SE 21st Ave)"
+            autoComplete="off"
+          />
+        </Field>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <Field label="Zip Code (used for incentive matching)">
             <input
               className="rei-search"
               style={{ minWidth: "100%" }}
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="e.g., 123 Main St, Hillsboro, OR"
-            />
-          </Field>
-
-          <Field label="ZIP Code">
-            <input
-              className="rei-search"
-              style={{
-                minWidth: "100%",
-                borderColor: zipOk ? undefined : "#fecaca",
-              }}
               value={zip}
               onChange={(e) => setZip(e.target.value)}
               placeholder="e.g., 97123"
               inputMode="numeric"
             />
-            {!zipOk && (
-              <div style={{ marginTop: 6, color: "#b91c1c", fontSize: 12, fontWeight: 700 }}>
-                Enter 5-digit ZIP (or ZIP+4).
-              </div>
-            )}
+          </Field>
+
+          <Field label="State">
+            <input
+              className="rei-search"
+              style={{ minWidth: "100%" }}
+              value={stateCode}
+              onChange={(e) => setStateCode(e.target.value)}
+              placeholder="e.g., OR"
+            />
           </Field>
         </div>
 
@@ -174,6 +246,12 @@ export default function NewJobPage() {
             Create Job
           </button>
         </div>
+
+        {!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
+          <div style={{ color: "var(--muted)", fontSize: 12 }}>
+            Tip: Add <code>NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> to enable address autocomplete.
+          </div>
+        )}
       </form>
     </div>
   );
