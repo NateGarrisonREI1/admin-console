@@ -32,14 +32,21 @@ function clone<T>(x: T): T {
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
+// src/lib/leaf-ss/leafSSConfigRuntime.ts
+// REPLACE your getCatalogSystemById() with this version
 
-function getCatalogSystemById(
-  id: string | null | undefined
-): CatalogSystem | null {
-  if (!id) return null;
-  return (MOCK_SYSTEMS as any[]).find((s) => s?.id === id) || null;
+import { getCatalogSystemById as getLocalCatalogSystemById } from "../catalog/catalogStore";
+import { MOCK_SYSTEMS, type CatalogSystem } from "./mockSystems";
+
+// Local-first catalog lookup:
+// 1) REI_LOCAL_CATALOG_V1 (editable)
+// 2) fallback to MOCK_SYSTEMS (safe)
+function getCatalogSystemById(systemId: string): CatalogSystem | undefined {
+  const local = getLocalCatalogSystemById(systemId);
+  if (local) return local as CatalogSystem;
+
+  return MOCK_SYSTEMS.find((s) => s.id === systemId);
 }
-
 /* ─────────────────────────────────────────────
    SNAPSHOT + CATALOG MERGE (UNCHANGED)
 ───────────────────────────────────────────── */
