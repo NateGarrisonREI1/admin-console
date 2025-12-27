@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { MOCK_SYSTEMS } from "../_data/mockSystems";
-import { Incentive, loadIncentives } from "../_data/incentivesModel";
+import { Incentive, loadIncentives } from "../_data/incentives/incentivesModel";
 
 /* ============================
    Types
