@@ -1,6 +1,6 @@
 import { loadLeafSSMasterConfig } from "./leafSSConfigStore";
 import { MOCK_SYSTEMS, type CatalogSystem } from "./mockSystems";
-
+import { getCatalogSystemById as getLocalCatalogSystemById } from "../../lib/catalog/catalogStore";
 /* ─────────────────────────────────────────────
    TYPES
 ───────────────────────────────────────────── */
