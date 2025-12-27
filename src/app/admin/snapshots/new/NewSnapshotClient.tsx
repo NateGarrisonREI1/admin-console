@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-
 import { type Job, findLocalJob } from "../../_data/localJobs";
 import { upsertLocalSnapshot, type SnapshotDraft } from "../../_data/localSnapshots";
 import { loadLocalCatalog } from "../../_data/localCatalog";
-
+import {
+  calculateLeafSavings,
+  type LeafTierKey,
+} from "../../_data/leafSSConfigRuntime";
 // Incentives
 import {
   getIncentivesForSystemType,
