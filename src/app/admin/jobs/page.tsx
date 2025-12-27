@@ -104,7 +104,7 @@ export default function JobsPage() {
                 <div style={{ fontWeight: 900 }}>{job.customerName}</div>
                 <div style={{ color: "var(--muted)" }}>{job.address ?? "—"}</div>
                 <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{job.reportId}</div>
-                <div style={{ color: "var(--muted)" }}>{formatDate(job.createdAt)}</div>
+                <div style={{ color: "var(--muted)" }}>{formatDate(job.createdAt ?? "")}</div>
               </Link>
 
               {/* Actions */}
