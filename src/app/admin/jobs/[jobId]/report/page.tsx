@@ -636,7 +636,7 @@ export default function JobReportPage() {
                   <div className="flex justify-between mb-3">
                     <div className="text-sm font-semibold">📷 Current system</div>
                     <span className="text-[11px] px-3 py-1 rounded-full bg-red-500/15 text-red-200 border border-red-500/25">
-                      {p.snapshot?.existing?.statusPillText || "Current"}
+                      {p.snapshot?.existing?.operational || "Current"}
                     </span>
                   </div>
                   <div className="flex gap-3">
