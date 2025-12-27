@@ -1,4 +1,4 @@
-import type { CatalogSystem } from "./mockSystems";
+import type { CatalogSystem } from "../mockSystems";
 import type { CatalogIncentive, JobAppliedIncentive, JobIncentiveScope } from "./incentiveTypes";
 
 function normState(x: string) {
