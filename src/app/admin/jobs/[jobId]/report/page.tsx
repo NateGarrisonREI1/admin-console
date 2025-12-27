@@ -7,7 +7,7 @@ import { MOCK_JOBS, type Job } from "../../../_data/mockJobs";
 import { findLocalJob } from "../../../_data/localJobs";
 import { loadLocalSnapshots, snapshotsForJob } from "../../../_data/localSnapshots";
 import { MOCK_SYSTEMS } from "../../../_data/mockSystems";
-import { getIncentivesForSystemType, type IncentiveResource } from "../../../../../lib/incentives/incentiveRules";
+import { getIncentivesForSystemType, type IncentiveResource } from "@/app/admin/_data/incentives/incentiveResolver";
 
 import { LEAF_SS_CONFIG } from "../../../_data/leafSSConfig";
 import {
