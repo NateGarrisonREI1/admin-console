@@ -12,28 +12,61 @@ export type SnapshotDraft = {
   systemId: string;
 
   // existing system context (copied at creation time)
-  existing: {
-    type: string;
-    subtype: string;
-    ageYears: number;
-    operational: string;
-    wear: number; // 1–5
-    maintenance: string;
+ existing: {
+  type: string;
+  subtype: string;
+  ageYears: number | null;
+  operational: string;
+  wear: number | null; // 1–5
+  maintenance: string;
+
+  // ✅ Report/UI-facing fields (editable on snapshot creation page)
+  label?: string; // ex: "Existing gas furnace"
+  statusPillText?: string; // ex: "Near end of life"
+  annualCostRange?: { min: number; max: number };
+  carbonRange?: { min: number; max: number };
+};
+
   };
 
   // suggested upgrade selection
   suggested: {
-    catalogSystemId: string | null;
-    name: string;
-    tier?: LeafTierKey;
-    estCost: number | null;
+  systemId?: string;
 
-    // legacy (will be phased out)
-    estAnnualSavings: number | null;
-    estPaybackYears: number | null;
+  // Base name (still required)
+  name: string;
 
-    notes: string;
+  // (Legacy) quick fields
+  estCost?: number;
+  estAnnualSavings?: number;
+  estPaybackYears?: number;
+  notes?: string;
+
+  // ✅ Report-editable tier config (Good/Better/Best)
+  tierOverrides?: Record<
+    "good" | "better" | "best",
+    {
+      leafPriceRange?: { min?: number; max?: number };
+      baseMonthlySavings?: { min?: number; max?: number };
+      recommendedName?: string;
+      statusPillText?: string;
+    }
+  >;
+
+  // ✅ Inputs + outputs for the “Run calculations” button
+  calculationInputs?: {
+    selectedTier?: "good" | "better" | "best";
+    selectedPrice?: number;
+    incentivesLow?: number;
+    incentivesHigh?: number;
   };
+
+  calculatedSavings?: {
+    monthlyRange?: { min: number; max: number };
+    costClass?: "unreal_low" | "low" | "in" | "likely_over" | "over";
+  };
+};
+
 
   // ✅ NEW — derived, not user-editable
   calculatedSavings?: {
