@@ -1,6 +1,7 @@
 import { loadLeafSSMasterConfig } from "./leafSSConfigStore";
 import { MOCK_SYSTEMS, type CatalogSystem } from "./mockSystems";
 import { getCatalogSystemById as getLocalCatalogSystemById } from "../../lib/catalog/catalogStore";
+
 /* ─────────────────────────────────────────────
    TYPES
 ───────────────────────────────────────────── */
@@ -32,27 +33,35 @@ function clone<T>(x: T): T {
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
-// src/lib/leaf-ss/leafSSConfigRuntime.ts
-// REPLACE your getCatalogSystemById() with this version
 
-import { getCatalogSystemById as getLocalCatalogSystemById } from "../catalog/catalogStore";
-import { MOCK_SYSTEMS, type CatalogSystem } from "./mockSystems";
+/* ─────────────────────────────────────────────
+   LOCAL-FIRST CATALOG LOOKUP (FIXED)
+───────────────────────────────────────────── */
 
-// Local-first catalog lookup:
-// 1) REI_LOCAL_CATALOG_V1 (editable)
-// 2) fallback to MOCK_SYSTEMS (safe)
-function getCatalogSystemById(systemId: string): CatalogSystem | undefined {
+function getCatalogSystemById(
+  systemId: string | null
+): CatalogSystem | null {
+  if (!systemId) return null;
+
   const local = getLocalCatalogSystemById(systemId);
-  if (local) return local as CatalogSystem;
+  if (local) return local as unknown as CatalogSystem;
 
-  return MOCK_SYSTEMS.find((s) => s.id === systemId);
+  return (
+    (MOCK_SYSTEMS.find((s) => s.id === systemId) as CatalogSystem) ||
+    null
+  );
 }
+
 /* ─────────────────────────────────────────────
    SNAPSHOT + CATALOG MERGE (UNCHANGED)
 ───────────────────────────────────────────── */
 
-function mergeSnapshotWithCatalog(snapshot: any, catalog: CatalogSystem | null) {
-  const overrides: LeafSSOverrides | undefined = (catalog as any)?.leafSSOverrides;
+function mergeSnapshotWithCatalog(
+  snapshot: any,
+  catalog: CatalogSystem | null
+) {
+  const overrides: LeafSSOverrides | undefined = (catalog as any)
+    ?.leafSSOverrides;
   if (!snapshot || !overrides) return snapshot;
 
   const out = clone(snapshot);
@@ -81,7 +90,8 @@ function mergeSnapshotWithCatalog(snapshot: any, catalog: CatalogSystem | null) 
     }
 
     if (tierOverride.recommendedName || tierOverride.statusPillText) {
-      out.recommendedSystemCard = out.recommendedSystemCard || {};
+      out.recommendedSystemCard =
+        out.recommendedSystemCard || {};
       out.recommendedSystemCard.recommendedNameByTier =
         out.recommendedSystemCard.recommendedNameByTier || {};
       out.recommendedSystemCard.statusPillTextByTier =
@@ -110,7 +120,10 @@ function getMasterConfig() {
    PUBLIC SNAPSHOT ACCESS
 ───────────────────────────────────────────── */
 
-export function getSnapshotByIndex(i: number, catalogSystemId?: string | null) {
+export function getSnapshotByIndex(
+  i: number,
+  catalogSystemId?: string | null
+) {
   const cfg = getMasterConfig();
   const snaps = cfg?.snapshots || [];
   const idx = Math.max(0, Math.min(snaps.length - 1, i));
@@ -129,17 +142,16 @@ export function getTier(snapshot: any, tier: LeafTierKey) {
 }
 
 /* ─────────────────────────────────────────────
-   ✅ NEW: REAL SAVINGS CALCULATION ENGINE
-   Midline realistic, wear-weighted
+   ✅ REAL SAVINGS CALCULATION ENGINE
 ───────────────────────────────────────────── */
 
 export function calculateLeafSavings(args: {
-  wear: number;                 // 1–5
-  age: number;                  // years
-  expectedLife: number;         // years
+  wear: number; // 1–5
+  age: number; // years
+  expectedLife: number; // years
   partialFailure?: boolean;
-  annualUtilitySpend: number;   // $
-  systemShare: number;          // 0–1
+  annualUtilitySpend: number; // $
+  systemShare: number; // 0–1
   tier: LeafTierKey;
 }) {
   const {
@@ -152,8 +164,6 @@ export function calculateLeafSavings(args: {
     tier,
   } = args;
 
-  /* ── Step 1: Normalize current system waste ── */
-
   const wearFactor = clamp(wear / 5, 0, 1);
   const ageFactor = clamp(age / expectedLife, 0, 1);
   const failureFactor = partialFailure ? 1 : 0;
@@ -161,11 +171,9 @@ export function calculateLeafSavings(args: {
   let currentWaste =
     0.45 * wearFactor +
     0.35 * ageFactor +
-    0.20 * failureFactor;
+    0.2 * failureFactor;
 
   currentWaste = clamp(currentWaste, 0.15, 0.95);
-
-  /* ── Step 2: Tier recovery potential ── */
 
   const tierRecovery: Record<LeafTierKey, number> = {
     good: 0.35,
@@ -175,15 +183,11 @@ export function calculateLeafSavings(args: {
 
   const recoverableWaste = currentWaste * tierRecovery[tier];
 
-  /* ── Step 3: Dollar conversion ── */
-
   const annualSystemCost =
     annualUtilitySpend * clamp(systemShare, 0, 1);
 
   const annualSavingsCenter =
     annualSystemCost * recoverableWaste;
-
-  /* ── Step 4: Midline realistic range ── */
 
   const minAnnualSavings = annualSavingsCenter * 0.85;
   const maxAnnualSavings = annualSavingsCenter * 1.15;
@@ -194,8 +198,6 @@ export function calculateLeafSavings(args: {
     annualSavingsCenter,
     minAnnualSavings,
     maxAnnualSavings,
-
-    // helpful derived values
     minMonthlySavings: minAnnualSavings / 12,
     maxMonthlySavings: maxAnnualSavings / 12,
     centerMonthlySavings: annualSavingsCenter / 12,
@@ -203,7 +205,7 @@ export function calculateLeafSavings(args: {
 }
 
 /* ─────────────────────────────────────────────
-   EXISTING HELPERS (UNCHANGED)
+   EXISTING HELPERS
 ───────────────────────────────────────────── */
 
 export function classifyCostFromThresholds(args: {
@@ -213,11 +215,18 @@ export function classifyCostFromThresholds(args: {
   unrealLowOffsetFromMin: number;
   overpricedOffsetFromMax: number;
 }): CostClass {
-  const { price, tierMin, tierMax, unrealLowOffsetFromMin, overpricedOffsetFromMax } =
-    args;
+  const {
+    price,
+    tierMin,
+    tierMax,
+    unrealLowOffsetFromMin,
+    overpricedOffsetFromMax,
+  } = args;
 
-  const COST_UNREALISTIC_BELOW = tierMin + unrealLowOffsetFromMin;
-  const COST_OVERPRICED_ABOVE = tierMax + overpricedOffsetFromMax;
+  const COST_UNREALISTIC_BELOW =
+    tierMin + unrealLowOffsetFromMin;
+  const COST_OVERPRICED_ABOVE =
+    tierMax + overpricedOffsetFromMax;
 
   if (price < COST_UNREALISTIC_BELOW) return "unreal_low";
   if (price < tierMin) return "low";
@@ -234,11 +243,20 @@ export function dynamicSavingsRangeFromRule(args: {
   stepSizeDollars: number;
   bumpPerStepMonthlyDollars: number;
 }) {
-  const { baseMin, baseMax, price, tierMax, stepSizeDollars, bumpPerStepMonthlyDollars } =
-    args;
+  const {
+    baseMin,
+    baseMax,
+    price,
+    tierMax,
+    stepSizeDollars,
+    bumpPerStepMonthlyDollars,
+  } = args;
 
   const over = Math.max(0, price - tierMax);
-  const steps = stepSizeDollars > 0 ? Math.floor(over / stepSizeDollars) : 0;
+  const steps =
+    stepSizeDollars > 0
+      ? Math.floor(over / stepSizeDollars)
+      : 0;
   const bump = steps * bumpPerStepMonthlyDollars;
 
   return { min: baseMin + bump, max: baseMax + bump };
