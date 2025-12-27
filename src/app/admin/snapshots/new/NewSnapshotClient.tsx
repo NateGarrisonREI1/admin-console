@@ -72,9 +72,10 @@ export default function NewSnapshotClient({
   }, [jobId]);
 
   const existingSystem = useMemo(() => {
-    if (!job) return null;
-    return job.systems.find((s: any) => s.id === systemId) ?? null;
-  }, [job, systemId]);
+  if (!job || !job.systems?.length) return null;
+  return job.systems.find((s: any) => s.id === systemId) ?? null;
+}, [job, systemId]);
+
 
   // ✅ REAL catalog only — NO FALLBACKS
   const catalog = useMemo(() => loadLocalCatalog(), []);
