@@ -164,14 +164,16 @@ export default function SnapshotEditor({
 
       <div className="rei-formGrid">
         <Field label="Age (years)">
-          <input
-            className="rei-search"
-            type="number"
-            value={working.existing.ageYears}
-            onChange={(e) =>
-              updateExisting("ageYears", Number(e.target.value))
-            }
-          />
+      <input
+  className="rei-search"
+  type="number"
+  value={working.existing.ageYears ?? ""}
+  onChange={(e) => {
+    const v = e.target.value;
+    updateExisting("ageYears", v === "" ? null : Number(v));
+  }}
+/>
+
         </Field>
 
         <Field label="Wear (1–5)">
