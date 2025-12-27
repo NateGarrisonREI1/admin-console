@@ -47,17 +47,26 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-function getTierBlock(s: SnapshotDraft, tier: LeafTierKey) {
+type TierOverride = {
+  leafPriceRange?: { min?: number; max?: number };
+  baseMonthlySavings?: { min?: number; max?: number };
+  recommendedName?: string;
+  statusPillText?: string;
+};
+
+function getTierBlock(s: SnapshotDraft, tier: LeafTierKey): TierOverride {
   const tiers = s.suggested.leafSSOverrides?.tiers || {};
-  return tiers[tier] || {};
+  return (tiers as Partial<Record<LeafTierKey, TierOverride>>)[tier] || {};
 }
 
 function setTierBlock(
   s: SnapshotDraft,
   tier: LeafTierKey,
-  patch: Partial<NonNullable<SnapshotDraft["suggested"]["leafSSOverrides"]>["tiers"][LeafTierKey]>
+  patch: Partial<TierOverride>
 ): SnapshotDraft {
   const prev = s.suggested.leafSSOverrides?.tiers || {};
+  const prevTyped = prev as Partial<Record<LeafTierKey, TierOverride>>;
+
   return {
     ...s,
     suggested: {
@@ -65,9 +74,9 @@ function setTierBlock(
       leafSSOverrides: {
         ...(s.suggested.leafSSOverrides || {}),
         tiers: {
-          ...prev,
+          ...prevTyped,
           [tier]: {
-            ...(prev[tier] || {}),
+            ...(prevTyped[tier] || {}),
             ...patch,
           },
         },
@@ -75,6 +84,7 @@ function setTierBlock(
     },
   };
 }
+
 
 /* ─────────────────────────────────────────────
    COMPONENT
