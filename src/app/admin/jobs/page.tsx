@@ -5,9 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { MOCK_JOBS, type Job } from "../_data/mockJobs";
 import { deleteLocalJob, loadLocalJobs } from "../_data/localJobs";
 
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+function formatDate(v?: string) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
 }
 
 export default function JobsPage() {
