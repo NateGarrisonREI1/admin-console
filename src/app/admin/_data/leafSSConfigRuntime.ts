@@ -1,13 +1,16 @@
 import { loadLeafSSMasterConfig } from "./leafSSConfigStore";
 import { MOCK_SYSTEMS, type CatalogSystem } from "./mockSystems";
 
-export type LeafTierKey = "good" | "better" | "best";
+/* ─────────────────────────────────────────────
+   TYPES
+───────────────────────────────────────────── */
 
+export type LeafTierKey = "good" | "better" | "best";
 export type CostClass = "unreal_low" | "low" | "in" | "likely_over" | "over";
 
 type TierOverride = {
   leafPriceRange?: { min?: number; max?: number };
-  baseMonthlySavings?: { min?: number; max?: number };
+  baseMonthlySavings?: { min?: number; max?: number }; // legacy fallback
   recommendedName?: string;
   statusPillText?: string;
 };
@@ -16,10 +19,18 @@ type LeafSSOverrides = {
   tiers?: Partial<Record<LeafTierKey, TierOverride>>;
 };
 
+/* ─────────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────────── */
+
 function clone<T>(x: T): T {
   return typeof structuredClone === "function"
     ? structuredClone(x)
     : JSON.parse(JSON.stringify(x));
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
 }
 
 function getCatalogSystemById(
@@ -29,13 +40,15 @@ function getCatalogSystemById(
   return (MOCK_SYSTEMS as any[]).find((s) => s?.id === id) || null;
 }
 
+/* ─────────────────────────────────────────────
+   SNAPSHOT + CATALOG MERGE (UNCHANGED)
+───────────────────────────────────────────── */
+
 function mergeSnapshotWithCatalog(snapshot: any, catalog: CatalogSystem | null) {
   const overrides: LeafSSOverrides | undefined = (catalog as any)?.leafSSOverrides;
   if (!snapshot || !overrides) return snapshot;
 
   const out = clone(snapshot);
-
-  // ensure tiers exist
   out.tiers = out.tiers || {};
 
   const tierKeys: LeafTierKey[] = ["good", "better", "best"];
@@ -60,7 +73,6 @@ function mergeSnapshotWithCatalog(snapshot: any, catalog: CatalogSystem | null) 
       };
     }
 
-    // optional: recommended card labels per tier
     if (tierOverride.recommendedName || tierOverride.statusPillText) {
       out.recommendedSystemCard = out.recommendedSystemCard || {};
       out.recommendedSystemCard.recommendedNameByTier =
@@ -87,9 +99,10 @@ function getMasterConfig() {
   return loadLeafSSMasterConfig();
 }
 
-/**
- * pass catalogSystemId to apply catalog overrides for this snapshot only
- */
+/* ─────────────────────────────────────────────
+   PUBLIC SNAPSHOT ACCESS
+───────────────────────────────────────────── */
+
 export function getSnapshotByIndex(i: number, catalogSystemId?: string | null) {
   const cfg = getMasterConfig();
   const snaps = cfg?.snapshots || [];
@@ -107,6 +120,84 @@ export function getTier(snapshot: any, tier: LeafTierKey) {
     snapshot?.tiers?.good
   );
 }
+
+/* ─────────────────────────────────────────────
+   ✅ NEW: REAL SAVINGS CALCULATION ENGINE
+   Midline realistic, wear-weighted
+───────────────────────────────────────────── */
+
+export function calculateLeafSavings(args: {
+  wear: number;                 // 1–5
+  age: number;                  // years
+  expectedLife: number;         // years
+  partialFailure?: boolean;
+  annualUtilitySpend: number;   // $
+  systemShare: number;          // 0–1
+  tier: LeafTierKey;
+}) {
+  const {
+    wear,
+    age,
+    expectedLife,
+    partialFailure,
+    annualUtilitySpend,
+    systemShare,
+    tier,
+  } = args;
+
+  /* ── Step 1: Normalize current system waste ── */
+
+  const wearFactor = clamp(wear / 5, 0, 1);
+  const ageFactor = clamp(age / expectedLife, 0, 1);
+  const failureFactor = partialFailure ? 1 : 0;
+
+  let currentWaste =
+    0.45 * wearFactor +
+    0.35 * ageFactor +
+    0.20 * failureFactor;
+
+  currentWaste = clamp(currentWaste, 0.15, 0.95);
+
+  /* ── Step 2: Tier recovery potential ── */
+
+  const tierRecovery: Record<LeafTierKey, number> = {
+    good: 0.35,
+    better: 0.55,
+    best: 0.75,
+  };
+
+  const recoverableWaste = currentWaste * tierRecovery[tier];
+
+  /* ── Step 3: Dollar conversion ── */
+
+  const annualSystemCost =
+    annualUtilitySpend * clamp(systemShare, 0, 1);
+
+  const annualSavingsCenter =
+    annualSystemCost * recoverableWaste;
+
+  /* ── Step 4: Midline realistic range ── */
+
+  const minAnnualSavings = annualSavingsCenter * 0.85;
+  const maxAnnualSavings = annualSavingsCenter * 1.15;
+
+  return {
+    currentWaste,
+    recoverableWaste,
+    annualSavingsCenter,
+    minAnnualSavings,
+    maxAnnualSavings,
+
+    // helpful derived values
+    minMonthlySavings: minAnnualSavings / 12,
+    maxMonthlySavings: maxAnnualSavings / 12,
+    centerMonthlySavings: annualSavingsCenter / 12,
+  };
+}
+
+/* ─────────────────────────────────────────────
+   EXISTING HELPERS (UNCHANGED)
+───────────────────────────────────────────── */
 
 export function classifyCostFromThresholds(args: {
   price: number;
