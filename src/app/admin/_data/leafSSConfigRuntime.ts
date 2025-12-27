@@ -3,40 +3,56 @@ import { MOCK_SYSTEMS, type CatalogSystem } from "./mockSystems";
 
 export type LeafTierKey = "good" | "better" | "best";
 
-
 export type CostClass = "unreal_low" | "low" | "in" | "likely_over" | "over";
 
+type TierOverride = {
+  leafPriceRange?: { min?: number; max?: number };
+  baseMonthlySavings?: { min?: number; max?: number };
+  recommendedName?: string;
+  statusPillText?: string;
+};
+
+type LeafSSOverrides = {
+  tiers?: Partial<Record<LeafTierKey, TierOverride>>;
+};
+
 function clone<T>(x: T): T {
-  return typeof structuredClone === "function" ? structuredClone(x) : JSON.parse(JSON.stringify(x));
+  return typeof structuredClone === "function"
+    ? structuredClone(x)
+    : JSON.parse(JSON.stringify(x));
 }
 
-function getCatalogSystemById(id: string | null | undefined): CatalogSystem | null {
+function getCatalogSystemById(
+  id: string | null | undefined
+): CatalogSystem | null {
   if (!id) return null;
   return (MOCK_SYSTEMS as any[]).find((s) => s?.id === id) || null;
 }
 
 function mergeSnapshotWithCatalog(snapshot: any, catalog: CatalogSystem | null) {
-  if (!snapshot || !catalog?.leafSSOverrides) return snapshot;
+  const overrides: LeafSSOverrides | undefined = (catalog as any)?.leafSSOverrides;
+  if (!snapshot || !overrides) return snapshot;
 
   const out = clone(snapshot);
-  const overrides = catalog.leafSSOverrides;
 
   // ensure tiers exist
   out.tiers = out.tiers || {};
 
-  // merge tier overrides
   const tierKeys: LeafTierKey[] = ["good", "better", "best"];
+
   for (const t of tierKeys) {
     const tierOverride = overrides.tiers?.[t];
     if (!tierOverride) continue;
 
     out.tiers[t] = out.tiers[t] || {};
+
     if (tierOverride.leafPriceRange) {
       out.tiers[t].leafPriceRange = {
         ...(out.tiers[t].leafPriceRange || {}),
         ...tierOverride.leafPriceRange,
       };
     }
+
     if (tierOverride.baseMonthlySavings) {
       out.tiers[t].baseMonthlySavings = {
         ...(out.tiers[t].baseMonthlySavings || {}),
@@ -53,10 +69,13 @@ function mergeSnapshotWithCatalog(snapshot: any, catalog: CatalogSystem | null) 
         out.recommendedSystemCard.statusPillTextByTier || {};
 
       if (tierOverride.recommendedName) {
-        out.recommendedSystemCard.recommendedNameByTier[t] = tierOverride.recommendedName;
+        out.recommendedSystemCard.recommendedNameByTier[t] =
+          tierOverride.recommendedName;
       }
+
       if (tierOverride.statusPillText) {
-        out.recommendedSystemCard.statusPillTextByTier[t] = tierOverride.statusPillText;
+        out.recommendedSystemCard.statusPillTextByTier[t] =
+          tierOverride.statusPillText;
       }
     }
   }
@@ -69,7 +88,6 @@ function getMasterConfig() {
 }
 
 /**
- * ✅ NEW SIGNATURE:
  * pass catalogSystemId to apply catalog overrides for this snapshot only
  */
 export function getSnapshotByIndex(i: number, catalogSystemId?: string | null) {
@@ -77,12 +95,17 @@ export function getSnapshotByIndex(i: number, catalogSystemId?: string | null) {
   const snaps = cfg?.snapshots || [];
   const idx = Math.max(0, Math.min(snaps.length - 1, i));
   const base = snaps[idx];
-  const catalog = getCatalogSystemById(catalogSystemId);
+
+  const catalog = getCatalogSystemById(catalogSystemId || null);
   return mergeSnapshotWithCatalog(base, catalog);
 }
 
 export function getTier(snapshot: any, tier: LeafTierKey) {
-  return snapshot?.tiers?.[tier] || snapshot?.tiers?.better || snapshot?.tiers?.good;
+  return (
+    snapshot?.tiers?.[tier] ||
+    snapshot?.tiers?.better ||
+    snapshot?.tiers?.good
+  );
 }
 
 export function classifyCostFromThresholds(args: {
@@ -92,7 +115,8 @@ export function classifyCostFromThresholds(args: {
   unrealLowOffsetFromMin: number;
   overpricedOffsetFromMax: number;
 }): CostClass {
-  const { price, tierMin, tierMax, unrealLowOffsetFromMin, overpricedOffsetFromMax } = args;
+  const { price, tierMin, tierMax, unrealLowOffsetFromMin, overpricedOffsetFromMax } =
+    args;
 
   const COST_UNREALISTIC_BELOW = tierMin + unrealLowOffsetFromMin;
   const COST_OVERPRICED_ABOVE = tierMax + overpricedOffsetFromMax;
@@ -112,9 +136,12 @@ export function dynamicSavingsRangeFromRule(args: {
   stepSizeDollars: number;
   bumpPerStepMonthlyDollars: number;
 }) {
-  const { baseMin, baseMax, price, tierMax, stepSizeDollars, bumpPerStepMonthlyDollars } = args;
+  const { baseMin, baseMax, price, tierMax, stepSizeDollars, bumpPerStepMonthlyDollars } =
+    args;
+
   const over = Math.max(0, price - tierMax);
   const steps = stepSizeDollars > 0 ? Math.floor(over / stepSizeDollars) : 0;
   const bump = steps * bumpPerStepMonthlyDollars;
+
   return { min: baseMin + bump, max: baseMax + bump };
 }
