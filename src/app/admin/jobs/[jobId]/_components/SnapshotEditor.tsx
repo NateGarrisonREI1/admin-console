@@ -53,7 +53,7 @@ export default function SnapshotEditor({
     if (snapshot) return snapshot;
 
     return {
-      id: uuidv4(),
+      id: makeSnapshotId(existingSystem.id),
       jobId,
       systemId: existingSystem.id,
 
