@@ -7,7 +7,8 @@ import {
   loadIncentives,
   upsertIncentive,
   deleteIncentive,
-} from "../_data/incentivesModel";
+} from "../_data/incentives/incentivesModel"
+;
 
 /* ---------------------------------- */
 /* helpers                            */
