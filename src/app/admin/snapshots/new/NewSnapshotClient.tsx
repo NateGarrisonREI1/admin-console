@@ -214,7 +214,7 @@ export default function NewSnapshotClient({
   }
 
   // --- Guards ---
-  if (!jobId || !systemId) {
+  if (!job || !system) {
     return (
       <div className="rei-card" style={{ display: "grid", gap: 10 }}>
         <div style={{ fontWeight: 900, fontSize: 16 }}>Missing URL parameters</div>
