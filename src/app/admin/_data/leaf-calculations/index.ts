@@ -1,2 +1,2 @@
 export * from "./types";
-export { calculateLeafPreview } from "./calculateLeafPreview";
+export { calculateLeafPreview } from "./preview";
