@@ -1,4 +1,4 @@
-import { calculateLeafSavings, type LeafTierKey } from "./leafSSConfigRuntime";
+import { calculateLeafSavings, type LeafTierKey } from "./leafSavings";
 
 /* ─────────────────────────────────────────────
    TYPES
