@@ -8,11 +8,7 @@ import { type Job, findLocalJob } from "../../_data/localJobs";
 import { upsertLocalSnapshot, type SnapshotDraft } from "../../_data/localSnapshots";
 import { loadLocalCatalog, type CatalogSystem, type LeafTierKey } from "../../_data/localCatalog";
 
-// ✅ NEW calc module (future-proof)
-import {
-  calculateLeafPreview,
-  type LeafCalculationInput,
-} from "../../_data/leaf-calculations";
+import { calculateLeafPreview } from "../../_data/leaf-calculations";
 
 // Incentives (two ways: explicit IDs OR rule-matcher fallback)
 import { loadIncentives, type Incentive } from "../../_data/incentives/incentivesModel";
@@ -123,20 +119,6 @@ function firstEnabledTier(sys: CatalogSystem | null): LeafTierKey {
   return "good";
 }
 
-/**
- * Future-proof: map catalog tier into an "efficiencyScore" for preview calculations.
- * Later, runtime engine will not need this.
- */
-function tierEfficiencyScore(selectedCatalog: CatalogSystem | null, tier: LeafTierKey): number {
-  const t: any = selectedCatalog ? (selectedCatalog as any).tiers?.[tier] : null;
-  const s = Number(t?.efficiencyScore);
-  if (Number.isFinite(s)) return s;
-  // sane fallback if the catalog doesn't store it yet
-  if (tier === "best") return 80;
-  if (tier === "better") return 60;
-  return 45;
-}
-
 /* ─────────────────────────────────────────────
    Component
 ───────────────────────────────────────────── */
@@ -159,11 +141,12 @@ export default function NewSnapshotClient({
     return (job.systems ?? []).find((s: any) => s.id === systemId) ?? null;
   }, [job, systemId]);
 
-  // ✅ Load catalog as STATE (not useMemo) so it can refresh after edits
+  // ✅ Load catalog as STATE so it refreshes after edits
   const [catalog, setCatalog] = useState<CatalogSystem[]>([]);
   useEffect(() => {
     setCatalog(loadLocalCatalog());
 
+    // keep it fresh if another tab modifies storage
     const onStorage = () => setCatalog(loadLocalCatalog());
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
@@ -175,46 +158,43 @@ export default function NewSnapshotClient({
     return catalog.find((c: any) => c.id === catalogId) ?? null;
   }, [catalogId, catalog]);
 
-  // ✅ Option A: tier selection
+  // Tier selection
   const [tier, setTier] = useState<LeafTierKey>("good");
-
-  // when catalog changes, auto-select first enabled tier
   useEffect(() => {
     if (!selectedCatalog) return;
     setTier(firstEnabledTier(selectedCatalog));
   }, [catalogId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ✅ Option A: calculation inputs (user-editable)
+  // Calc inputs (eventually these get pulled from job/home profile)
   const [annualUtilitySpend, setAnnualUtilitySpend] = useState<string>("2400");
-  const [systemShare, setSystemShare] = useState<string>("0.4"); // 40% default
+  const [systemShare, setSystemShare] = useState<string>("0.4");
   const [expectedLife, setExpectedLife] = useState<string>("15");
   const [partialFailure, setPartialFailure] = useState<boolean>(false);
 
-  // ✅ NEW: computed ranges come from leaf-calculations engine (not UI file)
+  // Pull tier cost range from catalog
+  const tierCfg: any = selectedCatalog ? (selectedCatalog as any).tiers?.[tier] : null;
+  const tierCostMin = typeof tierCfg?.installCostMin === "number" ? tierCfg.installCostMin : undefined;
+  const tierCostMax = typeof tierCfg?.installCostMax === "number" ? tierCfg.installCostMax : undefined;
+
   const calc = useMemo(() => {
     const annual = toNumberOr(annualUtilitySpend, 2400);
     const share = toNumberOr(systemShare, 0.4);
     const life = toNumberOr(expectedLife, 15);
 
-    const age = toNumberOr((existingSystem as any)?.ageYears, 12);
+    const ageYears = toNumberOr((existingSystem as any)?.ageYears, 12);
     const wear = toNumberOr((existingSystem as any)?.wear, 3);
 
-    const input: LeafCalculationInput = {
-      existing: {
-        annualUtilitySpend: annual,
-        systemShare: share,
-        expectedLifeYears: life,
-        ageYears: age,
-        wear,
-        partialFailure,
-      },
-      catalogTier: {
-        tier,
-        efficiencyScore: tierEfficiencyScore(selectedCatalog, tier),
-      },
-    };
-
-    return calculateLeafPreview(input);
+    return calculateLeafPreview({
+      tier,
+      annualUtilitySpend: annual,
+      systemShare: share,
+      expectedLifeYears: life,
+      ageYears,
+      wear,
+      partialFailure,
+      installCostMin: tierCostMin,
+      installCostMax: tierCostMax,
+    });
   }, [
     annualUtilitySpend,
     systemShare,
@@ -222,13 +202,15 @@ export default function NewSnapshotClient({
     tier,
     partialFailure,
     existingSystem,
-    selectedCatalog,
+    tierCostMin,
+    tierCostMax,
   ]);
 
-  const computedAnnualMin = calc.annualSavings.min;
-  const computedAnnualMax = calc.annualSavings.max;
-  const computedPayMin = calc.paybackYears.min;
-  const computedPayMax = calc.paybackYears.max;
+  const computedAnnualMin = Math.round(calc.annualSavings.min);
+  const computedAnnualMax = Math.round(calc.annualSavings.max);
+
+  const computedPayMin = calc.paybackYears ? calc.paybackYears.min : null;
+  const computedPayMax = calc.paybackYears ? calc.paybackYears.max : null;
 
   // --- Incentives ---
   const [includeIncentivesInNotes, setIncludeIncentivesInNotes] = useState<boolean>(true);
@@ -261,7 +243,6 @@ export default function NewSnapshotClient({
     return getIncentivesForSystemType(categoryKey, { tags: ctxTags });
   }, [selectedCatalog, existingSystem]);
 
-  // UI selection of which incentives are included (both modes)
   const [selectedIncentiveIds, setSelectedIncentiveIds] = useState<string[]>([]);
   useEffect(() => {
     if (attachedIncentives.length) setSelectedIncentiveIds(attachedIncentives.map((x) => x.id));
@@ -285,7 +266,6 @@ export default function NewSnapshotClient({
   const [estPaybackYears, setEstPaybackYears] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
 
-  // "touched" flags so we don't stomp user edits
   const [touched, setTouched] = useState<{ cost: boolean; savings: boolean; payback: boolean }>({
     cost: false,
     savings: false,
@@ -297,10 +277,8 @@ export default function NewSnapshotClient({
   function applyCatalogDefaults() {
     if (!selectedCatalog) return;
 
-    // name
     setSuggestedName((prev) => (prev.trim() ? prev : String((selectedCatalog as any).name ?? "")));
 
-    // notes from highlights
     const highlights = Array.isArray((selectedCatalog as any).highlights) ? (selectedCatalog as any).highlights : [];
     const hlLine = highlights.length ? highlights.join(" • ") : "";
 
@@ -312,9 +290,8 @@ export default function NewSnapshotClient({
       return `${base}\n\n${hlLine}`;
     });
 
-    // Tier cost range -> midpoint
-    const tierCfg = ((selectedCatalog as any).tiers?.[tier] ?? null) as any;
-    const mid = midpoint(tierCfg?.installCostMin, tierCfg?.installCostMax);
+    // Cost midpoint from tier range, fallback to legacy
+    const mid = midpoint(tierCostMin, tierCostMax);
     if (!touched.cost) {
       if (mid !== null) setEstCost(String(Math.round(mid)));
       else {
@@ -323,39 +300,33 @@ export default function NewSnapshotClient({
       }
     }
 
-    // Calculated savings/payback midpoints from calc engine
+    // Savings/payback from calc preview
     if (!touched.savings) setEstAnnualSavings(String(Math.round(calc.annualSavings.center)));
-    if (!touched.payback) setEstPaybackYears(String(calc.paybackYears.center.toFixed(1)));
+    if (!touched.payback && calc.paybackYears) setEstPaybackYears(String(calc.paybackYears.center.toFixed(1)));
   }
 
-  // Auto-refresh computed numbers into empty fields until user edits
+  // Auto-fill until user edits
   useEffect(() => {
     if (!selectedCatalog) return;
 
-    if (!touched.savings && !estAnnualSavings.trim()) {
-      setEstAnnualSavings(String(Math.round(calc.annualSavings.center)));
-    }
-    if (!touched.payback && !estPaybackYears.trim()) {
+    if (!touched.savings && !estAnnualSavings.trim()) setEstAnnualSavings(String(Math.round(calc.annualSavings.center)));
+    if (!touched.payback && !estPaybackYears.trim() && calc.paybackYears)
       setEstPaybackYears(String(calc.paybackYears.center.toFixed(1)));
-    }
 
-    // cost from tier midpoint if empty
-    const tierCfg = ((selectedCatalog as any).tiers?.[tier] ?? null) as any;
-    const mid = midpoint(tierCfg?.installCostMin, tierCfg?.installCostMax);
-    if (!touched.cost && !estCost.trim() && mid !== null) {
-      setEstCost(String(Math.round(mid)));
-    }
+    const mid = midpoint(tierCostMin, tierCostMax);
+    if (!touched.cost && !estCost.trim() && mid !== null) setEstCost(String(Math.round(mid)));
   }, [
     selectedCatalog,
     tier,
-    calc.annualSavings.center,
-    calc.paybackYears.center,
+    calc,
     touched.cost,
     touched.savings,
     touched.payback,
     estCost,
     estAnnualSavings,
     estPaybackYears,
+    tierCostMin,
+    tierCostMax,
   ]);
 
   function onSave() {
@@ -369,17 +340,14 @@ export default function NewSnapshotClient({
     const userNotes = notes.trim();
 
     const incentivesBlock =
-      includeIncentivesInNotes &&
-      (selectedAttached.length || selectedResolver.length)
+      includeIncentivesInNotes && (selectedAttached.length || selectedResolver.length)
         ? selectedAttached.length
           ? buildIncentivesNotesBlockFromIds(selectedAttached)
           : buildIncentivesNotesBlockFromResolver(selectedResolver)
         : "";
 
     const finalNotes =
-      incentivesBlock && userNotes
-        ? `${userNotes}\n\n---\n\n${incentivesBlock}`
-        : incentivesBlock || userNotes;
+      incentivesBlock && userNotes ? `${userNotes}\n\n---\n\n${incentivesBlock}` : incentivesBlock || userNotes;
 
     const draft: SnapshotDraft = {
       id: `snap_${Math.random().toString(16).slice(2)}_${Date.now()}`,
@@ -388,7 +356,7 @@ export default function NewSnapshotClient({
       createdAt: nowIso(),
       updatedAt: nowIso(),
 
-      // store calc inputs + chosen tier (future: runtime calc button)
+      // ✅ store calc inputs + tier (future: re-run calc via button)
       tierKey: tier,
       calculationInputs: {
         annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
@@ -466,14 +434,9 @@ export default function NewSnapshotClient({
     );
   }
 
-  /* ─────────────────────────────────────────────
-     Main UI
-  ────────────────────────────────────────────── */
-
-  const tierCfg: any = selectedCatalog ? (selectedCatalog as any).tiers?.[tier] : null;
   const tierCostLabel =
-    tierCfg?.installCostMin != null && tierCfg?.installCostMax != null
-      ? `$${tierCfg.installCostMin.toLocaleString()}–$${tierCfg.installCostMax.toLocaleString()}`
+    tierCostMin != null && tierCostMax != null
+      ? `$${tierCostMin.toLocaleString()}–$${tierCostMax.toLocaleString()}`
       : "—";
 
   return (
@@ -653,13 +616,15 @@ export default function NewSnapshotClient({
                 <br />
                 Computed payback range:{" "}
                 <b>
-                  {computedPayMin.toFixed(1)}–{computedPayMax.toFixed(1)} yrs
+                  {computedPayMin != null && computedPayMax != null
+                    ? `${computedPayMin.toFixed(1)}–${computedPayMax.toFixed(1)} yrs`
+                    : "—"}
                 </b>
               </div>
             </div>
           </div>
 
-          {/* Incentives (attached preferred; resolver fallback) */}
+          {/* Incentives */}
           {selectedCatalog && (attachedIncentives.length || resolverMatched.length) ? (
             <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 12, background: "white" }}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -730,12 +695,6 @@ export default function NewSnapshotClient({
             </div>
           ) : null}
 
-          {selectedCatalog && !attachedIncentives.length && !resolverMatched.length ? (
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>
-              No incentives matched this suggested upgrade. (Attach incentives to the catalog system OR check rules/tags.)
-            </div>
-          ) : null}
-
           {/* Snapshot fields */}
           <label style={{ display: "grid", gap: 6 }}>
             <div style={{ fontWeight: 700 }}>
@@ -747,9 +706,6 @@ export default function NewSnapshotClient({
               placeholder="e.g., High-efficiency gas furnace"
               style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
             />
-            <div style={{ color: "var(--muted)", fontSize: 12 }}>
-              Tip: pick a catalog system + tier, then tweak the displayed name if needed.
-            </div>
           </label>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
@@ -764,9 +720,6 @@ export default function NewSnapshotClient({
                 placeholder="e.g., 12000"
                 style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
               />
-              <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Tier range: <b>{tierCostLabel}</b>
-              </div>
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
@@ -780,9 +733,6 @@ export default function NewSnapshotClient({
                 placeholder="e.g., 350"
                 style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
               />
-              <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Computed: <b>${computedAnnualMin.toLocaleString()}–${computedAnnualMax.toLocaleString()}/yr</b>
-              </div>
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
@@ -796,12 +746,6 @@ export default function NewSnapshotClient({
                 placeholder="e.g., 12"
                 style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
               />
-              <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Computed:{" "}
-                <b>
-                  {computedPayMin.toFixed(1)}–{computedPayMax.toFixed(1)} yrs
-                </b>
-              </div>
             </label>
           </div>
 
