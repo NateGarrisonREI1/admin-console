@@ -5,59 +5,71 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function midpoint(min?: number, max?: number): number | null {
-  if (typeof min !== "number" || typeof max !== "number") return null;
-  return (min + max) / 2;
+function safe(n: any, fallback: number) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : fallback;
 }
 
-function rangeFromMinMax(min: number, max: number, center?: number): Range {
-  const c = typeof center === "number" ? center : (min + max) / 2;
-  return { min, max, center: c };
+function mid(a: number, b: number) {
+  return (a + b) / 2;
+}
+
+function mkRange(minV: number, maxV: number): Range {
+  const lo = Math.min(minV, maxV);
+  const hi = Math.max(minV, maxV);
+  return { min: lo, max: hi, center: mid(lo, hi) };
+}
+
+function paybackRange(costMin?: number, costMax?: number, savMin?: number, savMax?: number): Range {
+  const cMin = safe(costMin, 0);
+  const cMax = safe(costMax ?? costMin, cMin);
+
+  const sMin = safe(savMin, 0);
+  const sMax = safe(savMax ?? savMin, sMin);
+
+  const eps = 1e-9;
+
+  const best = cMin / Math.max(sMax, eps);   // low cost / high savings
+  const worst = cMax / Math.max(sMin, eps);  // high cost / low savings
+
+  return mkRange(clamp(best, 0, 200), clamp(worst, 0, 200));
 }
 
 export function calculateLeafPreview(input: LeafPreviewInputs): LeafPreviewResult {
-  const annualUtilitySpend = clamp(Number(input.annualUtilitySpend) || 0, 0, 1e12);
-  const systemShare = clamp(Number(input.systemShare) || 0, 0, 1);
+  const annualUtilitySpend = safe(input.annualUtilitySpend, 2400);
+  const systemShare = clamp(safe(input.systemShare, 0.4), 0, 1);
 
-  const age = clamp(Number(input.ageYears) || 0, 0, 200);
-  const wear = clamp(Number(input.wear) || 1, 1, 5);
-  const expectedLife = clamp(Number(input.expectedLifeYears) || 1, 1, 200);
+  const ageYears = clamp(safe(input.ageYears, 12), 0, 80);
+  const wear = clamp(safe(input.wear, 3), 0, 5);
+
+  // ✅ FIX: was input.expectedLifeYears — your type uses expectedLife
+  const expectedLife = clamp(safe((input as any).expectedLife, 15), 1, 60);
 
   const calc = calculateLeafSavings({
-    tier: input.tier,
     annualUtilitySpend,
     systemShare,
-    age,
-    wear,
+    tier: input.tier,
     expectedLife,
+    age: ageYears,
+    wear,
     partialFailure: !!input.partialFailure,
   });
 
-  const annual = rangeFromMinMax(calc.minAnnualSavings, calc.maxAnnualSavings, calc.annualSavingsCenter);
-  const monthly = rangeFromMinMax(calc.minMonthlySavings, calc.maxMonthlySavings, calc.centerMonthlySavings);
+  const annualSavings = mkRange(calc.minAnnualSavings, calc.maxAnnualSavings);
+  const monthlySavings = mkRange(calc.minMonthlySavings, calc.maxMonthlySavings);
 
-  // Payback needs install costs
-  const costMin = typeof input.installCostMin === "number" ? input.installCostMin : undefined;
-  const costMax = typeof input.installCostMax === "number" ? input.installCostMax : undefined;
-  const costCenter = midpoint(costMin, costMax);
-
-  let paybackYears: Range | null = null;
-  // only compute if we have costs and savings isn't ~0
-  if (typeof costMin === "number" && typeof costMax === "number" && annual.min > 1) {
-    // Best case payback uses MIN cost + MAX savings
-    const pbMin = costMin / annual.max;
-    // Worst case uses MAX cost + MIN savings
-    const pbMax = costMax / annual.min;
-    const pbCenter = (costCenter ?? ((costMin + costMax) / 2)) / annual.center;
-
-    paybackYears = rangeFromMinMax(pbMin, pbMax, pbCenter);
-  }
+  const paybackYears = paybackRange(
+    input.installCostMin,
+    input.installCostMax,
+    calc.minAnnualSavings,
+    calc.maxAnnualSavings
+  );
 
   return {
+    annualSavings,
+    monthlySavings,
+    paybackYears,
     currentWaste: calc.currentWaste,
     recoverableWaste: calc.recoverableWaste,
-    annualSavings: annual,
-    monthlySavings: monthly,
-    paybackYears,
   };
 }
