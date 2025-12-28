@@ -107,11 +107,12 @@ export default function NewSnapshotClient({
       : [];
 
     // Optional extra context from existing system
-    const ctxTags = [
-      ...tags,
-      String((existingSystem as any)?.type ?? "").toLowerCase().trim(),
-      String((existingSystem as any)?.subtype ?? "").toLowerCase().trim(),
-    ].filter(Boolean);
+  const ctxTags = [
+  ...tags,
+  String((system as any)?.type ?? "").toLowerCase().trim(),
+  String((system as any)?.subtype ?? "").toLowerCase().trim(),
+].filter(Boolean);
+
 
     return getIncentivesForSystemType(categoryKey, { tags: ctxTags });
   }, [selectedCatalog, existingSystem]);
