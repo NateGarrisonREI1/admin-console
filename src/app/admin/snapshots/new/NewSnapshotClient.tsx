@@ -87,15 +87,6 @@ export default function NewSnapshotClient({
 
   const router = useRouter();
 
-  const job: Job | null = useMemo(() => {
-    return jobId ? findLocalJob(jobId) ?? null : null;
-  }, [jobId]);
-
-  const existingSystem = useMemo(() => {
-    if (!job) return null;
-    return (job.systems ?? []).find((s: any) => s.id === systemId) ?? null; // ✅ no TS error
-  }, [job, systemId]);
-
   // ✅ REAL catalog only (localStorage)
   const catalog = useMemo(() => loadLocalCatalog(), []);
 
