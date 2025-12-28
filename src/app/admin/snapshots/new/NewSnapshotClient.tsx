@@ -166,7 +166,6 @@ export default function NewSnapshotClient({
   expectedLife: toNumberOr(expectedLife, 15),
   partialFailure,
 },
-,
 
       existing: {
         type: existingSystem.type ?? "",
