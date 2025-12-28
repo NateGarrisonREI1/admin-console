@@ -35,15 +35,12 @@ export default function NewSnapshotClient() {
     // INTAKE-FIRST: create EMPTY snapshot shell.
     // existing/proposed/calcs get filled by intake + editor chunks later.
     const draft = createSnapshotDraft({
-      jobId,
-      systemId: systemId || undefined,
-      title: "",
+  jobId,
+  systemId: systemId || undefined,
+  title: "",
+  existingSystemType: systemType || undefined,
+});
 
-      // Keep these minimal and empty.
-      existing: systemType ? { type: systemType } : undefined,
-      suggested: undefined,
-      calculationInputs: undefined,
-    });
 
     const saved = upsertLocalSnapshot(draft);
     router.push(`/admin/snapshots/${encodeURIComponent(saved.id)}`);
