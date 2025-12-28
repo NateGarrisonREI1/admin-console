@@ -8,7 +8,11 @@ import { type Job, findLocalJob } from "../../_data/localJobs";
 import { upsertLocalSnapshot, type SnapshotDraft } from "../../_data/localSnapshots";
 import { loadLocalCatalog, type CatalogSystem, type LeafTierKey } from "../../_data/localCatalog";
 
-import { calculateLeafSavings } from "../../_data/leafSSConfigRuntime";
+// ✅ NEW calc module (future-proof)
+import {
+  calculateLeafPreview,
+  type LeafCalculationInput,
+} from "../../_data/leaf-calculations";
 
 // Incentives (two ways: explicit IDs OR rule-matcher fallback)
 import { loadIncentives, type Incentive } from "../../_data/incentives/incentivesModel";
@@ -119,6 +123,20 @@ function firstEnabledTier(sys: CatalogSystem | null): LeafTierKey {
   return "good";
 }
 
+/**
+ * Future-proof: map catalog tier into an "efficiencyScore" for preview calculations.
+ * Later, runtime engine will not need this.
+ */
+function tierEfficiencyScore(selectedCatalog: CatalogSystem | null, tier: LeafTierKey): number {
+  const t: any = selectedCatalog ? (selectedCatalog as any).tiers?.[tier] : null;
+  const s = Number(t?.efficiencyScore);
+  if (Number.isFinite(s)) return s;
+  // sane fallback if the catalog doesn't store it yet
+  if (tier === "best") return 80;
+  if (tier === "better") return 60;
+  return 45;
+}
+
 /* ─────────────────────────────────────────────
    Component
 ───────────────────────────────────────────── */
@@ -146,12 +164,7 @@ export default function NewSnapshotClient({
   useEffect(() => {
     setCatalog(loadLocalCatalog());
 
-    // keep it fresh if another tab modifies catalog
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      // refresh on any key change (cheap enough for now)
-      setCatalog(loadLocalCatalog());
-    };
+    const onStorage = () => setCatalog(loadLocalCatalog());
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
@@ -171,38 +184,51 @@ export default function NewSnapshotClient({
     setTier(firstEnabledTier(selectedCatalog));
   }, [catalogId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ✅ Option A: calculation inputs
+  // ✅ Option A: calculation inputs (user-editable)
   const [annualUtilitySpend, setAnnualUtilitySpend] = useState<string>("2400");
   const [systemShare, setSystemShare] = useState<string>("0.4"); // 40% default
   const [expectedLife, setExpectedLife] = useState<string>("15");
   const [partialFailure, setPartialFailure] = useState<boolean>(false);
 
-  // Computed ranges from leafSSConfigRuntime
-const calc = useMemo(() => {
-  const annual = toNumberOr(annualUtilitySpend, 2400);
-  const share = toNumberOr(systemShare, 0.4);
-  const life = toNumberOr(expectedLife, 15);
+  // ✅ NEW: computed ranges come from leaf-calculations engine (not UI file)
+  const calc = useMemo(() => {
+    const annual = toNumberOr(annualUtilitySpend, 2400);
+    const share = toNumberOr(systemShare, 0.4);
+    const life = toNumberOr(expectedLife, 15);
 
-  // match leafSSConfigRuntime signature
-  const age = toNumberOr((existingSystem as any)?.ageYears, 12);
-  const wear = toNumberOr((existingSystem as any)?.wear, 3);
+    const age = toNumberOr((existingSystem as any)?.ageYears, 12);
+    const wear = toNumberOr((existingSystem as any)?.wear, 3);
 
-  return calculateLeafSavings({
-    annualUtilitySpend: annual,
-    systemShare: share,
-    tier,                 // ✅ correct key
-    expectedLife: life,   // ✅ correct key
-    age,
-    wear,
+    const input: LeafCalculationInput = {
+      existing: {
+        annualUtilitySpend: annual,
+        systemShare: share,
+        expectedLifeYears: life,
+        ageYears: age,
+        wear,
+        partialFailure,
+      },
+      catalogTier: {
+        tier,
+        efficiencyScore: tierEfficiencyScore(selectedCatalog, tier),
+      },
+    };
+
+    return calculateLeafPreview(input);
+  }, [
+    annualUtilitySpend,
+    systemShare,
+    expectedLife,
+    tier,
     partialFailure,
-  });
-}, [annualUtilitySpend, systemShare, expectedLife, tier, partialFailure, existingSystem]);
+    existingSystem,
+    selectedCatalog,
+  ]);
 
-
-  const computedAnnualMin = calc.annualSavingsRange.min;
-  const computedAnnualMax = calc.annualSavingsRange.max;
-  const computedPayMin = calc.paybackYearsRange.min;
-  const computedPayMax = calc.paybackYearsRange.max;
+  const computedAnnualMin = calc.annualSavings.min;
+  const computedAnnualMax = calc.annualSavings.max;
+  const computedPayMin = calc.paybackYears.min;
+  const computedPayMax = calc.paybackYears.max;
 
   // --- Incentives ---
   const [includeIncentivesInNotes, setIncludeIncentivesInNotes] = useState<boolean>(true);
@@ -219,7 +245,6 @@ const calc = useMemo(() => {
   // B) Fallback: incentives matched by resolver rules/tags
   const resolverMatched: IncentiveResource[] = useMemo(() => {
     if (!selectedCatalog) return [];
-    // if we already have attached IDs, prefer that and don't auto-match
     if ((selectedCatalog as any)?.incentiveIds?.length) return [];
 
     const categoryKey = normalizeSystemType(String((selectedCatalog as any).category ?? ""));
@@ -239,7 +264,6 @@ const calc = useMemo(() => {
   // UI selection of which incentives are included (both modes)
   const [selectedIncentiveIds, setSelectedIncentiveIds] = useState<string[]>([]);
   useEffect(() => {
-    // auto-select all available (attached preferred; else resolver)
     if (attachedIncentives.length) setSelectedIncentiveIds(attachedIncentives.map((x) => x.id));
     else setSelectedIncentiveIds(resolverMatched.map((x) => x.id));
   }, [catalogId, attachedIncentives.length, resolverMatched.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -294,15 +318,14 @@ const calc = useMemo(() => {
     if (!touched.cost) {
       if (mid !== null) setEstCost(String(Math.round(mid)));
       else {
-        // legacy fallback
         const da = (selectedCatalog as any).defaultAssumptions ?? {};
         setEstCost((prev) => (prev.trim() ? prev : pickDefaultNumber(da.estCost)));
       }
     }
 
-    // Calculated savings/payback midpoints
-    if (!touched.savings) setEstAnnualSavings(String(Math.round((computedAnnualMin + computedAnnualMax) / 2)));
-    if (!touched.payback) setEstPaybackYears(String(((computedPayMin + computedPayMax) / 2).toFixed(1)));
+    // Calculated savings/payback midpoints from calc engine
+    if (!touched.savings) setEstAnnualSavings(String(Math.round(calc.annualSavings.center)));
+    if (!touched.payback) setEstPaybackYears(String(calc.paybackYears.center.toFixed(1)));
   }
 
   // Auto-refresh computed numbers into empty fields until user edits
@@ -310,10 +333,10 @@ const calc = useMemo(() => {
     if (!selectedCatalog) return;
 
     if (!touched.savings && !estAnnualSavings.trim()) {
-      setEstAnnualSavings(String(Math.round((computedAnnualMin + computedAnnualMax) / 2)));
+      setEstAnnualSavings(String(Math.round(calc.annualSavings.center)));
     }
     if (!touched.payback && !estPaybackYears.trim()) {
-      setEstPaybackYears(String(((computedPayMin + computedPayMax) / 2).toFixed(1)));
+      setEstPaybackYears(String(calc.paybackYears.center.toFixed(1)));
     }
 
     // cost from tier midpoint if empty
@@ -325,10 +348,8 @@ const calc = useMemo(() => {
   }, [
     selectedCatalog,
     tier,
-    computedAnnualMin,
-    computedAnnualMax,
-    computedPayMin,
-    computedPayMax,
+    calc.annualSavings.center,
+    calc.paybackYears.center,
     touched.cost,
     touched.savings,
     touched.payback,
@@ -367,7 +388,7 @@ const calc = useMemo(() => {
       createdAt: nowIso(),
       updatedAt: nowIso(),
 
-      // ✅ store calculation inputs + chosen tier
+      // store calc inputs + chosen tier (future: runtime calc button)
       tierKey: tier,
       calculationInputs: {
         annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
