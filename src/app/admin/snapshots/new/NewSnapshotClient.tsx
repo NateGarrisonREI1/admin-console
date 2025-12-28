@@ -161,11 +161,12 @@ export default function NewSnapshotClient({
 
       tierKey: tier,
       calculationInputs: {
-        annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
-        systemShare: toNumberOr(systemShare, 0.4),
-        expectedUsefulLifeYears: toNumberOr(expectedLife, 15),
-        partialFailure,
-      },
+  annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
+  systemShare: toNumberOr(systemShare, 0.4),
+  expectedLife: toNumberOr(expectedLife, 15),
+  partialFailure,
+},
+,
 
       existing: {
         type: existingSystem.type ?? "",
