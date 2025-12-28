@@ -1,87 +1,76 @@
 export type LeafTierKey = "good" | "better" | "best";
 
+export type CatalogTierConfig = {
+  enabled: boolean;
+  installCostMin?: number;
+  installCostMax?: number;
+  efficiencyScore?: number; // optional, used later
+};
+
 export type CatalogSystem = {
   id: string;
   category: string;
   name: string;
   highlights: string[];
+  tags?: string[];
 
-  /**
-   * Incentives attached to this catalog system (IDs only)
-   */
+  /** ✅ Option A: incentives attached by ID */
   incentiveIds?: string[];
 
+  /** ✅ Option A: tier config lives in the catalog system */
+  tiers?: Partial<Record<LeafTierKey, CatalogTierConfig>>;
+
+  /** legacy */
   defaultAssumptions?: {
     estCost?: number;
     estAnnualSavings?: number;
     estPaybackYears?: number;
   };
 
-  leafSSOverrides?: {
-    tiers?: {
-      [K in LeafTierKey]?: {
-        leafPriceRange?: { min?: number; max?: number };
-        baseMonthlySavings?: { min?: number; max?: number };
-      };
-    };
-  };
-
-  tags?: string[];
+  leafSSOverrides?: any;
   photos?: string[];
 };
 
-// ✅ KEEP YOUR EXISTING KEY so current data still loads
 const STORAGE_KEY = "REI_LOCAL_CATALOG_V2";
+const LEGACY_KEYS = ["LEAF_LOCAL_CATALOG"];
 
-// Optional legacy keys (if you ever used others)
-const LEGACY_KEYS = [
-  "rei_leaf_catalog_v1",
-  "rei_catalog",
-  "leaf_catalog",
-  "leaf_ss_catalog",
-];
+/** migrate legacy key → new key (one-way) */
+function migrateIfNeeded() {
+  if (typeof window === "undefined") return;
 
-function isBrowser() {
-  return typeof window !== "undefined" && typeof localStorage !== "undefined";
-}
-
-function safeParse<T>(raw: string | null): T | null {
-  if (!raw) return null;
   try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
+    const current = localStorage.getItem(STORAGE_KEY);
+    if (current) return; // already migrated / already in use
 
-function normalizeCatalog(x: any): CatalogSystem[] {
-  if (!Array.isArray(x)) return [];
-  return x.filter(Boolean);
+    for (const k of LEGACY_KEYS) {
+      const raw = localStorage.getItem(k);
+      if (raw) {
+        localStorage.setItem(STORAGE_KEY, raw);
+        // optional: leave legacy intact, or remove it
+        // localStorage.removeItem(k);
+        return;
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 export function loadLocalCatalog(): CatalogSystem[] {
-  if (!isBrowser()) return [];
+  if (typeof window === "undefined") return [];
+  migrateIfNeeded();
 
-  // 1) Primary key
-  const primary = safeParse<CatalogSystem[]>(localStorage.getItem(STORAGE_KEY));
-  if (primary) return normalizeCatalog(primary);
-
-  // 2) Legacy migration
-  for (const k of LEGACY_KEYS) {
-    const legacy = safeParse<CatalogSystem[]>(localStorage.getItem(k));
-    if (legacy && legacy.length) {
-      const normalized = normalizeCatalog(legacy);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-      return normalized;
-    }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
   }
-
-  return [];
 }
 
 export function saveLocalCatalog(list: CatalogSystem[]) {
-  if (!isBrowser()) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeCatalog(list)));
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
 export function upsertCatalogSystem(sys: CatalogSystem) {
@@ -95,10 +84,4 @@ export function upsertCatalogSystem(sys: CatalogSystem) {
 export function deleteCatalogSystem(id: string) {
   const list = loadLocalCatalog().filter((s) => s.id !== id);
   saveLocalCatalog(list);
-}
-
-// Optional helper (handy for debugging)
-export function clearLocalCatalog() {
-  if (!isBrowser()) return;
-  localStorage.removeItem(STORAGE_KEY);
 }
