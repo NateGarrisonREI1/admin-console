@@ -165,7 +165,7 @@ export default function NewSnapshotClient({
   }
 
   function onSave() {
-    if (!job || !existingSystem) return;
+    if (!job || !system) return;
 
     if (!suggestedName.trim()) {
       alert("Suggested system name is required.");
@@ -187,17 +187,17 @@ export default function NewSnapshotClient({
     const draft: SnapshotDraft = {
       id: `snap_${Math.random().toString(16).slice(2)}_${Date.now()}`,
       jobId: job.id,
-      systemId: existingSystem.id,
+      systemId: system.id,
       createdAt: nowIso(),
       updatedAt: nowIso(),
 
       existing: {
-        type: existingSystem.type ?? "",
-        subtype: existingSystem.subtype ?? "",
-        ageYears: existingSystem.ageYears ?? null,
-        operational: existingSystem.operational ?? "",
-        wear: existingSystem.wear ?? null,
-        maintenance: existingSystem.maintenance ?? "",
+        type: system.type ?? "",
+        subtype: system.subtype ?? "",
+        ageYears: system.ageYears ?? null,
+        operational: system.operational ?? "",
+        wear: system.wear ?? null,
+        maintenance: system.maintenance ?? "",
       },
 
       suggested: {
@@ -243,7 +243,7 @@ export default function NewSnapshotClient({
     );
   }
 
-  if (!existingSystem) {
+  if (!system) {
     return (
       <div className="rei-card" style={{ display: "grid", gap: 10 }}>
         <div style={{ fontWeight: 900, fontSize: 16 }}>Existing system not found</div>
@@ -282,22 +282,22 @@ export default function NewSnapshotClient({
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 12, background: "white" }}>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <div>
-              <span style={{ fontWeight: 800 }}>Type:</span> {existingSystem.type}
+              <span style={{ fontWeight: 800 }}>Type:</span> {system.type}
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Subtype:</span> {existingSystem.subtype}
+              <span style={{ fontWeight: 800 }}>Subtype:</span> {system.subtype}
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Age:</span> {existingSystem.ageYears ?? "—"} yrs
+              <span style={{ fontWeight: 800 }}>Age:</span> {system.ageYears ?? "—"} yrs
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Operational:</span> {existingSystem.operational ?? "—"}
+              <span style={{ fontWeight: 800 }}>Operational:</span> {system.operational ?? "—"}
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Wear:</span> {existingSystem.wear ?? "—"}/5
+              <span style={{ fontWeight: 800 }}>Wear:</span> {system.wear ?? "—"}/5
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Maintenance:</span> {existingSystem.maintenance ?? "—"}
+              <span style={{ fontWeight: 800 }}>Maintenance:</span> {system.maintenance ?? "—"}
             </div>
           </div>
 
