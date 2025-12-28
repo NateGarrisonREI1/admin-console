@@ -189,12 +189,13 @@ return calculateLeafPreview({
   annualUtilitySpend: annual,
   systemShare: share,
   expectedLife: life,
-  age: ageYears,
+  ageYears,
   wear,
   partialFailure,
   installCostMin: tierCostMin,
   installCostMax: tierCostMax,
 });
+
 
   }, [
     annualUtilitySpend,
