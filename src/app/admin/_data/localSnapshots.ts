@@ -1,21 +1,27 @@
 /**
  * Local Snapshots (Compatibility Layer)
  *
- * Goal: keep the app compiling + running while we rebuild
- * the real domain model + persistence.
+ * Purpose:
+ * - Keep the app compiling and usable
+ * - Preserve legacy API signatures
+ * - Avoid locking in bad architecture
  *
- * ✅ Exposes the legacy API expected by pages/components
- * ✅ Stores data in-memory only
- * ❌ No business logic here
+ * This file is intentionally:
+ * - In-memory only
+ * - Logic-dumb
+ * - Replaceable later
  */
 
 export type LeafTierKey = "good" | "better" | "best";
+
+/* ======================================================
+ * SNAPSHOT DRAFT (UI SHAPE)
+ * ====================================================== */
 
 export type SnapshotDraft = {
   id: string;
   jobId?: string;
   systemId?: string;
-
   title?: string;
 
   existing: {
@@ -60,15 +66,15 @@ export type SnapshotDraft = {
     partialFailure?: boolean;
   };
 
-  // allow future fields while rebuilding schema
-  [key: string]: any;
-
   createdAt?: string;
   updatedAt?: string;
+
+  // Escape hatch while rebuilding schema
+  [key: string]: any;
 };
 
 /* ======================================================
- * IN-MEMORY STORE (TEMPORARY)
+ * IN-MEMORY STORE
  * ====================================================== */
 
 let _snapshots: SnapshotDraft[] = [];
@@ -97,18 +103,14 @@ export function upsertLocalSnapshot(snapshot: SnapshotDraft): SnapshotDraft {
     _snapshots[index] = {
       ..._snapshots[index],
       ...snapshot,
-      existing: snapshot.existing || _snapshots[index].existing,
-      suggested: snapshot.suggested || _snapshots[index].suggested,
-      calculationInputs:
-        snapshot.calculationInputs || _snapshots[index].calculationInputs,
+      existing: snapshot.existing,
+      suggested: snapshot.suggested,
+      calculationInputs: snapshot.calculationInputs,
       updatedAt: now,
     };
   } else {
     _snapshots.push({
       ...snapshot,
-      existing: snapshot.existing ?? {},
-      suggested: snapshot.suggested ?? {},
-      calculationInputs: snapshot.calculationInputs ?? {},
       createdAt: snapshot.createdAt || now,
       updatedAt: now,
     });
@@ -121,10 +123,16 @@ export function deleteLocalSnapshot(snapshotId: string): void {
   _snapshots = _snapshots.filter((s) => s.id !== snapshotId);
 }
 
+/* ======================================================
+ * LEGACY COMPAT
+ * ====================================================== */
+
 /**
- * Previously persisted snapshots.
- * Now a no-op for compatibility.
+ * Legacy callers sometimes pass an updated array.
+ * We accept it to stay compatible.
  */
-export function saveLocalSnapshots(): void {
-  // intentionally empty
+export function saveLocalSnapshots(next?: SnapshotDraft[]): void {
+  if (Array.isArray(next)) {
+    _snapshots = next;
+  }
 }
