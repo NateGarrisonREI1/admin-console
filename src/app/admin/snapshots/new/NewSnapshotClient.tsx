@@ -212,8 +212,9 @@ return calculateLeafPreview({
 const computedAnnualMax = Math.round(calc.annualSavingsRange.max);
 
 
-  const computedPayMin = calc.paybackYears ? calc.paybackYears.min : null;
-  const computedPayMax = calc.paybackYears ? calc.paybackYears.max : null;
+  const computedPayMin = calc.paybackYearsRange.min;
+const computedPayMax = calc.paybackYearsRange.max;
+
 
   // --- Incentives ---
   const [includeIncentivesInNotes, setIncludeIncentivesInNotes] = useState<boolean>(true);
