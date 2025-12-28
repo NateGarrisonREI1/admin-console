@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { type Job, findLocalJob } from "../../_data/localJobs";
+
+import { type Job } from "../../_data/localJobs";
 import { upsertLocalSnapshot, type SnapshotDraft } from "../../_data/localSnapshots";
 import { loadLocalCatalog } from "../../_data/localCatalog";
-import {
-  calculateLeafSavings,
-  type LeafTierKey,
-} from "../../_data/leafSSConfigRuntime";
+
 // Incentives
 import {
   getIncentivesForSystemType,
@@ -41,9 +39,12 @@ function formatAmount(amount?: IncentiveAmount): string {
 function buildIncentivesNotesBlock(selected: IncentiveResource[]) {
   if (!selected.length) return "";
 
-  const disclaimer = INCENTIVE_COPY.find((x) => x.key === "general_disclaimer")?.body ?? "";
-  const fedBlurb = INCENTIVE_COPY.find((x) => x.key === "federal_tax_credit_blurb")?.body ?? "";
-  const utilBlurb = INCENTIVE_COPY.find((x) => x.key === "utility_rebate_blurb")?.body ?? "";
+  const disclaimer =
+    INCENTIVE_COPY.find((x) => x.key === "general_disclaimer")?.body ?? "";
+  const fedBlurb =
+    INCENTIVE_COPY.find((x) => x.key === "federal_tax_credit_blurb")?.body ?? "";
+  const utilBlurb =
+    INCENTIVE_COPY.find((x) => x.key === "utility_rebate_blurb")?.body ?? "";
 
   const lines: string[] = [];
   lines.push("Incentives (auto-added)");
@@ -84,12 +85,10 @@ export default function NewSnapshotClient({
   job: Job;
   system: any;
 }) {
-
   const router = useRouter();
 
   // ✅ REAL catalog only (localStorage)
   const catalog = useMemo(() => loadLocalCatalog(), []);
-
   const [catalogId, setCatalogId] = useState<string>("");
 
   const selectedCatalog = useMemo(() => {
@@ -103,27 +102,30 @@ export default function NewSnapshotClient({
 
     const categoryKey = normalizeSystemType(String(selectedCatalog.category ?? ""));
     const tags = Array.isArray(selectedCatalog.tags)
-      ? selectedCatalog.tags.map((t: any) => String(t || "").toLowerCase().trim()).filter(Boolean)
+      ? selectedCatalog.tags
+          .map((t: any) => String(t || "").toLowerCase().trim())
+          .filter(Boolean)
       : [];
 
     // Optional extra context from existing system
-  const ctxTags = [
-  ...tags,
-  String((system as any)?.type ?? "").toLowerCase().trim(),
-  String((system as any)?.subtype ?? "").toLowerCase().trim(),
-].filter(Boolean);
-
+    const ctxTags = [
+      ...tags,
+      String((system as any)?.type ?? "").toLowerCase().trim(),
+      String((system as any)?.subtype ?? "").toLowerCase().trim(),
+    ].filter(Boolean);
 
     return getIncentivesForSystemType(categoryKey, { tags: ctxTags });
   }, [selectedCatalog, system]);
 
-  const [includeIncentivesInNotes, setIncludeIncentivesInNotes] = useState<boolean>(true);
+  const [includeIncentivesInNotes, setIncludeIncentivesInNotes] =
+    useState<boolean>(true);
   const [selectedIncentiveIds, setSelectedIncentiveIds] = useState<string[]>([]);
 
   // Auto-select all incentives whenever the list changes
   useEffect(() => {
     setSelectedIncentiveIds(incentives.map((x) => x.id));
-  }, [catalogId, incentives.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogId, incentives.length]);
 
   const selectedIncentives = useMemo(() => {
     const set = new Set(selectedIncentiveIds);
@@ -143,16 +145,24 @@ export default function NewSnapshotClient({
     if (!selectedCatalog) return;
 
     // Only fill suggested name if empty
-    setSuggestedName((prev) => (prev.trim() ? prev : String(selectedCatalog.name ?? "")));
+    setSuggestedName((prev) =>
+      prev.trim() ? prev : String(selectedCatalog.name ?? "")
+    );
 
     // Try to pull default assumptions if you have them
     const da = (selectedCatalog as any).defaultAssumptions ?? {};
     setEstCost((prev) => (prev.trim() ? prev : pickDefaultNumber(da.estCost)));
-    setEstAnnualSavings((prev) => (prev.trim() ? prev : pickDefaultNumber(da.estAnnualSavings)));
-    setEstPaybackYears((prev) => (prev.trim() ? prev : pickDefaultNumber(da.estPaybackYears)));
+    setEstAnnualSavings((prev) =>
+      prev.trim() ? prev : pickDefaultNumber(da.estAnnualSavings)
+    );
+    setEstPaybackYears((prev) =>
+      prev.trim() ? prev : pickDefaultNumber(da.estPaybackYears)
+    );
 
     // Notes from highlights (optional)
-    const highlights = Array.isArray((selectedCatalog as any).highlights) ? (selectedCatalog as any).highlights : [];
+    const highlights = Array.isArray((selectedCatalog as any).highlights)
+      ? (selectedCatalog as any).highlights
+      : [];
     const hlLine = highlights.length ? highlights.join(" • ") : "";
 
     setNotes((prev) => {
@@ -214,13 +224,13 @@ export default function NewSnapshotClient({
     router.push(`/admin/jobs/${job.id}?snapSaved=1`);
   }
 
-  // --- Guards ---
+  // --- Guard (props missing) ---
   if (!job || !system) {
     return (
       <div className="rei-card" style={{ display: "grid", gap: 10 }}>
-        <div style={{ fontWeight: 900, fontSize: 16 }}>Missing URL parameters</div>
+        <div style={{ fontWeight: 900, fontSize: 16 }}>Missing page context</div>
         <div style={{ color: "var(--muted)" }}>
-          Expected <code>?jobId=...</code> and <code>&amp;systemId=...</code>.
+          This page expects a <code>job</code> and <code>system</code>.
         </div>
         <Link className="rei-btn" href="/admin/jobs" style={{ width: "fit-content" }}>
           ← Back to Jobs
@@ -229,44 +239,27 @@ export default function NewSnapshotClient({
     );
   }
 
-  if (!job) {
-    return (
-      <div className="rei-card" style={{ display: "grid", gap: 10 }}>
-        <div style={{ fontWeight: 900, fontSize: 16 }}>Job not found</div>
-        <div style={{ color: "var(--muted)" }}>
-          No local job exists with id: <code>{job?.id ?? "unknown"}</code>
-        </div>
-        <Link className="rei-btn" href="/admin/jobs" style={{ width: "fit-content" }}>
-          ← Back to Jobs
-        </Link>
-      </div>
-    );
-  }
-
-  if (!system) {
-    return (
-      <div className="rei-card" style={{ display: "grid", gap: 10 }}>
-        <div style={{ fontWeight: 900, fontSize: 16 }}>Existing system not found</div>
-        <div style={{ color: "var(--muted)" }}>
-          No system exists with id: <code>{systemId}</code> for this job.
-        </div>
-        <Link className="rei-btn" href={backHref} style={{ width: "fit-content" }}>
-          ← Back to Job
-        </Link>
-      </div>
-    );
-  }
-
-  // --- Main UI (restored) ---
+  // --- Main UI ---
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div className="rei-card">
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
           <div>
-            <div style={{ fontWeight: 900, fontSize: 16 }}>New LEAF System Snapshot</div>
+            <div style={{ fontWeight: 900, fontSize: 16 }}>
+              New LEAF System Snapshot
+            </div>
             <div style={{ color: "var(--muted)", marginTop: 6 }}>
               Job: <b>{(job as any).customerName ?? "—"}</b> —{" "}
-              <span style={{ opacity: 0.75 }}>{(job as any).reportId ?? job.id}</span>
+              <span style={{ opacity: 0.75 }}>
+                {(job as any).reportId ?? job.id}
+              </span>
             </div>
           </div>
 
@@ -277,10 +270,26 @@ export default function NewSnapshotClient({
       </div>
 
       <div className="rei-card">
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>Existing System (from worksheet)</div>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>
+          Existing System (from worksheet)
+        </div>
 
-        <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 12, background: "white" }}>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 14,
+            padding: 12,
+            background: "white",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
             <div>
               <span style={{ fontWeight: 800 }}>Type:</span> {system.type}
             </div>
@@ -288,16 +297,20 @@ export default function NewSnapshotClient({
               <span style={{ fontWeight: 800 }}>Subtype:</span> {system.subtype}
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Age:</span> {system.ageYears ?? "—"} yrs
+              <span style={{ fontWeight: 800 }}>Age:</span>{" "}
+              {system.ageYears ?? "—"} yrs
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Operational:</span> {system.operational ?? "—"}
+              <span style={{ fontWeight: 800 }}>Operational:</span>{" "}
+              {system.operational ?? "—"}
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Wear:</span> {system.wear ?? "—"}/5
+              <span style={{ fontWeight: 800 }}>Wear:</span>{" "}
+              {system.wear ?? "—"}/5
             </div>
             <div>
-              <span style={{ fontWeight: 800 }}>Maintenance:</span> {system.maintenance ?? "—"}
+              <span style={{ fontWeight: 800 }}>Maintenance:</span>{" "}
+              {system.maintenance ?? "—"}
             </div>
           </div>
 
@@ -308,18 +321,30 @@ export default function NewSnapshotClient({
       </div>
 
       <div className="rei-card">
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>Suggested Upgrade (Proposed)</div>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>
+          Suggested Upgrade (Proposed)
+        </div>
 
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontWeight: 700 }}>Choose from Systems Catalog (optional)</div>
+            <div style={{ fontWeight: 700 }}>
+              Choose from Systems Catalog (optional)
+            </div>
 
             {catalog.length === 0 ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                No systems in your catalog yet. Add systems in <b>Systems Catalog</b> to enable suggestions.
+                No systems in your catalog yet. Add systems in{" "}
+                <b>Systems Catalog</b> to enable suggestions.
               </div>
             ) : (
-              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
                 <select
                   value={catalogId}
                   onChange={(e) => setCatalogId(e.target.value)}
@@ -356,7 +381,8 @@ export default function NewSnapshotClient({
 
             {selectedCatalog ? (
               <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                From catalog • Incentive type: <b>{normalizeSystemType(String(selectedCatalog.category ?? ""))}</b>
+                From catalog • Incentive type:{" "}
+                <b>{normalizeSystemType(String(selectedCatalog.category ?? ""))}</b>
                 {Array.isArray(selectedCatalog.tags) && selectedCatalog.tags.length ? (
                   <>
                     {" "}
@@ -373,11 +399,34 @@ export default function NewSnapshotClient({
 
           {/* Incentives */}
           {selectedCatalog && incentives.length ? (
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 12, background: "white" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ fontWeight: 900 }}>Incentives (matched to suggested upgrade)</div>
+            <div
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: 14,
+                padding: 12,
+                background: "white",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ fontWeight: 900 }}>
+                  Incentives (matched to suggested upgrade)
+                </div>
 
-                <label style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 700 }}>
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "center",
+                    fontWeight: 700,
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={includeIncentivesInNotes}
@@ -419,9 +468,22 @@ export default function NewSnapshotClient({
                       <div>
                         <div style={{ fontWeight: 900 }}>
                           {r.programName}
-                          {amt ? <span style={{ fontWeight: 700, color: "#374151" }}> — {amt}</span> : null}
+                          {amt ? (
+                            <span style={{ fontWeight: 700, color: "#374151" }}>
+                              {" "}
+                              — {amt}
+                            </span>
+                          ) : null}
                         </div>
-                        <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{r.shortBlurb}</div>
+                        <div
+                          style={{
+                            color: "var(--muted)",
+                            fontSize: 12,
+                            marginTop: 4,
+                          }}
+                        >
+                          {r.shortBlurb}
+                        </div>
                       </div>
                     </label>
                   );
@@ -436,7 +498,7 @@ export default function NewSnapshotClient({
             </div>
           ) : null}
 
-          {/* Full form fields (restored) */}
+          {/* Full form fields */}
           <label style={{ display: "grid", gap: 6 }}>
             <div style={{ fontWeight: 700 }}>
               Suggested system name <span style={{ color: "#ef4444" }}>(required)</span>
@@ -445,21 +507,35 @@ export default function NewSnapshotClient({
               value={suggestedName}
               onChange={(e) => setSuggestedName(e.target.value)}
               placeholder="e.g., High-efficiency gas furnace"
-              style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
+              style={{
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+              }}
             />
             <div style={{ color: "var(--muted)", fontSize: 12 }}>
               Tip: use catalog + tweak later. Or type a custom upgrade name.
             </div>
           </label>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: 10,
+            }}
+          >
             <label style={{ display: "grid", gap: 6 }}>
               <div style={{ fontWeight: 700 }}>Est. Cost ($)</div>
               <input
                 value={estCost}
                 onChange={(e) => setEstCost(e.target.value)}
                 placeholder="e.g., 12000"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
+                style={{
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                }}
               />
             </label>
 
@@ -469,7 +545,11 @@ export default function NewSnapshotClient({
                 value={estAnnualSavings}
                 onChange={(e) => setEstAnnualSavings(e.target.value)}
                 placeholder="e.g., 350"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
+                style={{
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                }}
               />
             </label>
 
@@ -479,7 +559,11 @@ export default function NewSnapshotClient({
                 value={estPaybackYears}
                 onChange={(e) => setEstPaybackYears(e.target.value)}
                 placeholder="e.g., 12"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
+                style={{
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                }}
               />
             </label>
           </div>
@@ -491,7 +575,11 @@ export default function NewSnapshotClient({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Short notes to appear on snapshot/report"
               rows={4}
-              style={{ padding: 10, borderRadius: 10, border: "1px solid #e5e7eb" }}
+              style={{
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+              }}
             />
           </label>
 
