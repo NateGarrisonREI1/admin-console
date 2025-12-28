@@ -10,12 +10,28 @@ import { loadLocalCatalog, type CatalogSystem, type LeafTierKey } from "../../_d
 
 import { calculateLeafPreview } from "../../_data/leafCalculations";
 
+import { loadIncentives, type Incentive } from "../../_data/incentives/incentivesModel";
+import {
+  getIncentivesForSystemType,
+  INCENTIVE_COPY,
+  normalizeSystemType,
+  type IncentiveResource,
+  type IncentiveAmount,
+} from "../../_data/incentives/incentiveResolver";
+
 /* ─────────────────────────────────────────────
    Helpers
 ───────────────────────────────────────────── */
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function parseNum(v: string) {
+  const cleaned = (v || "").replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
 }
 
 function toNumberOr(v: any, fallback: number) {
@@ -26,6 +42,73 @@ function toNumberOr(v: any, fallback: number) {
 function midpoint(min?: number, max?: number): number | null {
   if (typeof min !== "number" || typeof max !== "number") return null;
   return (min + max) / 2;
+}
+
+function pickDefaultNumber(val: any): string {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "number" && Number.isFinite(val)) return String(val);
+  if (typeof val === "string") return val.replace(/[^0-9.]/g, "");
+  return "";
+}
+
+/* ---------- Incentive formatting ---------- */
+
+function formatAmount(amount?: IncentiveAmount): string {
+  if (!amount) return "";
+  if (amount.kind === "text") return amount.value;
+  if (amount.kind === "flat") return `$${amount.value}`;
+  if (amount.kind === "range") return `$${amount.min}–$${amount.max}`;
+  return "";
+}
+
+function buildIncentivesNotesBlockFromResolver(selected: IncentiveResource[]) {
+  if (!selected.length) return "";
+
+  const disclaimer = INCENTIVE_COPY.find((x) => x.key === "general_disclaimer")?.body ?? "";
+  const fedBlurb = INCENTIVE_COPY.find((x) => x.key === "federal_tax_credit_blurb")?.body ?? "";
+  const utilBlurb = INCENTIVE_COPY.find((x) => x.key === "utility_rebate_blurb")?.body ?? "";
+
+  const lines: string[] = [];
+  lines.push("Incentives (auto-added)", "");
+
+  if (disclaimer) lines.push(disclaimer, "");
+  if (fedBlurb) lines.push(`• ${fedBlurb}`);
+  if (utilBlurb) lines.push(`• ${utilBlurb}`);
+  lines.push("");
+
+  for (const r of selected) {
+    const amt = formatAmount(r.amount);
+    lines.push(`- ${r.programName}${amt ? ` — ${amt}` : ""}`);
+    if (r.shortBlurb) lines.push(`  ${r.shortBlurb}`);
+    if (r.links?.length) {
+      for (const l of r.links) lines.push(`  Link: ${l.label} — ${l.url}`);
+    }
+  }
+
+  return lines.join("\n").trim();
+}
+
+function buildIncentivesNotesBlockFromIds(selected: Incentive[]) {
+  if (!selected.length) return "";
+
+  const lines: string[] = [];
+  lines.push("Incentives (auto-added)", "");
+
+  for (const i of selected) {
+    lines.push(`- ${i.title} (${i.level})`);
+    if (i.valueText) lines.push(`  ${i.valueText}`);
+    if (i.url) lines.push(`  Link: ${i.url}`);
+  }
+
+  return lines.join("\n").trim();
+}
+
+function firstEnabledTier(sys: CatalogSystem | null): LeafTierKey {
+  const tiers = (sys as any)?.tiers;
+  if (tiers?.good?.enabled) return "good";
+  if (tiers?.better?.enabled) return "better";
+  if (tiers?.best?.enabled) return "best";
+  return "good";
 }
 
 /* ─────────────────────────────────────────────
@@ -41,18 +124,12 @@ export default function NewSnapshotClient({
 }) {
   const router = useRouter();
 
-  /* ---------- Job / System ---------- */
-
-  const job: Job | null = useMemo(() => {
-    return jobId ? findLocalJob(jobId) ?? null : null;
-  }, [jobId]);
+  const job = useMemo(() => (jobId ? findLocalJob(jobId) ?? null : null), [jobId]);
 
   const existingSystem = useMemo(() => {
     if (!job) return null;
     return (job.systems ?? []).find((s: any) => s.id === systemId) ?? null;
   }, [job, systemId]);
-
-  /* ---------- Catalog ---------- */
 
   const [catalog, setCatalog] = useState<CatalogSystem[]>([]);
   useEffect(() => {
@@ -65,46 +142,31 @@ export default function NewSnapshotClient({
   const [catalogId, setCatalogId] = useState("");
   const selectedCatalog = useMemo(
     () => catalog.find((c) => c.id === catalogId) ?? null,
-    [catalogId, catalog]
+    [catalog, catalogId]
   );
 
-  /* ---------- Tier ---------- */
-
   const [tier, setTier] = useState<LeafTierKey>("good");
-
-  const tierCfg: any = selectedCatalog ? (selectedCatalog as any).tiers?.[tier] : null;
-  const tierCostMin = typeof tierCfg?.installCostMin === "number" ? tierCfg.installCostMin : undefined;
-  const tierCostMax = typeof tierCfg?.installCostMax === "number" ? tierCfg.installCostMax : undefined;
-
-  /* ---------- Calc Inputs ---------- */
+  useEffect(() => {
+    if (selectedCatalog) setTier(firstEnabledTier(selectedCatalog));
+  }, [selectedCatalog]);
 
   const [annualUtilitySpend, setAnnualUtilitySpend] = useState("2400");
   const [systemShare, setSystemShare] = useState("0.4");
   const [expectedLife, setExpectedLife] = useState("15");
   const [partialFailure, setPartialFailure] = useState(false);
 
-  /* ---------- Calculation ---------- */
+  const tierCfg: any = selectedCatalog ? (selectedCatalog as any).tiers?.[tier] : null;
+  const tierCostMin = typeof tierCfg?.installCostMin === "number" ? tierCfg.installCostMin : undefined;
+  const tierCostMax = typeof tierCfg?.installCostMax === "number" ? tierCfg.installCostMax : undefined;
 
   const calc = useMemo(() => {
-    if (!existingSystem) {
-      return calculateLeafPreview({
-        tier,
-        annualUtilitySpend: 2400,
-        systemShare: 0.4,
-        expectedLife: 15,
-        ageYears: 10,
-        wear: 3,
-        partialFailure: false,
-      });
-    }
-
     return calculateLeafPreview({
       tier,
       annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
       systemShare: toNumberOr(systemShare, 0.4),
       expectedLife: toNumberOr(expectedLife, 15),
-      ageYears: toNumberOr((existingSystem as any).ageYears, 10),
-      wear: toNumberOr((existingSystem as any).wear, 3),
+      ageYears: toNumberOr(existingSystem?.ageYears, 12),
+      wear: toNumberOr(existingSystem?.wear, 3),
       partialFailure,
       installCostMin: tierCostMin,
       installCostMax: tierCostMax,
@@ -114,128 +176,64 @@ export default function NewSnapshotClient({
     annualUtilitySpend,
     systemShare,
     expectedLife,
-    partialFailure,
     existingSystem,
+    partialFailure,
     tierCostMin,
     tierCostMax,
   ]);
 
-  const computedAnnualMin = Math.round(calc.annualSavingsRange.min);
-  const computedAnnualMax = Math.round(calc.annualSavingsRange.max);
-  const computedPayMin = calc.paybackYearsRange.min;
-  const computedPayMax = calc.paybackYearsRange.max;
-
-  /* ---------- Snapshot Form ---------- */
-
-  const [suggestedName, setSuggestedName] = useState("");
-  const [estCost, setEstCost] = useState("");
-  const [estAnnualSavings, setEstAnnualSavings] = useState("");
-  const [estPaybackYears, setEstPaybackYears] = useState("");
-
-  /* ---------- Autofill ---------- */
-
-  useEffect(() => {
-    if (!estAnnualSavings)
-      setEstAnnualSavings(String(Math.round(calc.annualSavingsRange.center)));
-
-    if (!estPaybackYears)
-      setEstPaybackYears(calc.paybackYearsRange.center.toFixed(1));
-
-    if (!estCost) {
-      const mid = midpoint(tierCostMin, tierCostMax);
-      if (mid !== null) setEstCost(String(Math.round(mid)));
-    }
-  }, [calc, tierCostMin, tierCostMax]);
-
-  /* ---------- Save ---------- */
+  /* ─────────────────────────────────────────────
+     SAVE
+  ────────────────────────────────────────────── */
 
   function onSave() {
     if (!job || !existingSystem) return;
 
     const draft: SnapshotDraft = {
-      id: `snap_${Math.random().toString(16).slice(2)}`,
+      id: `snap_${Math.random().toString(16).slice(2)}_${Date.now()}`,
       jobId: job.id,
       systemId: existingSystem.id,
       createdAt: nowIso(),
       updatedAt: nowIso(),
 
       tierKey: tier,
+
       calculationInputs: {
-  annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
-  systemShare: toNumberOr(systemShare, 0.4),
-  expectedLife: toNumberOr(expectedLife, 15),
-  partialFailure,
-},
+        annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
+        systemShare: toNumberOr(systemShare, 0.4),
+        expectedLife: toNumberOr(expectedLife, 15),
+        partialFailure,
+      },
 
       existing: {
-        type: existingSystem.type ?? "",
-        subtype: existingSystem.subtype ?? "",
-        ageYears: existingSystem.ageYears ?? null,
-        wear: existingSystem.wear ?? null,
+        type: String(existingSystem.type ?? ""),
+        subtype: String(existingSystem.subtype ?? ""),
+        ageYears: typeof existingSystem.ageYears === "number" ? existingSystem.ageYears : null,
+        operational: String(existingSystem.operational ?? ""),
+        wear: typeof existingSystem.wear === "number" ? existingSystem.wear : null,
+        maintenance: String(existingSystem.maintenance ?? ""),
       },
 
       suggested: {
-        name: suggestedName || "Proposed System",
+        name: "Proposed Upgrade",
         catalogSystemId: catalogId || null,
-        estCost: toNumberOr(estCost, 0),
-        estAnnualSavings: toNumberOr(estAnnualSavings, 0),
-        estPaybackYears: toNumberOr(estPaybackYears, 0),
+        estCost: null,
+        estAnnualSavings: null,
+        estPaybackYears: null,
         notes: "",
       },
     };
 
     upsertLocalSnapshot(draft);
-    router.push(`/admin/jobs/${job.id}`);
+    router.push(`/admin/jobs/${job.id}?snapSaved=1`);
   }
-
-  /* ---------- Guards ---------- */
 
   if (!job || !existingSystem) {
-    return (
-      <div className="rei-card">
-        <Link href="/admin/jobs">← Back to Jobs</Link>
-      </div>
-    );
+    return <div className="rei-card">Invalid job or system.</div>;
   }
 
-  /* ---------- Render ---------- */
-
   return (
-    <div className="rei-card" style={{ display: "grid", gap: 14 }}>
-      <h2>New LEAF Snapshot</h2>
-
-      <div>
-        <b>Computed Savings:</b>{" "}
-        ${computedAnnualMin.toLocaleString()}–${computedAnnualMax.toLocaleString()}/yr
-        <br />
-        <b>Payback:</b>{" "}
-        {computedPayMin.toFixed(1)}–{computedPayMax.toFixed(1)} yrs
-      </div>
-
-      <input
-        placeholder="Suggested system name"
-        value={suggestedName}
-        onChange={(e) => setSuggestedName(e.target.value)}
-      />
-
-      <input
-        placeholder="Estimated cost"
-        value={estCost}
-        onChange={(e) => setEstCost(e.target.value)}
-      />
-
-      <input
-        placeholder="Estimated annual savings"
-        value={estAnnualSavings}
-        onChange={(e) => setEstAnnualSavings(e.target.value)}
-      />
-
-      <input
-        placeholder="Estimated payback years"
-        value={estPaybackYears}
-        onChange={(e) => setEstPaybackYears(e.target.value)}
-      />
-
+    <div className="rei-card">
       <button className="rei-btn rei-btnPrimary" onClick={onSave}>
         Save Snapshot
       </button>
