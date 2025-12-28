@@ -15,10 +15,10 @@ function mid(min: number, max: number) {
 }
 
 function mkRange(minV: number, maxV: number): Range {
-  const min = safe(minV, 0);
-  const max = safe(maxV, 0);
-  const lo = Math.min(min, max);
-  const hi = Math.max(min, max);
+  const a = safe(minV, 0);
+  const b = safe(maxV, 0);
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
   return { min: lo, max: hi, center: mid(lo, hi) };
 }
 
@@ -29,7 +29,6 @@ function paybackRange(costMin?: number, costMax?: number, savMin?: number, savMa
   const sMin = safe(savMin, 0);
   const sMax = safe(savMax ?? savMin, sMin);
 
-  // Avoid divide-by-zero (treat as “very large”)
   const eps = 1e-9;
 
   // Best-case payback: low cost / high savings
@@ -38,17 +37,14 @@ function paybackRange(costMin?: number, costMax?: number, savMin?: number, savMa
   // Worst-case payback: high cost / low savings
   const worst = cMax / Math.max(sMin, eps);
 
-  // If savings are basically 0, both become huge → clamp to something sane for UI
-  const pMin = clamp(best, 0, 200);
-  const pMax = clamp(worst, 0, 200);
-
-  return mkRange(pMin, pMax);
+  // clamp for UI sanity
+  return mkRange(clamp(best, 0, 200), clamp(worst, 0, 200));
 }
 
 export function calculateLeafPreview(input: LeafPreviewInputs): LeafPreviewResult {
   const annualUtilitySpend = safe(input.annualUtilitySpend, 2400);
   const systemShare = clamp(safe(input.systemShare, 0.4), 0, 1);
-  const expectedLife = clamp(safe(input.expectedLife, 15), 1, 60);
+  const expectedLife = clamp(safe(input.expectedLife, 15), 1, 60); // ✅ now matches types.ts
 
   const ageYears = clamp(safe(input.ageYears, 12), 0, 80);
   const wear = clamp(safe(input.wear, 3), 0, 5);
