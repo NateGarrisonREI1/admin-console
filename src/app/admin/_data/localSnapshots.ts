@@ -11,7 +11,6 @@
 
 export type LeafTierKey = "good" | "better" | "best";
 
-/** Minimal shape used by SnapshotEditor + pages */
 export type SnapshotDraft = {
   id: string;
   jobId?: string;
@@ -19,7 +18,7 @@ export type SnapshotDraft = {
 
   title?: string;
 
-  existing?: {
+  existing: {
     type?: string;
     subtype?: string;
     ageYears?: number | null;
@@ -34,7 +33,7 @@ export type SnapshotDraft = {
     imageUrl?: string;
   };
 
-  suggested?: {
+  suggested: {
     catalogSystemId?: string | null;
     name?: string;
     estCost?: number | null;
@@ -54,14 +53,14 @@ export type SnapshotDraft = {
     };
   };
 
-  calculationInputs?: {
+  calculationInputs: {
     annualUtilitySpend?: number;
     systemShare?: number;
     expectedLife?: number;
     partialFailure?: boolean;
   };
 
-  // Allow future fields without breaking TS while we rebuild
+  // allow future fields while rebuilding schema
   [key: string]: any;
 
   createdAt?: string;
@@ -98,11 +97,18 @@ export function upsertLocalSnapshot(snapshot: SnapshotDraft): SnapshotDraft {
     _snapshots[index] = {
       ..._snapshots[index],
       ...snapshot,
+      existing: snapshot.existing || _snapshots[index].existing,
+      suggested: snapshot.suggested || _snapshots[index].suggested,
+      calculationInputs:
+        snapshot.calculationInputs || _snapshots[index].calculationInputs,
       updatedAt: now,
     };
   } else {
     _snapshots.push({
       ...snapshot,
+      existing: snapshot.existing ?? {},
+      suggested: snapshot.suggested ?? {},
+      calculationInputs: snapshot.calculationInputs ?? {},
       createdAt: snapshot.createdAt || now,
       updatedAt: now,
     });
