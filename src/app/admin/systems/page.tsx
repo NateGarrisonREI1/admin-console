@@ -42,7 +42,7 @@ export type CatalogSystem = {
    Storage helpers
 ============================ */
 
-const STORAGE_KEY = "REI_LOCAL_CATALOG_V2";
+const STORAGE_KEY = "LEAF_LOCAL_CATALOG";
 
 function safeId(prefix = "sys") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
