@@ -1,45 +1,21 @@
-import { LEAF_SS_CONFIG } from "./leafSSConfig";
-
 /**
- * Where the admin UI saves the edited config.
- * (localStorage for now, DB later)
+ * LEAF System Snapshot Config Store
+ *
+ * This store is a thin access layer around the master
+ * LEAF_SS_CONFIG. It does NOT define assumptions.
+ *
+ * The application must work even if this store is removed.
  */
-const STORAGE_KEY = "LEAF_SS_MASTER_CONFIG";
 
-/**
- * Load the master config, falling back to compiled defaults
- */
-export function loadLeafSSMasterConfig() {
-  if (typeof window === "undefined") {
-    return LEAF_SS_CONFIG;
-  }
+import { create } from "zustand";
+import LEAF_SS_CONFIG from "./leafSSConfig";
 
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return LEAF_SS_CONFIG;
+type LeafSSConfigState = {
+  config: typeof LEAF_SS_CONFIG;
+};
 
-    const parsed = JSON.parse(raw);
-    return {
-      ...LEAF_SS_CONFIG,
-      ...parsed,
-    };
-  } catch {
-    return LEAF_SS_CONFIG;
-  }
-}
+export const useLeafSSConfigStore = create<LeafSSConfigState>(() => ({
+  config: LEAF_SS_CONFIG
+}));
 
-/**
- * Save from admin editor
- */
-export function saveLeafSSMasterConfig(config: any) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-}
-export function resetLeafSSMasterConfig() {
-  if (typeof window === "undefined") return;
-
-  localStorage.removeItem("LEAF_SS_MASTER_CONFIG");
-
-  // Reload defaults immediately so UI updates
-  return loadLeafSSMasterConfig();
-}
+export default useLeafSSConfigStore;
