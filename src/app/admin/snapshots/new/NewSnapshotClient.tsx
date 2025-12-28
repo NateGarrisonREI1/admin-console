@@ -88,13 +88,13 @@ export default function NewSnapshotClient({
     typeof tierCfg?.installCostMax === "number" ? tierCfg.installCostMax : undefined;
 
   // Preview calc (IMPORTANT: do NOT pass tier until runtime type exports are stabilized)
+  // ALSO: LeafPreviewInput no longer supports 'wear' — do not pass it here.
   const calc = useMemo(() => {
     return calculateLeafPreview({
       annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
       systemShare: toNumberOr(systemShare, 0.4),
       expectedLife: toNumberOr(expectedLife, 15),
       ageYears: toNumberOr(existingSystem?.ageYears, 12),
-      wear: toNumberOr(existingSystem?.wear, 3),
       partialFailure,
       installCostMin: tierCostMin,
       installCostMax: tierCostMax,
@@ -104,7 +104,6 @@ export default function NewSnapshotClient({
     systemShare,
     expectedLife,
     existingSystem?.ageYears,
-    existingSystem?.wear,
     partialFailure,
     tierCostMin,
     tierCostMax,
