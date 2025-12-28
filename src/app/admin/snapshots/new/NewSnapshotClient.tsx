@@ -12,10 +12,9 @@ import { loadLocalCatalog, type CatalogSystem } from "../../_data/localCatalog";
 import { calculateLeafPreview } from "../../_data/leafCalculations";
 
 /* ─────────────────────────────────────────────
-   Types (local, to avoid runtime export drift)
+   Local tier keys for UI only (v0)
 ───────────────────────────────────────────── */
-
-type LeafTierKey = "good" | "better" | "best";
+type UITierKey = "good" | "better" | "best";
 
 /* ─────────────────────────────────────────────
    Helpers
@@ -26,7 +25,7 @@ function toNumberOr(v: any, fallback: number) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function firstEnabledTier(sys: CatalogSystem | null): LeafTierKey {
+function firstEnabledTier(sys: CatalogSystem | null): UITierKey {
   const tiers = (sys as any)?.tiers;
   if (tiers?.good?.enabled) return "good";
   if (tiers?.better?.enabled) return "better";
@@ -69,8 +68,8 @@ export default function NewSnapshotClient({
     [catalog, catalogId]
   );
 
-  // Tier
-  const [tier, setTier] = useState<LeafTierKey>("good");
+  // Tier (UI only)
+  const [tier, setTier] = useState<UITierKey>("good");
   useEffect(() => {
     if (selectedCatalog) setTier(firstEnabledTier(selectedCatalog));
   }, [selectedCatalog]);
@@ -88,10 +87,9 @@ export default function NewSnapshotClient({
   const tierCostMax =
     typeof tierCfg?.installCostMax === "number" ? tierCfg.installCostMax : undefined;
 
-  // Preview calc (kept for UI + build cleanliness)
+  // Preview calc (IMPORTANT: do NOT pass tier until runtime type exports are stabilized)
   const calc = useMemo(() => {
     return calculateLeafPreview({
-      tier, // <-- matches engine expectation
       annualUtilitySpend: toNumberOr(annualUtilitySpend, 2400),
       systemShare: toNumberOr(systemShare, 0.4),
       expectedLife: toNumberOr(expectedLife, 15),
@@ -102,7 +100,6 @@ export default function NewSnapshotClient({
       installCostMax: tierCostMax,
     });
   }, [
-    tier,
     annualUtilitySpend,
     systemShare,
     expectedLife,
@@ -137,7 +134,8 @@ export default function NewSnapshotClient({
 
       suggested: {
         catalogSystemId: catalogId || null,
-        tier: tier as any, // localSnapshots tier type comes from its own module; keep v0 flexible
+        // store tier as a plain string in v0; runtime will interpret later
+        tier: tier as any,
         name: selectedCatalog?.name ? String(selectedCatalog.name) : "Proposed Upgrade",
         notes: "",
       },
@@ -182,11 +180,11 @@ export default function NewSnapshotClient({
         </label>
 
         <label style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Tier</div>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Tier (UI only)</div>
           <select
             className="rei-input"
             value={tier}
-            onChange={(e) => setTier(e.target.value as LeafTierKey)}
+            onChange={(e) => setTier(e.target.value as UITierKey)}
           >
             <option value="good">Good</option>
             <option value="better">Better</option>
