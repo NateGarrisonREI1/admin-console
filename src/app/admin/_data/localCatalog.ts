@@ -70,6 +70,8 @@ export function loadLocalCatalog(): CatalogSystem[] {
   }
 
 }
+export const LOCAL_CATALOG_STORAGE_KEY = STORAGE_KEY;
+
 
 export function saveLocalCatalog(list: CatalogSystem[]) {
   if (typeof window === "undefined") return;
@@ -88,4 +90,3 @@ export function deleteCatalogSystem(id: string) {
   const list = loadLocalCatalog().filter((s) => s.id !== id);
   saveLocalCatalog(list);
 }
-export const LOCAL_CATALOG_STORAGE_KEY = STORAGE_KEY;
