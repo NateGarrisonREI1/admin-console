@@ -1,4 +1,4 @@
-import type { LeafTierKey } from "../localCatalog";
+export type LeafTierKey = "good" | "better" | "best";
 
 export type Range = { min: number; max: number; center: number };
 
