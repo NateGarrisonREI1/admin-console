@@ -1,315 +1,70 @@
 :root {
   --rei-green: #43a419;
-  --bg: #f6f7fb;
-  --panel: #ffffff;
-  --border: #e7e9f0;
-  --text: #101828;
-  --muted: #667085;
-  --shadow: 0 8px 20px rgba(16, 24, 40, 0.06);
-  --radius: 14px;
 }
 
-/* =========================
-   Base admin wrapper
-========================= */
-.rei-admin {
-  min-height: 100vh;
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
-    Helvetica, Arial;
-  overflow-x: hidden; /* 🔒 global overflow guard */
+/* Cards */
+.admin-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 18px;
+  transition: all 0.15s ease;
 }
 
-/* =========================
-   Layout
-========================= */
-.rei-shell {
-  display: grid;
-  grid-template-columns: 270px 1fr;
-  min-height: 100vh;
-  width: 100%;
+.admin-card:hover {
+  border-color: var(--rei-green);
+  box-shadow: 0 10px 26px rgba(67, 164, 25, 0.14);
+  transform: translateY(-2px);
 }
 
-/* =========================
-   Sidebar
-========================= */
-.rei-sidebar {
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-  padding: 18px 14px;
+.admin-card-cta {
+  margin-top: 14px;
+  font-weight: 800;
+  color: var(--rei-green);
 }
 
-/* Branding */
-.rei-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 8px 14px;
-}
-
-.rei-brandMark {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+/* Buttons */
+.admin-btn {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(67, 164, 25, 0.45);
   background: rgba(67, 164, 25, 0.12);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: var(--rei-green);
   font-weight: 900;
-}
-
-.rei-brandText strong {
-  display: block;
-  font-size: 14px;
-}
-
-.rei-brandText span {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-/* =========================
-   Nav
-========================= */
-.rei-nav {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.rei-navSection {
-  margin-top: 10px;
-  padding: 8px 8px 6px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.rei-navItem {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 10px;
-  margin: 0 6px;
-  border-radius: 12px;
-  text-decoration: none;
-  color: var(--text);
-  font-weight: 700;
-  position: relative;
-}
-
-.rei-navItem:hover {
-  background: rgba(16, 24, 40, 0.04);
-}
-
-.rei-navItem[data-active="true"] {
-  background: rgba(67, 164, 25, 0.1);
-}
-
-.rei-navItem[data-active="true"]::before {
-  content: "";
-  position: absolute;
-  left: -6px;
-  top: 10px;
-  bottom: 10px;
-  width: 4px;
-  border-radius: 999px;
-  background: var(--rei-green);
-}
-
-.rei-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: 6px;
-  background: rgba(16, 24, 40, 0.08);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  color: rgba(16, 24, 40, 0.75);
-}
-
-/* =========================
-   Main
-========================= */
-.rei-main {
-  display: flex;
-  flex-direction: column;
-  min-width: 0; /* 🔑 prevent grid overflow */
-}
-
-/* =========================
-   Top bar
-========================= */
-.rei-topbar {
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  padding: 16px 22px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.rei-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.rei-subtitle {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-.rei-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  background: #2f6fed;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 900;
-}
-
-/* =========================
-   Content
-========================= */
-.rei-content {
-  padding: 18px 22px 28px;
-  min-width: 0;
-}
-
-/* =========================
-   Card
-========================= */
-.rei-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 16px;
-  max-width: 100%;
-  overflow: hidden; /* 🔒 card containment */
-}
-
-/* =========================
-   Toolbar
-========================= */
-.rei-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-}
-
-/* =========================
-   Inputs / Controls
-========================= */
-.rei-search,
-input,
-select,
-textarea {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 9px 12px;
-  background: #fff;
-  font-size: 13px;
-  outline: none;
-}
-
-/* =========================
-   Buttons
-========================= */
-.rei-btn {
-  border: none;
-  border-radius: 12px;
-  padding: 10px 14px;
-  font-weight: 900;
   cursor: pointer;
-  white-space: nowrap;
 }
 
-.rei-btnPrimary {
-  background: #2f6fed;
-  color: white;
+.admin-link {
+  font-weight: 800;
+  color: var(--rei-green);
+  text-decoration: none;
 }
 
-/* Button rows (prevents spill) */
-.rei-formActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
+.admin-link:hover {
+  text-decoration: underline;
 }
 
-/* =========================
-   Loading
-========================= */
-.rei-loadingBox {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 10px;
-  color: var(--muted);
-  min-height: 300px;
-}
-
-.rei-spinner {
-  width: 26px;
-  height: 26px;
+/* Pills */
+.pill-live {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--rei-green);
+  background: rgba(67, 164, 25, 0.12);
+  border: 1px solid rgba(67, 164, 25, 0.35);
+  padding: 4px 8px;
   border-radius: 999px;
-  border: 3px solid rgba(67, 164, 25, 0.2);
-  border-top-color: var(--rei-green);
-  animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.pill-later {
+  font-size: 12px;
+  font-weight: 800;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e5e7eb;
+  padding: 4px 8px;
+  border-radius: 999px;
 }
 
-/* =========================
-   Form Grid (CRITICAL)
-========================= */
-.rei-formGrid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  align-items: end;
-  width: 100%;
-}
-
-/* 🔑 This prevents all overflow bugs */
-.rei-formGrid > * {
-  min-width: 0;
-}
-
-@media (max-width: 1200px) {
-  .rei-formGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 760px) {
-  .rei-formGrid {
-    grid-template-columns: 1fr;
-  }
-}
