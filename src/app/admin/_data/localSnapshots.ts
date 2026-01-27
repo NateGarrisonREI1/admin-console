@@ -3,16 +3,19 @@
 
 export type SnapshotDraft = {
   id: string;
+
   title?: string;
-  updated_at?: string; // ISO
   created_at?: string; // ISO
+  updated_at?: string; // ISO
 
-  // snapshot editor expects this
+  // SnapshotEditorClient expects these buckets
   existing?: Record<string, unknown>;
+  proposed?: Record<string, unknown>;
 
-  // keep generic payload too
+  // optional general payload / future-proofing
   data?: any;
 };
+
 
 
 const KEY = "leaf_admin_local_snapshots_v1";
