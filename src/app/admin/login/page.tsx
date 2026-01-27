@@ -1,4 +1,5 @@
-import LoginForm from "./LoginForm.tsx";
+import LoginForm from "./LoginForm";
+
 
 export const dynamic = "force-dynamic";
 
