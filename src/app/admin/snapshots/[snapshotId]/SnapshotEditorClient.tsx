@@ -20,32 +20,25 @@ function clamp01(n: number) {
   return n;
 }
 
-export default function SnapshotEditorClient({
-  snapshotId,
-}: {
-  snapshotId: string;
-}) {
+export default function SnapshotEditorClient({ snapshotId }: { snapshotId: string }) {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<SnapshotDraft | null>(null);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
 
-  // Load snapshot (client-side)
   useEffect(() => {
     const found = getSnapshotById(snapshotId);
     setDraft(found);
     setLoading(false);
   }, [snapshotId]);
 
-  const canSave = useMemo(() => {
-    if (!draft) return false;
-    return true;
-  }, [draft]);
+  const canSave = useMemo(() => !!draft, [draft]);
 
-  function update<K extends keyof SnapshotDraft>(key: K, value: SnapshotDraft[K]) {
+  // ✅ loosen typing so you don't get "title not assignable to id"
+  function update(key: string, value: unknown) {
     setStatus("idle");
-    setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
+    setDraft((prev) => (prev ? ({ ...prev, [key]: value } as SnapshotDraft) : prev));
   }
 
   function updateExisting(path: string, value: unknown) {
@@ -71,7 +64,8 @@ export default function SnapshotEditorClient({
   function onSave() {
     if (!draft) return;
     try {
-      upsertLocalSnapshot(draft);
+      const saved = upsertLocalSnapshot(draft);
+      setDraft(saved);
       setStatus("saved");
     } catch {
       setStatus("error");
@@ -131,9 +125,7 @@ export default function SnapshotEditorClient({
         }}
       >
         <div>
-          <div style={{ fontWeight: 900, fontSize: 18 }}>
-            Edit Snapshot
-          </div>
+          <div style={{ fontWeight: 900, fontSize: 18 }}>Edit Snapshot</div>
           <div style={{ color: "#6b7280", fontSize: 12, marginTop: 2 }}>
             ID: <code>{draft.id}</code>
           </div>
@@ -203,72 +195,40 @@ export default function SnapshotEditorClient({
         </div>
       )}
 
-      {/* Basic */}
-      <section
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 14,
-          background: "white",
-        }}
-      >
+      {/* Basics */}
+      <section style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 14, background: "white" }}>
         <div style={{ fontWeight: 900, marginBottom: 10 }}>Basics</div>
 
         <div style={{ display: "grid", gap: 10 }}>
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Title
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Title</div>
             <input
               value={String(draft.title ?? "")}
               onChange={(e) => update("title", e.target.value)}
-              style={{
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #ddd",
-              }}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
               placeholder="e.g. Replace Furnace"
             />
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Notes
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Notes</div>
             <textarea
               value={String(draft.notes ?? "")}
               onChange={(e) => update("notes", e.target.value)}
-              style={{
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                minHeight: 90,
-                resize: "vertical",
-              }}
+              style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd", minHeight: 90, resize: "vertical" }}
               placeholder="Optional notes…"
             />
           </label>
         </div>
       </section>
 
-      {/* Existing Intake */}
-      <section
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 14,
-          background: "white",
-        }}
-      >
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>
-          Existing System (Intake)
-        </div>
+      {/* Existing */}
+      <section style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 14, background: "white" }}>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>Existing System (Intake)</div>
 
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              System Type
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>System Type</div>
             <input
               value={String(draft.existing?.systemType ?? "")}
               onChange={(e) => updateExisting("systemType", e.target.value)}
@@ -278,9 +238,7 @@ export default function SnapshotEditorClient({
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Utility Type
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Utility Type</div>
             <input
               value={String(draft.existing?.utilityType ?? "")}
               onChange={(e) => updateExisting("utilityType", e.target.value)}
@@ -290,12 +248,10 @@ export default function SnapshotEditorClient({
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Age (years)
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Age (years)</div>
             <input
               inputMode="numeric"
-              value={draft.existing?.ageYears ?? ""}
+              value={String(draft.existing?.ageYears ?? "")}
               onChange={(e) => updateExisting("ageYears", toNumberOrUndefined(e.target.value))}
               style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
               placeholder="e.g. 12"
@@ -303,12 +259,10 @@ export default function SnapshotEditorClient({
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Share of Utility (0–1)
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Share of Utility (0–1)</div>
             <input
               inputMode="decimal"
-              value={draft.existing?.shareOfUtility ?? ""}
+              value={String(draft.existing?.shareOfUtility ?? "")}
               onChange={(e) => {
                 const n = toNumberOrUndefined(e.target.value);
                 updateExisting("shareOfUtility", n === undefined ? undefined : clamp01(n));
@@ -324,24 +278,13 @@ export default function SnapshotEditorClient({
         </div>
       </section>
 
-      {/* Proposed Selection */}
-      <section
-        style={{
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 14,
-          background: "white",
-        }}
-      >
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>
-          Proposed System (Selection / Intake)
-        </div>
+      {/* Proposed */}
+      <section style={{ border: "1px solid #e5e7eb", borderRadius: 14, padding: 14, background: "white" }}>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>Proposed System (Selection / Intake)</div>
 
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Catalog System ID
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Catalog System ID</div>
             <input
               value={String(draft.proposed?.catalogSystemId ?? "")}
               onChange={(e) => updateProposed("catalogSystemId", e.target.value)}
@@ -351,12 +294,10 @@ export default function SnapshotEditorClient({
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Install Cost (optional)
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Install Cost (optional)</div>
             <input
               inputMode="numeric"
-              value={draft.proposed?.installCost ?? ""}
+              value={String(draft.proposed?.installCost ?? "")}
               onChange={(e) => updateProposed("installCost", toNumberOrUndefined(e.target.value))}
               style={{ padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
               placeholder="e.g. 9500"
@@ -364,9 +305,7 @@ export default function SnapshotEditorClient({
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Make (optional)
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Make (optional)</div>
             <input
               value={String(draft.proposed?.make ?? "")}
               onChange={(e) => updateProposed("make", e.target.value)}
@@ -376,9 +315,7 @@ export default function SnapshotEditorClient({
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>
-              Model (optional)
-            </div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Model (optional)</div>
             <input
               value={String(draft.proposed?.model ?? "")}
               onChange={(e) => updateProposed("model", e.target.value)}

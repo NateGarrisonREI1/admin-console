@@ -1,52 +1,75 @@
 // src/app/admin/_data/localSnapshots.ts
-// Simple client-only storage for snapshot drafts (dev helper)
+
+export type SnapshotExisting = {
+  systemType?: string;
+  utilityType?: string;
+  ageYears?: number;
+  shareOfUtility?: number;
+  // allow extra fields without TS whack-a-mole
+  [key: string]: unknown;
+};
+
+export type SnapshotProposed = {
+  catalogSystemId?: string;
+  installCost?: number;
+  make?: string;
+  model?: string;
+  [key: string]: unknown;
+};
 
 export type SnapshotDraft = {
   id: string;
 
+  // keep optional so older code compiles, but we always *store* strings
   title?: string;
-  created_at?: string; // ISO
-  updated_at?: string; // ISO
+  notes?: string;
 
-  // SnapshotEditorClient expects these buckets
-  existing?: Record<string, unknown>;
-  proposed?: Record<string, unknown>;
+  existing?: SnapshotExisting;
+  proposed?: SnapshotProposed;
 
-  // optional general payload / future-proofing
-  data?: any;
+  updatedAt?: string; // ISO
+  createdAt?: string; // ISO
+
+  // allow extra fields (jobId/systemId/etc) without needing type edits
+  [key: string]: unknown;
 };
 
+const LS_KEY = "leaf_admin_local_snapshots_v1";
 
+function safeParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
 
-const KEY = "leaf_admin_local_snapshots_v1";
-
-function safeNowISO() {
+function nowIso() {
   return new Date().toISOString();
+}
+
+function makeId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `snap_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 }
 
 function readAll(): SnapshotDraft[] {
   if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const arr = safeParse<SnapshotDraft[]>(window.localStorage.getItem(LS_KEY));
+  return Array.isArray(arr) ? arr : [];
 }
 
-function writeAll(rows: SnapshotDraft[]) {
+function writeAll(items: SnapshotDraft[]) {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(rows));
-  } catch {
-    // ignore
-  }
+  window.localStorage.setItem(LS_KEY, JSON.stringify(items));
 }
 
 export function loadLocalSnapshots(): SnapshotDraft[] {
-  return readAll().sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  return readAll().sort((a, b) =>
+    String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? ""))
+  );
 }
 
 export function getSnapshotById(id: string): SnapshotDraft | null {
@@ -54,39 +77,63 @@ export function getSnapshotById(id: string): SnapshotDraft | null {
   return all.find((s) => s.id === id) ?? null;
 }
 
-export function upsertLocalSnapshot(draft: SnapshotDraft) {
+/**
+ * Create a draft snapshot shell.
+ * Supports optional init so callers can do createSnapshotDraft({ jobId, systemId, title })
+ */
+export function createSnapshotDraft(
+  init?: Partial<SnapshotDraft> & {
+    existing?: SnapshotExisting;
+    proposed?: SnapshotProposed;
+  }
+): SnapshotDraft {
+  const id = String(init?.id ?? makeId());
+  const iso = nowIso();
+
+  return {
+    // init first so we can overwrite below with safe defaults
+    ...(init ?? {}),
+
+    id,
+
+    // normalize common fields so editor inputs are always safe
+    title: String(init?.title ?? ""),
+    notes: String(init?.notes ?? ""),
+
+    existing: (init?.existing ?? {}) as SnapshotExisting,
+    proposed: (init?.proposed ?? {}) as SnapshotProposed,
+
+    createdAt: String(init?.createdAt ?? iso),
+    updatedAt: String(init?.updatedAt ?? iso),
+  };
+}
+
+export function upsertLocalSnapshot(draft: SnapshotDraft): SnapshotDraft {
   const all = readAll();
-  const now = safeNowISO();
+  const iso = nowIso();
+
   const next: SnapshotDraft = {
     ...draft,
-    updated_at: now,
-    created_at: draft.created_at || now,
+
+    // normalize
+    id: String(draft.id),
+    title: String(draft.title ?? ""),
+    notes: String(draft.notes ?? ""),
+    existing: (draft.existing ?? {}) as SnapshotExisting,
+    proposed: (draft.proposed ?? {}) as SnapshotProposed,
+    createdAt: String(draft.createdAt ?? iso),
+    updatedAt: iso,
   };
+
   const idx = all.findIndex((s) => s.id === next.id);
   if (idx >= 0) all[idx] = next;
   else all.unshift(next);
+
   writeAll(all);
   return next;
 }
 
-export function deleteLocalSnapshot(id: string) {
+export function deleteLocalSnapshot(id: string): void {
   const all = readAll().filter((s) => s.id !== id);
   writeAll(all);
-}
-
-export function createSnapshotDraft(partial?: Partial<SnapshotDraft>): SnapshotDraft {
-  const id =
-    partial?.id ||
-    (typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `draft_${Math.random().toString(36).slice(2)}`);
-
-  const now = safeNowISO();
-  return {
-    id,
-    title: partial?.title || "Untitled Snapshot",
-    data: partial?.data ?? {},
-    created_at: partial?.created_at || now,
-    updated_at: partial?.updated_at || now,
-  };
 }
