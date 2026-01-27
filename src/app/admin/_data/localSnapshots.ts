@@ -20,7 +20,9 @@ export type SnapshotProposed = {
 export type SnapshotDraft = {
   id: string;
 
-  // keep optional so older code compiles, but we always *store* strings
+  // Optional so older code compiles, but we always store strings
+  jobId?: string;
+  systemId?: string;
   title?: string;
   notes?: string;
 
@@ -30,7 +32,7 @@ export type SnapshotDraft = {
   updatedAt?: string; // ISO
   createdAt?: string; // ISO
 
-  // allow extra fields (jobId/systemId/etc) without needing type edits
+  // Allow extra fields without needing type edits everywhere
   [key: string]: unknown;
 };
 
@@ -74,12 +76,13 @@ export function loadLocalSnapshots(): SnapshotDraft[] {
 
 export function getSnapshotById(id: string): SnapshotDraft | null {
   const all = readAll();
-  return all.find((s) => s.id === id) ?? null;
+  return all.find((s) => String(s.id) === String(id)) ?? null;
 }
 
 /**
  * Create a draft snapshot shell.
- * Supports optional init so callers can do createSnapshotDraft({ jobId, systemId, title })
+ * Supports optional init so callers can do:
+ * createSnapshotDraft({ jobId, systemId, title })
  */
 export function createSnapshotDraft(
   init?: Partial<SnapshotDraft> & {
@@ -87,25 +90,23 @@ export function createSnapshotDraft(
     proposed?: SnapshotProposed;
   }
 ): SnapshotDraft {
-  const id = String(init?.id ?? makeId());
   const iso = nowIso();
 
-  return {
-    // init first so we can overwrite below with safe defaults
+  // Normalize the most commonly-used fields so inputs are always safe strings/objects.
+  const normalized: SnapshotDraft = {
     ...(init ?? {}),
-
-    id,
-
-    // normalize common fields so editor inputs are always safe
+    id: String(init?.id ?? makeId()),
+    jobId: init?.jobId == null ? undefined : String(init.jobId),
+    systemId: init?.systemId == null ? undefined : String(init.systemId),
     title: String(init?.title ?? ""),
     notes: String(init?.notes ?? ""),
-
     existing: (init?.existing ?? {}) as SnapshotExisting,
     proposed: (init?.proposed ?? {}) as SnapshotProposed,
-
     createdAt: String(init?.createdAt ?? iso),
     updatedAt: String(init?.updatedAt ?? iso),
   };
+
+  return normalized;
 }
 
 export function upsertLocalSnapshot(draft: SnapshotDraft): SnapshotDraft {
@@ -117,6 +118,8 @@ export function upsertLocalSnapshot(draft: SnapshotDraft): SnapshotDraft {
 
     // normalize
     id: String(draft.id),
+    jobId: draft.jobId == null ? undefined : String(draft.jobId),
+    systemId: draft.systemId == null ? undefined : String(draft.systemId),
     title: String(draft.title ?? ""),
     notes: String(draft.notes ?? ""),
     existing: (draft.existing ?? {}) as SnapshotExisting,
@@ -125,7 +128,7 @@ export function upsertLocalSnapshot(draft: SnapshotDraft): SnapshotDraft {
     updatedAt: iso,
   };
 
-  const idx = all.findIndex((s) => s.id === next.id);
+  const idx = all.findIndex((s) => String(s.id) === String(next.id));
   if (idx >= 0) all[idx] = next;
   else all.unshift(next);
 
@@ -134,6 +137,6 @@ export function upsertLocalSnapshot(draft: SnapshotDraft): SnapshotDraft {
 }
 
 export function deleteLocalSnapshot(id: string): void {
-  const all = readAll().filter((s) => s.id !== id);
+  const all = readAll().filter((s) => String(s.id) !== String(id));
   writeAll(all);
 }
