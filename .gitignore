@@ -137,3 +137,25 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Supabase junk
+*.sql.save
+*.sqles
+
+# Local
+.vscode/
+
+# Archives
+*.zip
+
+# Local dumps
+supabase_schema.sql
+supabase_db.zip
+supabase_migrations.zip
+
+# Supabase migrations (local-only)
+supabase/migrations/
