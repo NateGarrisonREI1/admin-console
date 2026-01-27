@@ -6,8 +6,14 @@ export type SnapshotDraft = {
   title?: string;
   updated_at?: string; // ISO
   created_at?: string; // ISO
+
+  // snapshot editor expects this
+  existing?: Record<string, unknown>;
+
+  // keep generic payload too
   data?: any;
 };
+
 
 const KEY = "leaf_admin_local_snapshots_v1";
 
