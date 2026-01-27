@@ -1,5 +1,11 @@
 {
   "framework": "nextjs",
   "buildCommand": "npm run build",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "crons": [
+    {
+      "path": "/api/cron/expire-leads?token=$CRON_SECRET",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }

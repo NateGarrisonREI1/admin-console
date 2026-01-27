@@ -5,7 +5,7 @@ export async function listSystems(args?: {
   activeOnly?: boolean;
   search?: string;
 }) {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
 
   let q = supabase
     .from("system_catalog")
@@ -28,7 +28,7 @@ export async function listSystems(args?: {
 }
 
 export async function listSystemTypes() {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
 
   const { data, error } = await supabase
     .from("system_catalog")
