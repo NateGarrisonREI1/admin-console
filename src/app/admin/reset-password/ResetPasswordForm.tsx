@@ -1,3 +1,4 @@
+//src/app/admin/reset-password/ResetPasswordForm.tsx
 "use client";
 
 import * as React from "react";
@@ -65,7 +66,8 @@ export default function ResetPasswordForm() {
 
     try {
       const supabase = supabaseBrowser();
-      const redirectTo = `${window.location.origin}/admin/reset-password`;
+      const base = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
+const redirectTo = `${base}/admin/reset-password`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(e, { redirectTo });
       if (error) throw error;

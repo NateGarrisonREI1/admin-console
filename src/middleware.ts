@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 function makeSupabase(req: NextRequest, res: NextResponse) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
   return createServerClient(url, anon, {
     cookies: {
       get(name: string) {
@@ -20,7 +21,7 @@ function makeSupabase(req: NextRequest, res: NextResponse) {
 }
 
 /**
- * Canonical public auth routes for the whole app
+ * Global public auth routes (not all are in matcher, but safe to keep)
  */
 function isGlobalPublicPath(pathname: string) {
   return (
@@ -57,14 +58,23 @@ function redirectToLogin(req: NextRequest, nextPath: string, extra?: Record<stri
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 0) If anyone hits /admin/login or /admin/reset-password, force canonical /login
-  //    (We do this BEFORE the /admin guard to avoid loops and “admin chrome on login”.)
-  if (pathname === "/admin/login" || pathname === "/admin/reset-password") {
+  /**
+   * IMPORTANT:
+   * Supabase recovery links may land on /admin/reset-password with ?code=...
+   * If we redirect that URL, the code/session exchange can fail.
+   */
+
+  // 0) Canonicalize /admin/login -> /login (avoid loops)
+  if (pathname === "/admin/login") {
     return redirectToLogin(req, "/admin");
   }
 
-  // 1) Allow global public auth routes
-  //    NOTE: config.matcher does not include /login by default; keeping this for safety.
+  // 0b) Allow reset-password under /admin through (including potential nested paths)
+  if (pathname === "/admin/reset-password" || pathname.startsWith("/admin/reset-password/")) {
+    return NextResponse.next();
+  }
+
+  // 1) Allow global public auth routes (safety)
   if (isGlobalPublicPath(pathname)) {
     return NextResponse.next();
   }
@@ -74,17 +84,17 @@ export async function middleware(req: NextRequest) {
     const res = NextResponse.next();
     const supabase = makeSupabase(req, res);
 
-    const { data: userRes } = await supabase.auth.getUser();
+    const { data: userRes, error: uErr } = await supabase.auth.getUser();
     const user = userRes?.user;
 
-    if (!user) {
+    // Not logged in -> send to login
+    if (uErr || !user) {
       return redirectToLogin(req, pathname);
     }
 
-    // Admin allowlist gate (your existing behavior)
-    const { data: isAdmin, error } = await supabase.rpc("is_admin");
-
-    if (error || !isAdmin) {
+    // Logged in but not admin -> send to login w/ reason
+    const { data: isAdmin, error: aErr } = await supabase.rpc("is_admin");
+    if (aErr || !isAdmin) {
       return redirectToLogin(req, pathname, { reason: "not_admin" });
     }
 
@@ -96,10 +106,10 @@ export async function middleware(req: NextRequest) {
     const res = NextResponse.next();
     const supabase = makeSupabase(req, res);
 
-    const { data: userRes } = await supabase.auth.getUser();
+    const { data: userRes, error: uErr } = await supabase.auth.getUser();
     const user = userRes?.user;
 
-    if (!user) {
+    if (uErr || !user) {
       return redirectToLogin(req, pathname);
     }
 
@@ -110,13 +120,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/admin/:path*",
-    "/broker/:path*",
-    "/contractor/:path*",
-    "/homeowner/:path*",
-    "/affiliate/:path*",
-    // Optional: if you ever want middleware to run on /login for uniform behavior:
-    // "/login",
-  ],
+  matcher: ["/admin/:path*", "/broker/:path*", "/contractor/:path*", "/homeowner/:path*", "/affiliate/:path*"],
 };

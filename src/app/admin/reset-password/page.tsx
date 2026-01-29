@@ -1,3 +1,4 @@
+//src/app/admin/reset-password/page.tsx
 import ResetPasswordForm from "./ResetPasswordForm";
 
 export const dynamic = "force-dynamic";
