@@ -69,11 +69,6 @@ export async function middleware(req: NextRequest) {
     return redirectToLogin(req, "/admin");
   }
 
-  // 0b) Allow reset-password under /admin through (including potential nested paths)
-  if (pathname === "/admin/reset-password" || pathname.startsWith("/admin/reset-password/")) {
-    return NextResponse.next();
-  }
-
   // 1) Allow global public auth routes (safety)
   if (isGlobalPublicPath(pathname)) {
     return NextResponse.next();

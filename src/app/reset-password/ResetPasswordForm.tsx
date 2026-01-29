@@ -1,4 +1,3 @@
-//src/app/admin/reset-password/ResetPasswordForm.tsx
 "use client";
 
 import * as React from "react";
@@ -18,7 +17,6 @@ export default function ResetPasswordForm() {
   const [err, setErr] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<string | null>(null);
 
-  // 1) On mount: try to establish a recovery session if needed
   React.useEffect(() => {
     let cancelled = false;
 
@@ -35,16 +33,11 @@ export default function ResetPasswordForm() {
         if (!cancelled && error) setErr(error.message);
       }
 
-      // Check if we have a session now
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
 
-      if (data?.session) {
-        setReady(true);
-      } else {
-        setReady(false);
-        setErr("Auth session missing. Open this page from the password reset email link.");
-      }
+      // Only flip to "ready" when the email link established a session
+      setReady(!!data?.session);
     }
 
     boot();
@@ -67,7 +60,7 @@ export default function ResetPasswordForm() {
     try {
       const supabase = supabaseBrowser();
       const base = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-const redirectTo = `${base}/admin/reset-password`;
+      const redirectTo = `${base}/reset-password`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(e, { redirectTo });
       if (error) throw error;
@@ -86,7 +79,7 @@ const redirectTo = `${base}/admin/reset-password`;
     setMsg(null);
 
     if (!ready) {
-      setErr("Auth session missing. Use the email reset link first.");
+      setErr("Open the link from the reset email to set a new password.");
       return;
     }
 
@@ -108,7 +101,7 @@ const redirectTo = `${base}/admin/reset-password`;
       setMsg("Password updated. Redirecting to login…");
 
       setTimeout(() => {
-        router.replace("/admin/login");
+        router.replace("/login");
         router.refresh();
       }, 600);
     } catch (e: any) {

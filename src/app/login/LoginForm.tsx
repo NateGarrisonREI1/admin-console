@@ -25,10 +25,18 @@ function rolePrefix(role: Role) {
 function safeNextForRole(role: Role, nextPath: string | null) {
   if (!nextPath) return null;
 
-  // Always allow the canonical router page
-  if (nextPath === "/dashboard" || nextPath.startsWith("/dashboard?")) return nextPath;
+  // Disallow sending anyone to these auth/public pages
+  if (
+    nextPath === "/login" ||
+    nextPath.startsWith("/login?") ||
+    nextPath === "/reset-password" ||
+    nextPath.startsWith("/reset-password") ||
+    nextPath.startsWith("/auth/")
+  ) {
+    return null;
+  }
 
-  // Admin can go anywhere
+  // Admin can go anywhere inside the app
   if (role === "admin") return nextPath;
 
   // Non-admin: only allow within their role prefix
@@ -68,13 +76,13 @@ export default function LoginForm() {
       const user = userRes?.user;
       if (!user) throw new Error("No user returned after login.");
 
-      // Ensure profile exists + determine role (still valuable so app_profiles is always seeded)
+      // Ensure profile exists + determine role
       const { ensureProfileAndGetRole } = await import("@/lib/auth/role");
       const role = (await ensureProfileAndGetRole(supabase as any, user.id)) as Role;
 
-      // ✅ NEW: default to /dashboard so routing is centralized server-side
+      // Default by role (no /dashboard route)
       const safeNext = safeNextForRole(role, next);
-      const dest = safeNext ?? "/dashboard";
+      const dest = safeNext ?? rolePrefix(role);
 
       router.replace(dest);
       router.refresh();
