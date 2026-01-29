@@ -19,20 +19,23 @@ function makeSupabase(req: NextRequest, res: NextResponse) {
   });
 }
 
-function isAdminPublicPath(pathname: string) {
-  return pathname === "/admin/login" || pathname === "/admin/reset-password";
-}
-
-function isAppPublicPath(pathname: string) {
-  // routes allowed without session
+/**
+ * Canonical public auth routes for the whole app
+ */
+function isGlobalPublicPath(pathname: string) {
   return (
     pathname === "/login" ||
+    pathname === "/reset-password" ||
     pathname === "/auth/callback" ||
     pathname.startsWith("/auth/callback")
   );
 }
 
-function isAppProtectedPath(pathname: string) {
+function isAdminPath(pathname: string) {
+  return pathname.startsWith("/admin");
+}
+
+function isPortalProtectedPath(pathname: string) {
   return (
     pathname.startsWith("/broker") ||
     pathname.startsWith("/contractor") ||
@@ -41,13 +44,33 @@ function isAppProtectedPath(pathname: string) {
   );
 }
 
+function redirectToLogin(req: NextRequest, nextPath: string, extra?: Record<string, string>) {
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.searchParams.set("next", nextPath || "/");
+  if (extra) {
+    for (const [k, v] of Object.entries(extra)) url.searchParams.set(k, v);
+  }
+  return NextResponse.redirect(url);
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // ---------- ADMIN ----------
-  if (pathname.startsWith("/admin")) {
-    if (isAdminPublicPath(pathname)) return NextResponse.next();
+  // 0) If anyone hits /admin/login or /admin/reset-password, force canonical /login
+  //    (We do this BEFORE the /admin guard to avoid loops and “admin chrome on login”.)
+  if (pathname === "/admin/login" || pathname === "/admin/reset-password") {
+    return redirectToLogin(req, "/admin");
+  }
 
+  // 1) Allow global public auth routes
+  //    NOTE: config.matcher does not include /login by default; keeping this for safety.
+  if (isGlobalPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  // ---------- ADMIN ----------
+  if (isAdminPath(pathname)) {
     const res = NextResponse.next();
     const supabase = makeSupabase(req, res);
 
@@ -55,28 +78,21 @@ export async function middleware(req: NextRequest) {
     const user = userRes?.user;
 
     if (!user) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/admin/login";
-      url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
+      return redirectToLogin(req, pathname);
     }
 
     // Admin allowlist gate (your existing behavior)
     const { data: isAdmin, error } = await supabase.rpc("is_admin");
+
     if (error || !isAdmin) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/admin/login";
-      url.searchParams.set("reason", "not_admin");
-      return NextResponse.redirect(url);
+      return redirectToLogin(req, pathname, { reason: "not_admin" });
     }
 
     return res;
   }
 
   // ---------- APP PORTALS (broker/contractor/homeowner/affiliate) ----------
-  if (isAppProtectedPath(pathname)) {
-    if (isAppPublicPath(pathname)) return NextResponse.next();
-
+  if (isPortalProtectedPath(pathname)) {
     const res = NextResponse.next();
     const supabase = makeSupabase(req, res);
 
@@ -84,10 +100,7 @@ export async function middleware(req: NextRequest) {
     const user = userRes?.user;
 
     if (!user) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/login";
-      url.searchParams.set("next", pathname);
-      return NextResponse.redirect(url);
+      return redirectToLogin(req, pathname);
     }
 
     return res;
@@ -97,5 +110,13 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/broker/:path*", "/contractor/:path*", "/homeowner/:path*", "/affiliate/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/broker/:path*",
+    "/contractor/:path*",
+    "/homeowner/:path*",
+    "/affiliate/:path*",
+    // Optional: if you ever want middleware to run on /login for uniform behavior:
+    // "/login",
+  ],
 };

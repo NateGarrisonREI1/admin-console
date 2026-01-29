@@ -370,3 +370,25 @@ code {
   min-width: 0;
   max-width: 100%;
 }
+@keyframes fade-in-hero {
+  from {
+    opacity: 0;
+    transform: translateY(32px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-fade-in-hero {
+  animation: fade-in-hero 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-fade-in-hero.delay-1 {
+  animation-delay: 180ms;
+}
+
+.animate-fade-in-hero.delay-2 {
+  animation-delay: 360ms;
+}
