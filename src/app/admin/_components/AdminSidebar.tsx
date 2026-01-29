@@ -19,10 +19,15 @@ const ALL_ADMIN_LINKS: LinkItem[] = [
   { href: "/admin/upgrade-catalog", label: "Upgrade Catalog", group: "admin" },
   { href: "/admin/incentives", label: "Rebates & Incentives", group: "admin" },
   { href: "/admin/schedule", label: "Inspection Scheduler", group: "admin" },
+
+  // Settings
   { href: "/admin/settings", label: "Settings", group: "admin" },
+  { href: "/admin/settings/users", label: "— Users (All)", group: "admin" },
 ];
 
 const ALL_DASHBOARD_LINKS: LinkItem[] = [
+  // NOTE: keep these as-is for now to avoid breaking existing temp shortcuts.
+  // If/when you move dashboards to /app/*, update these hrefs too.
   { href: "/contractor/job-board", label: "Contractor Dashboard", group: "dash" },
   { href: "/broker/dashboard", label: "Broker Dashboard", group: "dash" },
   { href: "/homeowner/dashboard", label: "Homeowner Dashboard", group: "dash" },
@@ -197,10 +202,16 @@ export default function AdminSidebar() {
 
   const [minimalMode, setMinimalMode] = useState(false);
   const [minimalHrefs, setMinimalHrefs] = useState<Set<string>>(() => {
-    return new Set(["/admin", "/admin/jobs", "/admin/contractor-leads", "/admin/settings", "/contractor/job-board"]);
+    // Updated minimal defaults to avoid any deleted settings pages
+    return new Set([
+      "/admin",
+      "/admin/jobs",
+      "/admin/contractor-leads",
+      "/admin/settings/users",
+      "/contractor/job-board",
+    ]);
   });
 
-  // NEW: fixed-position popover coordinates
   const kebabBtnRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
@@ -260,7 +271,13 @@ export default function AdminSidebar() {
 
   function resetMinimalToDefault() {
     setMinimalHrefs(
-      new Set(["/admin", "/admin/jobs", "/admin/contractor-leads", "/admin/settings", "/contractor/job-board"])
+      new Set([
+        "/admin",
+        "/admin/jobs",
+        "/admin/contractor-leads",
+        "/admin/settings/users",
+        "/contractor/job-board",
+      ])
     );
   }
 
@@ -269,7 +286,6 @@ export default function AdminSidebar() {
   const adminLinks = useMemo(() => ALL_ADMIN_LINKS.filter((l) => activeSet.has(l.href)), [activeSet]);
   const dashboardLinks = useMemo(() => ALL_DASHBOARD_LINKS.filter((l) => activeSet.has(l.href)), [activeSet]);
 
-  // Compute popover placement and clamp to viewport
   function recomputePopoverPosition() {
     const btn = kebabBtnRef.current;
     if (!btn) return;
@@ -278,35 +294,29 @@ export default function AdminSidebar() {
     const popW = 320;
     const margin = 12;
 
-    // prefer opening to the right of button; if not enough room, open to left
     let left = rect.right + 10;
     if (left + popW > window.innerWidth - margin) {
       left = rect.left - popW - 10;
     }
-    // clamp left
     left = Math.max(margin, Math.min(left, window.innerWidth - popW - margin));
 
-    // top aligned with button, but clamped
     let top = rect.top;
-    const maxTop = window.innerHeight - margin; // we'll clamp properly after we know popover height
+    const maxTop = window.innerHeight - margin;
     top = Math.max(margin, Math.min(top, maxTop));
 
     setPopPos({ top, left });
   }
 
-  // Open/close popover with proper positioning
   function toggleMenu() {
     setMenuOpen((v) => {
       const next = !v;
       if (!v && next) {
-        // opening
         setTimeout(() => recomputePopoverPosition(), 0);
       }
       return next;
     });
   }
 
-  // Close on outside click / ESC
   useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!menuOpen) return;
@@ -329,7 +339,6 @@ export default function AdminSidebar() {
     };
   }, [menuOpen]);
 
-  // Recompute on resize/scroll while open
   useEffect(() => {
     if (!menuOpen) return;
     const onResize = () => recomputePopoverPosition();
@@ -341,7 +350,6 @@ export default function AdminSidebar() {
     };
   }, [menuOpen]);
 
-  // After mount/open, clamp top based on actual popover height
   useEffect(() => {
     if (!menuOpen) return;
     if (!popPos) return;
@@ -430,7 +438,7 @@ export default function AdminSidebar() {
         </div>
       </div>
 
-      {/* FIXED popover so it can NEVER be out-of-view */}
+      {/* FIXED popover */}
       {menuOpen && popPos && (
         <div
           ref={popoverRef}
