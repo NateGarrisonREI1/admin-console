@@ -132,3 +132,24 @@ export function makePhoneHref(job: Pick<BrokerJob, "intake_payload">) {
   const digits = String(phone).replace(/[^\d+]/g, "");
   return digits ? `tel:${digits}` : null;
 }
+
+const GREEN = "#43a419";
+const GREEN_LIGHT = "rgba(67,164,25,0.12)";
+const GREEN_BORDER = "rgba(67,164,25,0.3)";
+
+export function outputChip(labelText: string, active: boolean) {
+  const base = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border";
+
+  if (active) {
+    return (
+      <span
+        className={base}
+        style={{ background: GREEN_LIGHT, color: GREEN, borderColor: GREEN_BORDER }}
+      >
+        {labelText}
+      </span>
+    );
+  }
+
+  return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>{labelText}</span>;
+}

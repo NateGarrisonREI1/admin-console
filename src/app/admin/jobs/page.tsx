@@ -3,6 +3,7 @@ import Link from "next/link";
 import { supabaseServer } from "../../../lib/supabase/server";
 
 import JobsTableClient from "./JobsTableClient";
+import { outputChip } from "./shared";
 
 export type JobStatus =
   | "unreviewed"
@@ -38,10 +39,6 @@ export const STATUS_TONE: Record<JobStatus, "good" | "warn" | "info" | "danger" 
   waiting_on_broker: "warn",
   blocked: "danger",
 } as const;
-
-const GREEN = "#43a419";
-const GREEN_LIGHT = "rgba(67,164,25,0.12)";
-const GREEN_BORDER = "rgba(67,164,25,0.3)";
 
 export type ContractorLeadRow = {
   id: string;
@@ -96,23 +93,6 @@ export function outputsFromRequested(requested_outputs?: string[] | null) {
     inspection: set.has("inspection"),
     hes: set.has("hes_report") || set.has("hes"),
   };
-}
-
-export function outputChip(labelText: string, active: boolean) {
-  const base = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border";
-
-  if (active) {
-    return (
-      <span
-        className={base}
-        style={{ background: GREEN_LIGHT, color: GREEN, borderColor: GREEN_BORDER }}
-      >
-        {labelText}
-      </span>
-    );
-  }
-
-  return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>{labelText}</span>;
 }
 
 type Opt = { id: string; name: string };
