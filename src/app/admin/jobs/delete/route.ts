@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 const BUCKET = "admin-attachments";
 
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing jobId" }, { status: 400 });
     }
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     // Grab file paths so we can delete storage objects best-effort
     const { data: fileRows, error: filesSelectErr } = await admin

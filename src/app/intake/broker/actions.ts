@@ -2,7 +2,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { supabaseAdmin } from "../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 function safeName(n: string) {
   return n.replace(/[^\w.\-]+/g, "_");
@@ -26,7 +26,7 @@ function on(v: FormDataEntryValue | null) {
 const BUCKET = "job-files";
 
 export async function submitBrokerIntake(formData: FormData) {
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
   const code = confirmationCode();
 
   // Honeypot: if filled, silently accept

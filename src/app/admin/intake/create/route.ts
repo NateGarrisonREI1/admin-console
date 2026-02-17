@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 function clean(v: FormDataEntryValue | null): string {
   return typeof v === "string" ? v.trim() : "";
@@ -44,7 +44,7 @@ function asFileKind(v: string): FileKind | null {
 }
 
 async function uploadAndRecordFile(opts: {
-  admin: ReturnType<typeof supabaseAdmin>;
+  admin: typeof supabaseAdmin;
   jobId: string;
   file: File;
   category: string; // freeform label you can filter by in UI
@@ -151,7 +151,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
 
   // ---- Build intake_payload (JSON) ----
   const intake_payload = {

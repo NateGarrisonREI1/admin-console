@@ -151,6 +151,7 @@ vite.config.ts.timestamp-*
 
 # Archives
 *.zip
+*.env.local.backup
 
 # Local dumps
 supabase_schema.sql

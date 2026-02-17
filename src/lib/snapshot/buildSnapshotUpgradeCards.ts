@@ -1,5 +1,5 @@
 // src/lib/snapshot/buildSnapshotUpgradeCards.ts
-import { supabaseAdmin } from "@/lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveIncentives } from "@/lib/incentives";
 import { mapUpgradeToTypeKey } from "@/lib/incentives/v0_dbCached/mapUpgradeToTypeKey";
 
@@ -214,7 +214,7 @@ export async function buildSnapshotUpgradeCards(
 ): Promise<UpgradeCard[]> {
   const { snapshotId, zip } = args;
 
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
 
   // 1) Snapshot recommendations define which catalog items become cards
   const recRows: any[] = await loadSnapshotRecs(admin, snapshotId);
