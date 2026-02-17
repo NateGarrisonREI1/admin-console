@@ -17,7 +17,6 @@ const ALL_ADMIN_LINKS: LinkItem[] = [
   { href: "/admin/jobs", label: "Projects", group: "admin" },
   { href: "/admin/contractor-leads", label: "Job Board", group: "admin" },
   { href: "/admin/upgrade-catalog", label: "Upgrade Catalog", group: "admin" },
-  { href: "/admin/incentives", label: "Rebates & Incentives", group: "admin" },
   { href: "/admin/schedule", label: "Inspection Scheduler", group: "admin" },
 
   // Settings
