@@ -47,6 +47,20 @@ export async function requireAdmin(): Promise<AuthResult> {
   return auth;
 }
 
+/**
+ * Require the user to have a specific role (or admin).
+ */
+export async function requireRole(role: string): Promise<AuthResult> {
+  const auth = await requireAuth();
+  if (!auth.ok) return auth;
+
+  if (auth.role !== role && auth.role !== "admin") {
+    return { ok: false, response: json(forbidden(`${role} role required`)) };
+  }
+
+  return auth;
+}
+
 /** Wrap an ApiResponse into a NextResponse with proper status code. */
 export function json<T>(body: ApiResponse<T>): NextResponse {
   return NextResponse.json(body, { status: body.status });

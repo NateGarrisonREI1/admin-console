@@ -1,11 +1,12 @@
 // src/app/admin/_components/AdminHomeShell.tsx
 import AdminHomeHeader from "./AdminHomeHeader";
 import AdminHomeQuickActions from "./AdminHomeQuickActions";
-import AdminHomeKpis from "./AdminHomeKpis";
-import AdminHomeModules from "./AdminHomeModules";
-import AdminHomeAttention from "./AdminHomeAttention";
+import AdminDashboardClient from "./AdminDashboardClient";
+import { fetchAdminDashboard } from "../_actions/dashboard";
 
-export default function AdminHomeShell() {
+export default async function AdminHomeShell() {
+  const data = await fetchAdminDashboard();
+
   return (
     <div>
       <AdminHomeHeader />
@@ -15,15 +16,7 @@ export default function AdminHomeShell() {
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <AdminHomeKpis />
-      </div>
-
-      <div style={{ marginTop: 18 }}>
-        <AdminHomeModules />
-      </div>
-
-      <div style={{ marginTop: 18 }}>
-        <AdminHomeAttention />
+        <AdminDashboardClient data={data} />
       </div>
     </div>
   );

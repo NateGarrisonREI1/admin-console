@@ -1,16 +1,21 @@
-import Link from "next/link";
+// src/app/(app)/broker/dashboard/page.tsx
+export const dynamic = "force-dynamic";
 
-export default function BrokerDashboard() {
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-900">Broker Dashboard</h1>
-      <p className="text-slate-600">Track listings, request HES/Snapshots, and view completed work.</p>
+import { fetchBrokerDashboard } from "./actions";
+import BrokerDashboardClient from "./BrokerDashboardClient";
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/broker/jobs">Jobs</Link>
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/broker/requests">Request Service</Link>
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/broker/snapshots">Snapshots</Link>
+export default async function BrokerDashboardPage() {
+  const data = await fetchBrokerDashboard();
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+          Unable to load dashboard. Please sign in as a broker.
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return <BrokerDashboardClient requests={data.requests} />;
 }

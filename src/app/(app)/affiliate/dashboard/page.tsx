@@ -1,16 +1,27 @@
-import Link from "next/link";
+// src/app/(app)/affiliate/dashboard/page.tsx
+export const dynamic = "force-dynamic";
 
-export default function AffiliateDashboard() {
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-900">Affiliate (HES Provider) Dashboard</h1>
-      <p className="text-slate-600">Run jobs through LEAF, generate snapshots, and manage your settings.</p>
+import { fetchAffiliateDashboard } from "./actions";
+import AffiliateDashboardClient from "./AffiliateDashboardClient";
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/affiliate/jobs">Jobs</Link>
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/affiliate/snapshots">Snapshots</Link>
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/affiliate/settings">Settings</Link>
+export default async function AffiliateDashboardPage() {
+  const data = await fetchAffiliateDashboard();
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+          Unable to load dashboard. Please sign in as an HES affiliate.
+        </div>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <AffiliateDashboardClient
+      available={data.available}
+      myWork={data.my_work}
+      stats={data.stats}
+    />
   );
 }

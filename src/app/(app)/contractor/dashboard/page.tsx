@@ -1,16 +1,27 @@
-import Link from "next/link";
+// src/app/(app)/contractor/dashboard/page.tsx
+export const dynamic = "force-dynamic";
 
-export default function ContractorDashboard() {
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-900">Contractor Dashboard</h1>
-      <p className="text-slate-600">Browse the job board, buy leads, and manage active work.</p>
+import { fetchContractorDashboard } from "./actions";
+import ContractorDashboardClient from "./ContractorDashboardClient";
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/contractor/job-board">Live Job Board</Link>
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/contractor/active">Active Jobs</Link>
-        <Link className="rounded-xl border bg-white p-4 hover:bg-slate-50" href="/contractor/billing">Billing</Link>
+export default async function ContractorDashboardPage() {
+  const data = await fetchContractorDashboard();
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+          Unable to load dashboard. Please sign in as a contractor.
+        </div>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <ContractorDashboardClient
+      available={data.available}
+      myLeads={data.my_leads}
+      stats={data.stats}
+    />
   );
 }
