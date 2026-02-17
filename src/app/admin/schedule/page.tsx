@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
-import { supabaseAdmin } from "../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import AvailabilityControls from "./_components/AvailabilityControls";
 import SlotList from "./_components/SlotList";
 
@@ -129,7 +129,7 @@ function tabLink(href: string, active: boolean, label: string) {
 export default async function SchedulePage(props: {
   searchParams?: { job?: string; kind?: string; tab?: string };
 }) {
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
 
   const preselectJobId = s(props?.searchParams?.job).trim();
   const preselectKind = normalizePreselectKind(props?.searchParams?.kind);
@@ -201,7 +201,7 @@ export default async function SchedulePage(props: {
 
   async function createAppointmentAction(formData: FormData) {
     "use server";
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const jobId = s(formData.get("job_id")).trim();
     const startAt = s(formData.get("start_at")).trim();
@@ -243,7 +243,7 @@ export default async function SchedulePage(props: {
 
   async function cancelAppointmentAction(formData: FormData) {
     "use server";
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const apptId = s(formData.get("appt_id")).trim();
     const jobId = s(formData.get("job_id")).trim();

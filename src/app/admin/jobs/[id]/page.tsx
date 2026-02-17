@@ -6,7 +6,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { supabaseServer } from "../../../../lib/supabase/server";
-import { supabaseAdmin } from "../../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 import ConsoleHeader from "./_components/ConsoleHeader";
 import FilesCard from "./_components/FilesCard";
@@ -48,7 +48,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
 
   const { id: jobId } = await params;
   const supabase = await supabaseServer();
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
 
   /* ======================
      SERVER ACTIONS (SERVICE ROLE WRITES)
@@ -59,7 +59,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
     const raw = str(formData.get("response_status"));
     const v = String(raw || "unreviewed").trim().toLowerCase();
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const { data: existing, error: e1 } = await admin
       .from("admin_jobs")
@@ -97,7 +97,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
     "use server";
     const notes = String(formData.get("admin_notes") || "");
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const { data: existing, error: e1 } = await admin
       .from("admin_jobs")
@@ -133,7 +133,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
     const type = str(formData.get("type")) || "note";
     if (!message) redirect(`/admin/jobs/${jobId}`);
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const { data: existing, error: e1 } = await admin
       .from("admin_jobs")
@@ -163,7 +163,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
     const itemId = str(formData.get("item_id"));
     if (!itemId) redirect(`/admin/jobs/${jobId}`);
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const { data: existing, error: e1 } = await admin
       .from("admin_jobs")
@@ -223,7 +223,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
   async function saveContactsAction(formData: FormData) {
     "use server";
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const { data: existing, error: e1 } = await admin
       .from("admin_jobs")
@@ -286,7 +286,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
   async function saveNotesAction(formData: FormData) {
     "use server";
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     const { data: existing, error: e1 } = await admin
       .from("admin_jobs")

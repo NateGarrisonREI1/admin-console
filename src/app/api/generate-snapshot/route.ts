@@ -1,6 +1,6 @@
 // src/app/api/generate-snapshot/route.ts
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateAndSaveHesSnapshot } from "../../../lib/hes/generateHesSnapshot";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing job_id" }, { status: 400 });
     }
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin;
 
     // Optional sanity check: ensure job exists (keeps error messaging clean)
     const { data: job, error: jobErr } = await admin

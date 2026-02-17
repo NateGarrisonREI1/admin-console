@@ -1,6 +1,6 @@
 // src/app/admin/jobs/[id]/_components/HesParseCard.tsx
 import { revalidatePath } from "next/cache";
-import { supabaseAdmin } from "../../../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { generateAndSaveHesSnapshot } from "../../../../../lib/hes/generateHesSnapshot";
 import GenerateButton from "./GenerateButton";
 
@@ -10,7 +10,7 @@ async function generateSnapshotAction(formData: FormData) {
   const jobId = String(formData.get("job_id") || "").trim();
   if (!jobId) return;
 
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
   await generateAndSaveHesSnapshot(admin, jobId);
   revalidatePath(`/admin/jobs/${jobId}`);
 }
@@ -74,7 +74,7 @@ function renderRows(rows: any[]) {
 }
 
 export default async function HesParseCard({ jobId }: { jobId: string }) {
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
 
   const { data: snapshot } = await admin
     .from("admin_job_snapshots")

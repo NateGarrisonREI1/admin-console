@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { supabaseAdmin } from "../../../lib/supabase/admin";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 export async function deleteJobAction(jobId: string) {
-  const admin = supabaseAdmin();
+  const admin = supabaseAdmin;
 
   // Delete file metadata first
   const { error: filesErr } = await admin
