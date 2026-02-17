@@ -1,6 +1,7 @@
 "use server";
 
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { StripeService } from "@/lib/services/StripeService";
 
 export type AvailableHesLead = {
   id: string;
@@ -93,15 +94,19 @@ export async function fetchAffiliateDashboard() {
   };
 }
 
-export async function purchaseHesLead(leadId: string) {
+/**
+ * Create a Stripe payment intent for purchasing an HES lead.
+ * Returns the clientSecret for use with Stripe Elements on the frontend.
+ */
+export async function createHesLeadPurchaseIntent(leadId: string) {
   const supabase = await supabaseServer();
   const { data: userData } = await supabase.auth.getUser();
-  const userId = userData?.user?.id;
-  if (!userId) throw new Error("Not authenticated");
+  const user = userData?.user;
+  if (!user?.id) throw new Error("Not authenticated");
 
   const { data: lead } = await supabaseAdmin
     .from("hes_requests")
-    .select("*")
+    .select("id, price, purchased_by_affiliate_id")
     .eq("id", leadId)
     .is("deleted_at", null)
     .single();
@@ -109,25 +114,15 @@ export async function purchaseHesLead(leadId: string) {
   if (!lead) throw new Error("Lead not found");
   if (lead.purchased_by_affiliate_id) throw new Error("Already purchased");
 
-  const { error } = await supabaseAdmin
-    .from("hes_requests")
-    .update({
-      status: "assigned_affiliate",
-      purchased_by_affiliate_id: userId,
-      assigned_to_affiliate_id: userId,
-      purchased_date: new Date().toISOString(),
-    })
-    .eq("id", leadId);
+  const result = await StripeService.createPaymentIntent(
+    user.id,
+    user.email ?? "",
+    leadId,
+    lead.price ?? 10,
+    "hes_request"
+  );
 
-  if (error) throw new Error(error.message);
-
-  await supabaseAdmin.from("payments").insert({
-    contractor_id: userId,
-    hes_request_id: leadId,
-    amount: lead.price ?? 10,
-    system_type: "hes",
-    status: "completed",
-  });
+  return { clientSecret: result.clientSecret };
 }
 
 export async function markWorkComplete(workId: string, reportUrl?: string) {

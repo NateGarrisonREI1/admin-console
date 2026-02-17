@@ -1,6 +1,9 @@
 "use server";
 
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { StripeService } from "@/lib/services/StripeService";
+import { RefundService } from "@/lib/services/RefundService";
+import type { RefundReasonCategory, RefundRequest } from "@/types/stripe";
 
 export type AvailableLead = {
   id: string;
@@ -20,6 +23,7 @@ export type MyLead = {
   notes: string | null;
   quote_amount: number | null;
   closed_date: string | null;
+  refund_status: string | null;
   system_lead: {
     id: string;
     system_type: string;
@@ -86,23 +90,48 @@ export async function fetchContractorDashboard() {
     system_lead: Array.isArray(row.system_lead) ? row.system_lead[0] : row.system_lead,
   }));
 
+  // Fetch refund statuses for purchased leads
+  const { data: refundReqs } = await supabaseAdmin
+    .from("refund_requests")
+    .select("lead_id, status")
+    .eq("contractor_id", userId)
+    .order("requested_date", { ascending: false });
+
+  const refundMap = new Map<string, string>();
+  for (const r of refundReqs ?? []) {
+    if (!refundMap.has(r.lead_id)) refundMap.set(r.lead_id, r.status);
+  }
+
+  // Attach refund_status to each lead
+  const leadsWithRefund = normalizedLeads.map((ml) => {
+    const sl = ml.system_lead as { id: string } | undefined;
+    return {
+      ...ml,
+      refund_status: sl ? (refundMap.get(sl.id) ?? null) : null,
+    };
+  });
+
   return {
     available: (available ?? []) as AvailableLead[],
-    my_leads: normalizedLeads as MyLead[],
+    my_leads: leadsWithRefund as MyLead[],
     stats: { total_purchased: total, in_progress: inProgress, closed, conversion_rate: conversionRate } as ContractorStats,
   };
 }
 
-export async function purchaseSystemLead(leadId: string) {
+/**
+ * Create a Stripe payment intent for purchasing a system lead.
+ * Returns the clientSecret for use with Stripe Elements on the frontend.
+ */
+export async function createSystemLeadPurchaseIntent(leadId: string) {
   const supabase = await supabaseServer();
   const { data: userData } = await supabase.auth.getUser();
-  const userId = userData?.user?.id;
-  if (!userId) throw new Error("Not authenticated");
+  const user = userData?.user;
+  if (!user?.id) throw new Error("Not authenticated");
 
   // Verify lead is available
   const { data: lead } = await supabaseAdmin
     .from("system_leads")
-    .select("*")
+    .select("id, price, status, expiration_date")
     .eq("id", leadId)
     .eq("status", "available")
     .is("deleted_at", null)
@@ -114,33 +143,16 @@ export async function purchaseSystemLead(leadId: string) {
     throw new Error("Lead has expired");
   }
 
-  // Purchase
-  const { error } = await supabaseAdmin
-    .from("system_leads")
-    .update({
-      status: "purchased",
-      purchased_by_contractor_id: userId,
-      purchased_date: new Date().toISOString(),
-    })
-    .eq("id", leadId);
+  // Create Stripe payment intent
+  const result = await StripeService.createPaymentIntent(
+    user.id,
+    user.email ?? "",
+    leadId,
+    lead.price,
+    "system_lead"
+  );
 
-  if (error) throw new Error(error.message);
-
-  // Create tracking row
-  await supabaseAdmin.from("contractor_lead_status").insert({
-    contractor_id: userId,
-    system_lead_id: leadId,
-    status: "new",
-  });
-
-  // Record payment
-  await supabaseAdmin.from("payments").insert({
-    contractor_id: userId,
-    system_lead_id: leadId,
-    amount: lead.price,
-    system_type: lead.system_type,
-    status: "completed",
-  });
+  return { clientSecret: result.clientSecret };
 }
 
 export async function updateLeadStatus(
@@ -167,4 +179,21 @@ export async function updateLeadStatus(
     .eq("contractor_id", userId);
 
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Submit a refund request for a purchased system lead.
+ */
+export async function requestLeadRefund(
+  leadId: string,
+  reason: string,
+  reasonCategory: RefundReasonCategory,
+  notes?: string
+): Promise<RefundRequest> {
+  const supabase = await supabaseServer();
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData?.user?.id;
+  if (!userId) throw new Error("Not authenticated");
+
+  return RefundService.requestRefund(userId, leadId, "system_lead", reason, reasonCategory, notes);
 }

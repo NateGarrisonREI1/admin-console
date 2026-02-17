@@ -287,6 +287,8 @@ export type Payment = {
   amount: number;
   system_type: string | null;
   stripe_transaction_id: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_charge_id: string | null;
   status: PaymentStatus;
   created_at: string;
   refunded_date: string | null;

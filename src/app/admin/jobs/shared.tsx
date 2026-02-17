@@ -1,4 +1,4 @@
-// src/app/admin/jobs/shared.ts
+// src/app/admin/jobs/shared.tsx
 
 export type JobStatus =
   | "unreviewed"
@@ -15,7 +15,7 @@ export const STATUS_DISPLAY: Record<JobStatus, string> = {
   unreviewed: "New",
   scheduled: "Scheduled",
   in_progress: "In Progress",
-  ready: "Ready to Send",
+  ready: "Ready",
   delivered: "Delivered",
   closed: "Closed",
   needs_review: "Needs Review",
@@ -23,24 +23,24 @@ export const STATUS_DISPLAY: Record<JobStatus, string> = {
   blocked: "Blocked",
 } as const;
 
-export const STATUS_TONE: Record<
-  JobStatus,
-  "good" | "warn" | "info" | "danger" | "neutral"
-> = {
-  unreviewed: "neutral",
+/**
+ * Nate rules:
+ * - info (blue)  = ACTION REQUIRED / admin work queue
+ * - good (green) = DONE
+ * - danger (red) = BLOCKED
+ * - neutral (slate) = fallback
+ */
+export const STATUS_TONE: Record<JobStatus, "good" | "info" | "danger" | "neutral"> = {
+  unreviewed: "info",
+  needs_review: "info",
+  waiting_on_broker: "info",
+  in_progress: "info",
   scheduled: "info",
-  in_progress: "neutral",
-  ready: "good",
+  ready: "info",
   delivered: "good",
   closed: "good",
-  needs_review: "warn",
-  waiting_on_broker: "warn",
   blocked: "danger",
 } as const;
-
-const GREEN = "#43a419";
-const GREEN_LIGHT = "rgba(67,164,25,0.12)";
-const GREEN_BORDER = "rgba(67,164,25,0.3)";
 
 export type BrokerJob = {
   id: string;
@@ -51,9 +51,7 @@ export type BrokerJob = {
   state?: string | null;
   zip?: string | null;
   source?: string | null;
-  customer_type?: string | null;
   response_status?: string | null;
-  inspection_status?: string | null;
   requested_outputs?: string[] | null;
   intake_payload?: any;
   confirmation_code?: string | null;
@@ -68,8 +66,7 @@ export function safeStr(v?: string | null) {
 export function normalizeResponse(v?: string | null): JobStatus {
   const key = safeStr(v).toLowerCase();
   if (!key) return "unreviewed";
-  if (["waiting", "awaiting_broker", "waiting_on_broker"].includes(key))
-    return "waiting_on_broker";
+  if (["waiting", "awaiting_broker", "waiting_on_broker"].includes(key)) return "waiting_on_broker";
   if (key === "ready_to_send") return "ready";
   if (key === "working") return "in_progress";
   if (key === "sent") return "delivered";
@@ -81,19 +78,16 @@ export function statusPill(status?: string | null) {
   const label = STATUS_DISPLAY[norm] ?? norm.replace(/_/g, " ");
 
   const tones = {
-    good: `bg-[${GREEN_LIGHT}] text-[${GREEN}] border-[${GREEN_BORDER}]`,
-    warn: "bg-amber-50 text-amber-800 border-amber-200",
+    good: "bg-green-50 text-green-700 border-green-200",
+    info: "bg-blue-50 text-blue-800 border-blue-200",
     danger: "bg-red-50 text-red-800 border-red-200",
-    info: "bg-cyan-50 text-cyan-800 border-cyan-200",
     neutral: "bg-slate-100 text-slate-700 border-slate-200",
   } as const;
 
+  const tone = STATUS_TONE[norm] ?? "neutral";
+
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${
-        tones[STATUS_TONE[norm]]
-      }`}
-    >
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${tones[tone]}`}>
       {label}
     </span>
   );
@@ -101,9 +95,7 @@ export function statusPill(status?: string | null) {
 
 export function addrLine(job: Pick<BrokerJob, "address1" | "city" | "state" | "zip">) {
   const a1 = safeStr(job.address1);
-  const parts = [safeStr(job.city), safeStr(job.state), safeStr(job.zip)]
-    .filter(Boolean)
-    .join(", ");
+  const parts = [safeStr(job.city), safeStr(job.state), safeStr(job.zip)].filter(Boolean).join(", ");
   return a1 && parts ? `${a1} — ${parts}` : a1 || parts || "—";
 }
 
@@ -116,47 +108,27 @@ export function outputsFromRequested(requested_outputs?: string[] | null) {
   };
 }
 
-export function outputChip(label: string, active: boolean) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${
-        active
-          ? `bg-[${GREEN_LIGHT}] text-[${GREEN}] border-[${GREEN_BORDER}]`
-          : "bg-slate-100 text-slate-700 border-slate-200"
-      }`}
-    >
-      {label}
-    </span>
-  );
-}
-
 export function fmtArchivedAt(iso?: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
 export function makeMapHref(job: Pick<BrokerJob, "address1" | "city" | "state" | "zip">) {
-  const q = encodeURIComponent(
-    [job.address1, job.city, job.state, job.zip].filter(Boolean).join(" ")
-  );
+  const q = encodeURIComponent([job.address1, job.city, job.state, job.zip].filter(Boolean).join(" "));
   return `https://www.google.com/maps/search/?api=1&query=${q}`;
 }
 
 export function makeEmailHref(job: Pick<BrokerJob, "intake_payload">) {
-  const p = (job.intake_payload || {}) as any;
-  const email = p.broker_email || p.agent_email || p.realtor_email || p.email || "";
+  const raw = (job.intake_payload?.raw ?? {}) as any;
+  const email = raw.broker_email || raw.agent_email || raw.realtor_email || raw.email || "";
   return email ? `mailto:${email}` : null;
 }
 
 export function makePhoneHref(job: Pick<BrokerJob, "intake_payload">) {
-  const p = (job.intake_payload || {}) as any;
-  const phone = p.broker_phone || p.agent_phone || p.realtor_phone || p.phone || "";
+  const raw = (job.intake_payload?.raw ?? {}) as any;
+  const phone = raw.broker_phone || raw.agent_phone || raw.realtor_phone || raw.phone || "";
   const digits = String(phone).replace(/[^\d+]/g, "");
   return digits ? `tel:${digits}` : null;
 }

@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from "react";
 import type { AvailableLead, MyLead, ContractorStats } from "./actions";
-import { purchaseSystemLead, updateLeadStatus } from "./actions";
+import { createSystemLeadPurchaseIntent, updateLeadStatus, requestLeadRefund } from "./actions";
 import { StatCard, StatusBadge, SystemTypeIcon, systemTypeLabel, PurchaseDialog } from "@/components/dashboard";
+import RefundRequestDialog from "@/components/dashboard/RefundRequestDialog";
+import type { RefundReasonCategory } from "@/types/stripe";
 import {
   ChartBarIcon,
   ShoppingCartIcon,
@@ -28,6 +30,27 @@ type ContactedStatus = "new" | "contacted" | "quoted" | "closed" | "lost";
 
 const STATUSES: ContactedStatus[] = ["new", "contacted", "quoted", "closed", "lost"];
 
+function RefundStatusBadge({ status }: { status: string | null }) {
+  if (!status) return null;
+  const styles: Record<string, string> = {
+    pending: "border-amber-200 bg-amber-50 text-amber-700",
+    approved: "border-green-200 bg-green-50 text-green-700",
+    denied: "border-red-200 bg-red-50 text-red-700",
+    more_info_requested: "border-blue-200 bg-blue-50 text-blue-700",
+  };
+  const labels: Record<string, string> = {
+    pending: "Refund Pending",
+    approved: "Refund Approved",
+    denied: "Refund Denied",
+    more_info_requested: "Info Requested",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${styles[status] ?? "border-slate-200 bg-slate-50 text-slate-600"}`}>
+      {labels[status] ?? status}
+    </span>
+  );
+}
+
 export default function ContractorDashboardClient({
   available,
   myLeads,
@@ -39,15 +62,19 @@ export default function ContractorDashboardClient({
 }) {
   const [filter, setFilter] = useState<SystemFilter>("all");
   const [purchasingLead, setPurchasingLead] = useState<AvailableLead | null>(null);
+  const [refundingLead, setRefundingLead] = useState<MyLead | null>(null);
   const [, startTransition] = useTransition();
 
   const filtered = filter === "all"
     ? available
     : available.filter((l) => l.system_type === filter);
 
-  async function handlePurchase() {
-    if (!purchasingLead) return;
-    await purchaseSystemLead(purchasingLead.id);
+  async function handleCreateIntent() {
+    if (!purchasingLead) throw new Error("No lead selected");
+    return createSystemLeadPurchaseIntent(purchasingLead.id);
+  }
+
+  function handlePurchaseSuccess() {
     window.location.reload();
   }
 
@@ -56,6 +83,20 @@ export default function ContractorDashboardClient({
       await updateLeadStatus(statusId, { status: newStatus });
       window.location.reload();
     });
+  }
+
+  async function handleRefundSubmit(data: {
+    reason: string;
+    reasonCategory: RefundReasonCategory;
+    notes?: string;
+  }) {
+    if (!refundingLead) return;
+    await requestLeadRefund(
+      refundingLead.system_lead.id,
+      data.reason,
+      data.reasonCategory,
+      data.notes
+    );
   }
 
   return (
@@ -189,12 +230,13 @@ export default function ContractorDashboardClient({
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Location</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Contact</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Update</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {myLeads.map((ml) => {
                     const sl = ml.system_lead;
+                    const canRequestRefund = !ml.refund_status && ml.status !== "closed";
                     return (
                       <tr key={ml.id} style={{ borderBottom: "1px solid #f8fafc" }}>
                         <td className="px-4 py-3">
@@ -204,22 +246,35 @@ export default function ContractorDashboardClient({
                           {[sl.city, sl.state].filter(Boolean).join(", ") || sl.zip}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-sm font-medium text-slate-900">{sl.homeowner_name || "—"}</div>
-                          <div className="text-xs text-slate-500">{sl.homeowner_phone || sl.homeowner_email || "—"}</div>
+                          <div className="text-sm font-medium text-slate-900">{sl.homeowner_name || "\u2014"}</div>
+                          <div className="text-xs text-slate-500">{sl.homeowner_phone || sl.homeowner_email || "\u2014"}</div>
                         </td>
                         <td className="px-4 py-3">
-                          <StatusBadge status={ml.status} />
+                          <div className="flex items-center gap-2">
+                            <StatusBadge status={ml.status} />
+                            <RefundStatusBadge status={ml.refund_status} />
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <select
-                            value={ml.status}
-                            onChange={(e) => handleStatusChange(ml.id, e.target.value)}
-                            className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 bg-white"
-                          >
-                            {STATUSES.map((s) => (
-                              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-                            ))}
-                          </select>
+                          <div className="flex items-center justify-end gap-2">
+                            <select
+                              value={ml.status}
+                              onChange={(e) => handleStatusChange(ml.id, e.target.value)}
+                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 bg-white"
+                            >
+                              {STATUSES.map((s) => (
+                                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                              ))}
+                            </select>
+                            {canRequestRefund && (
+                              <button
+                                onClick={() => setRefundingLead(ml)}
+                                className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-100 transition-colors whitespace-nowrap"
+                              >
+                                Refund
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -236,11 +291,24 @@ export default function ContractorDashboardClient({
         <PurchaseDialog
           open
           onClose={() => setPurchasingLead(null)}
-          onConfirm={handlePurchase}
+          onCreateIntent={handleCreateIntent}
+          onSuccess={handlePurchaseSuccess}
           title="Purchase Lead"
           description={`${systemTypeLabel(purchasingLead.system_type as "hvac" | "solar" | "water_heater")} lead in ${[purchasingLead.city, purchasingLead.state].filter(Boolean).join(", ") || purchasingLead.zip}. After purchase, you'll get full homeowner contact information.`}
           price={purchasingLead.price}
           itemLabel="system lead"
+        />
+      )}
+
+      {/* Refund Request Dialog */}
+      {refundingLead && (
+        <RefundRequestDialog
+          open
+          onClose={() => setRefundingLead(null)}
+          onSubmit={handleRefundSubmit}
+          leadAddress={[refundingLead.system_lead.city, refundingLead.system_lead.state].filter(Boolean).join(", ") || refundingLead.system_lead.zip}
+          leadSystemType={refundingLead.system_lead.system_type}
+          leadPrice={refundingLead.system_lead.price}
         />
       )}
     </div>

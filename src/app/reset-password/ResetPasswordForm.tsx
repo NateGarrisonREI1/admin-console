@@ -1,14 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
 
 export default function ResetPasswordForm() {
   const router = useRouter();
-  const sp = useSearchParams();
 
-  const [email, setEmail] = React.useState("nate@renewableenergyincentives.com");
+  const [email, setEmail] = React.useState("");
   const [pw1, setPw1] = React.useState("");
   const [pw2, setPw2] = React.useState("");
 
@@ -17,34 +16,25 @@ export default function ResetPasswordForm() {
   const [err, setErr] = React.useState<string | null>(null);
   const [msg, setMsg] = React.useState<string | null>(null);
 
+  // Only show the password form if Supabase indicates we're in PASSWORD_RECOVERY flow.
   React.useEffect(() => {
-    let cancelled = false;
+    const supabase = supabaseBrowser();
 
-    async function boot() {
-      setErr(null);
-      setMsg(null);
+    // Clear any misleading “ready” state on first load
+    setReady(false);
 
-      const supabase = supabaseBrowser();
-
-      // If Supabase uses the "code" flow, exchange it for a session.
-      const code = sp.get("code");
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (!cancelled && error) setErr(error.message);
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setReady(true);
+        setErr(null);
+        setMsg(null);
       }
+    });
 
-      const { data } = await supabase.auth.getSession();
-      if (cancelled) return;
-
-      // Only flip to "ready" when the email link established a session
-      setReady(!!data?.session);
-    }
-
-    boot();
     return () => {
-      cancelled = true;
+      sub.subscription.unsubscribe();
     };
-  }, [sp]);
+  }, []);
 
   async function resendReset() {
     const e = email.trim();
@@ -59,13 +49,16 @@ export default function ResetPasswordForm() {
 
     try {
       const supabase = supabaseBrowser();
+
+      // Use a server callback route so PKCE/session cookies are set correctly
       const base = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-      const redirectTo = `${base}/reset-password`;
+      const redirectTo = `${base}/auth/callback?next=/reset-password`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(e, { redirectTo });
       if (error) throw error;
 
-      setMsg("Reset email sent (if the account exists). Check your inbox/spam.");
+      // Always show a neutral success message (don’t leak if account exists)
+      setMsg("If that email exists, a reset link was sent. Check inbox + spam.");
     } catch (e: any) {
       setErr(e?.message || "Could not send reset email");
     } finally {
@@ -99,6 +92,9 @@ export default function ResetPasswordForm() {
       if (error) throw error;
 
       setMsg("Password updated. Redirecting to login…");
+
+      // Optional: sign out to ensure clean login after reset
+      await supabase.auth.signOut();
 
       setTimeout(() => {
         router.replace("/login");

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { AvailableHesLead, MyWorkItem, AffiliateStats } from "./actions";
-import { purchaseHesLead, markWorkComplete } from "./actions";
+import { createHesLeadPurchaseIntent, markWorkComplete } from "./actions";
 import { StatCard, StatusBadge, PurchaseDialog } from "@/components/dashboard";
 import {
   ShoppingCartIcon,
@@ -31,9 +31,12 @@ export default function AffiliateDashboardClient({
   const [purchasingLead, setPurchasingLead] = useState<AvailableHesLead | null>(null);
   const [, startTransition] = useTransition();
 
-  async function handlePurchase() {
-    if (!purchasingLead) return;
-    await purchaseHesLead(purchasingLead.id);
+  async function handleCreateIntent() {
+    if (!purchasingLead) throw new Error("No lead selected");
+    return createHesLeadPurchaseIntent(purchasingLead.id);
+  }
+
+  function handlePurchaseSuccess() {
     window.location.reload();
   }
 
@@ -188,7 +191,8 @@ export default function AffiliateDashboardClient({
         <PurchaseDialog
           open
           onClose={() => setPurchasingLead(null)}
-          onConfirm={handlePurchase}
+          onCreateIntent={handleCreateIntent}
+          onSuccess={handlePurchaseSuccess}
           title="Purchase HES Lead"
           description={`HES assessment lead for ${purchasingLead.property_address}, ${purchasingLead.city}, ${purchasingLead.state}. After purchase, you'll receive full property and broker details.`}
           price={purchasingLead.price ?? 10}
