@@ -12,7 +12,6 @@ import ConsoleHeader from "./_components/ConsoleHeader";
 import FilesCard from "./_components/FilesCard";
 import TimelineCard from "./_components/TimelineCard";
 import NotesCard from "./_components/NotesCard";
-import HesParseCard from "./_components/HesParseCard";
 import WorkflowCard from "./_components/WorkflowCard";
 import UpgradeCardsCard from "./_components/UpgradeCardsCard";
 
@@ -494,9 +493,6 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
       />
 
       <FilesCard files={files} signed={signed} />
-
-      {/* ✅ MOVED HERE: full width, directly under Files */}
-      <HesParseCard jobId={jobId} />
 
       <UpgradeCardsCard jobId={jobId} />
 
