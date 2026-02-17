@@ -22,14 +22,6 @@ export default function AdminHomeModules() {
         }}
       >
         <Card
-          title="Upgrade Catalog"
-          desc="Browse systems, filter, and toggle active status."
-          meta="LIVE"
-          href="/admin/upgrade-catalog"
-          tone="live"
-        />
-
-        <Card
           title="Job Board"
           desc="Manage open + sold leads. Adjust pricing, assign, remove."
           meta="LIVE"
@@ -51,14 +43,6 @@ export default function AdminHomeModules() {
           meta="LIVE"
           href="/admin/schedule"
           tone="live"
-        />
-
-        <Card
-          title="Rebates & Incentives"
-          desc="Placeholder for phase 4+ incentive resolution + rules."
-          meta="LATER"
-          href="/admin/incentives"
-          tone="later"
         />
 
         <Card
