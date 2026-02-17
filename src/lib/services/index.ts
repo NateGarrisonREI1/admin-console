@@ -7,6 +7,9 @@ export { ScheduleService } from "./ScheduleService";
 export { LeadService } from "./LeadService";
 export { SnapshotService } from "./SnapshotService";
 export { WebhookService } from "./WebhookService";
+export { StripeService } from "./StripeService";
+export { RefundService } from "./RefundService";
+export { AuditLogService } from "./AuditLogService";
 
 export {
   ServiceError,

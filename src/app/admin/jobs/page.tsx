@@ -2,9 +2,7 @@
 import Link from "next/link";
 import { supabaseServer } from "../../../lib/supabase/server";
 
-import JobCardClient from "./JobCardClient";
-
-// ── Shared Types & Constants ───────────────────────────────────────────────────
+import JobsTableClient from "./JobsTableClient";
 
 export type JobStatus =
   | "unreviewed"
@@ -45,6 +43,11 @@ const GREEN = "#43a419";
 const GREEN_LIGHT = "rgba(67,164,25,0.12)";
 const GREEN_BORDER = "rgba(67,164,25,0.3)";
 
+export type ContractorLeadRow = {
+  id: string;
+  status?: string | null;
+};
+
 export type BrokerJob = {
   id: string;
   created_at: string;
@@ -63,11 +66,14 @@ export type BrokerJob = {
   is_archived?: boolean | null;
   archived_at?: string | null;
 
-  // ✅ new (from left-join)
-  contractor_leads?: { id: string }[] | null;
-};
+  lead_posted?: boolean | null;
+  lead_posted_at?: string | null;
 
-// ── Shared Helpers ─────────────────────────────────────────────────────────────
+  contractor_leads?: ContractorLeadRow[] | null;
+
+  // client-only helper injected server-side
+  __normalized_status?: JobStatus;
+};
 
 export function safeStr(v?: string | null) {
   return (v ?? "").trim();
@@ -83,51 +89,8 @@ export function normalizeResponse(v?: string | null): JobStatus {
   return (key as JobStatus) || "unreviewed";
 }
 
-export function statusPill(status?: string | null) {
-  const norm = normalizeResponse(status);
-  const label = STATUS_DISPLAY[norm] ?? norm.replace(/_/g, " ");
-  const tone = STATUS_TONE[norm];
-
-  const base = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border";
-
-  if (tone === "good") {
-    return (
-      <span
-        className={base}
-        style={{
-          background: GREEN_LIGHT,
-          color: GREEN,
-          borderColor: GREEN_BORDER,
-        }}
-      >
-        {label}
-      </span>
-    );
-  }
-
-  if (tone === "warn") {
-    return <span className={`${base} bg-amber-50 text-amber-800 border-amber-200`}>{label}</span>;
-  }
-
-  if (tone === "danger") {
-    return <span className={`${base} bg-red-50 text-red-800 border-red-200`}>{label}</span>;
-  }
-
-  if (tone === "info") {
-    return <span className={`${base} bg-cyan-50 text-cyan-800 border-cyan-200`}>{label}</span>;
-  }
-
-  return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>{label}</span>;
-}
-
-export function addrLine(job: BrokerJob) {
-  const a1 = safeStr(job.address1);
-  const parts = [safeStr(job.city), safeStr(job.state), safeStr(job.zip)].filter(Boolean).join(", ");
-  return a1 && parts ? `${a1} — ${parts}` : a1 || parts || "—";
-}
-
 export function outputsFromRequested(requested_outputs?: string[] | null) {
-  const set = new Set((requested_outputs ?? []).map(String));
+  const set = new Set((requested_outputs ?? []).map((s) => String(s).toLowerCase()));
   return {
     snapshot: set.has("leaf_snapshot") || set.has("snapshot"),
     inspection: set.has("inspection"),
@@ -142,11 +105,7 @@ export function outputChip(labelText: string, active: boolean) {
     return (
       <span
         className={base}
-        style={{
-          background: GREEN_LIGHT,
-          color: GREEN,
-          borderColor: GREEN_BORDER,
-        }}
+        style={{ background: GREEN_LIGHT, color: GREEN, borderColor: GREEN_BORDER }}
       >
         {labelText}
       </span>
@@ -156,36 +115,7 @@ export function outputChip(labelText: string, active: boolean) {
   return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>{labelText}</span>;
 }
 
-export function fmtArchivedAt(iso?: string | null) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-export function makeMapHref(job: BrokerJob) {
-  const q = encodeURIComponent([job.address1, job.city, job.state, job.zip].filter(Boolean).join(" "));
-  return `https://www.google.com/maps/search/?api=1&query=${q}`;
-}
-
-export function makeEmailHref(job: BrokerJob) {
-  const p = job.intake_payload || {};
-  const email = p.broker_email || p.agent_email || p.realtor_email || p.email || "";
-  return email ? `mailto:${email}` : null;
-}
-
-export function makePhoneHref(job: BrokerJob) {
-  const p = job.intake_payload || {};
-  const phone = p.broker_phone || p.agent_phone || p.realtor_phone || p.phone || "";
-  const digits = String(phone).replace(/[^\d+]/g, "");
-  return digits ? `tel:${digits}` : null;
-}
-
-// ── Main Page (Server Component) ───────────────────────────────────────────────
+type Opt = { id: string; name: string };
 
 export default async function JobsPage({
   searchParams,
@@ -197,39 +127,56 @@ export default async function JobsPage({
 
   const supabase = await supabaseServer();
 
-  // ✅ Updated query: left-join contractor_leads so we can show "Lead Posted"
+  // 1) Load jobs (ALL projects; not broker-only)
   const { data: jobs, error } = await supabase
     .from("admin_jobs")
     .select(
       `
       id, created_at, updated_at, address1, city, state, zip, source, customer_type, response_status,
       inspection_status, requested_outputs, intake_payload, confirmation_code, is_archived, archived_at,
-      contractor_leads:contractor_leads!left(id)
+      lead_posted, lead_posted_at,
+      contractor_leads:contractor_leads!left(id, status)
     `
     )
-    .eq("source", "broker_public")
     .eq("is_archived", view === "archived")
     .order("updated_at", { ascending: false, nullsFirst: false })
     .limit(200);
 
   const list = (jobs ?? []) as BrokerJob[];
 
-  const counts: Record<JobStatus, number> = {
-    unreviewed: 0,
-    scheduled: 0,
-    in_progress: 0,
-    ready: 0,
-    delivered: 0,
-    closed: 0,
-    needs_review: 0,
-    waiting_on_broker: 0,
-    blocked: 0,
-  };
+  // 2) Load contractor dropdown options
+  const { data: contractorRows } = await supabase
+    .from("app_profiles")
+    .select("id, full_name, company_name, email, role")
+    .eq("role", "contractor")
+    .order("company_name", { ascending: true, nullsFirst: false })
+    .limit(500);
 
-  list.forEach((j) => {
-    const norm = normalizeResponse(j.response_status);
-    counts[norm]++;
+  const contractors: Opt[] = (contractorRows ?? []).map((r: any) => {
+    const name =
+      String(r.company_name || "").trim() ||
+      String(r.full_name || "").trim() ||
+      String(r.email || "").trim() ||
+      r.id;
+    return { id: r.id, name };
   });
+
+  // 3) Load systems dropdown options (optional)
+  let systems: Opt[] = [];
+  try {
+    const { data: systemRows } = await supabase
+      .from("system_catalog")
+      .select("id, name, title")
+      .order("name", { ascending: true, nullsFirst: false })
+      .limit(500);
+
+    systems = (systemRows ?? []).map((s: any) => ({
+      id: s.id,
+      name: String(s.name || s.title || s.id),
+    }));
+  } catch {
+    systems = [];
+  }
 
   const priorityOrder: Partial<Record<JobStatus, number>> = {
     blocked: 0,
@@ -238,8 +185,9 @@ export default async function JobsPage({
     unreviewed: 3,
     in_progress: 4,
     ready: 5,
-    delivered: 6,
-    closed: 7,
+    scheduled: 6,
+    delivered: 7,
+    closed: 8,
   };
 
   const sorted = [...list].sort((a, b) => {
@@ -252,6 +200,11 @@ export default async function JobsPage({
     );
   });
 
+  const sortedWithNorm = sorted.map((j) => ({
+    ...j,
+    __normalized_status: normalizeResponse(j.response_status),
+  }));
+
   const outs = {
     snapshot: list.filter((j) => outputsFromRequested(j.requested_outputs).snapshot).length,
     inspection: list.filter((j) => outputsFromRequested(j.requested_outputs).inspection).length,
@@ -260,17 +213,16 @@ export default async function JobsPage({
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      {/* Header Card */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">Projects</h1>
             <p className="mt-1.5 text-sm text-slate-600">
-              {view === "archived" ? "Archived broker jobs" : "Active broker jobs"} • Manual status
+              {view === "archived" ? "Archived projects" : "Active projects"} • Status managed in Console
             </p>
             {error && (
               <p className="mt-2 text-sm text-red-600">
-                Error loading jobs: {String(error?.message ?? error)}
+                Error loading jobs: {String((error as any)?.message ?? error)}
               </p>
             )}
           </div>
@@ -308,69 +260,23 @@ export default async function JobsPage({
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-sm text-slate-500">New</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.unreviewed}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-sm text-slate-500">Needs Review</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.needs_review}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm text-red-700">
-            <div className="text-sm text-red-600">Blocked</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.blocked}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-sm text-slate-500">Waiting on Broker</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.waiting_on_broker}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-sm text-slate-500">In Progress</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.in_progress}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm text-green-700">
-            <div className="text-sm text-green-600">Ready</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.ready}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm text-green-700">
-            <div className="text-sm text-green-600">Delivered</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.delivered}</div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-sm text-slate-500">Closed</div>
-            <div className="mt-1 text-2xl font-semibold">{counts.closed}</div>
-          </div>
-        </div>
-
         <div className="mt-5 flex flex-wrap gap-2">
           {outputChip(`${outs.snapshot} Snapshot`, !!outs.snapshot)}
           {outputChip(`${outs.inspection} Inspection`, !!outs.inspection)}
           {outputChip(`${outs.hes} HES`, !!outs.hes)}
           <span className="text-sm text-slate-500 self-center">
-            Showing up to 200 {view === "archived" ? "archived" : "active"} broker jobs
+            Showing up to 200 {view === "archived" ? "archived" : "active"} projects
           </span>
         </div>
       </div>
 
-      {/* Job List */}
-      <div className="space-y-4">
-        {sorted.length ? (
-          sorted.map((job) => (
-            <JobCardClient
-              key={job.id}
-              job={job}
-              mode={view}
-              hasLead={(job.contractor_leads?.length ?? 0) > 0}
-            />
-          ))
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-10 text-center text-slate-500">
-            No {view === "archived" ? "archived" : "active"} broker jobs found.
-          </div>
-        )}
-      </div>
+      {sortedWithNorm.length ? (
+        <JobsTableClient jobs={sortedWithNorm} mode={view} contractors={contractors} systems={systems} />
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-10 text-center text-slate-500">
+          No {view === "archived" ? "archived" : "active"} projects found.
+        </div>
+      )}
     </div>
   );
 }
