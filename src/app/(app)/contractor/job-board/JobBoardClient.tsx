@@ -29,6 +29,7 @@ const SYSTEM_TYPE_COLORS: Record<string, { bg: string; text: string; label: stri
   solar: { bg: "rgba(234,179,8,0.15)", text: "#eab308", label: "Solar" },
   electrical: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Electrical" },
   plumbing: { bg: "rgba(6,182,212,0.15)", text: "#06b6d4", label: "Plumbing" },
+  general_handyman: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "General Handyman" },
 };
 
 const SERVICE_TYPES = [
@@ -38,6 +39,7 @@ const SERVICE_TYPES = [
   { value: "solar", label: "Solar" },
   { value: "electrical", label: "Electrical" },
   { value: "plumbing", label: "Plumbing" },
+  { value: "general_handyman", label: "General Handyman" },
 ];
 
 const SORT_OPTIONS = [
@@ -94,8 +96,16 @@ function LeadCard({
   lead: JobBoardLead;
   onClick: () => void;
 }) {
-  const hasLeaf = lead.leaf_report_data && Object.keys(lead.leaf_report_data).length > 0;
   const location = [lead.city, lead.state].filter(Boolean).join(", ");
+  const homeDetails: string[] = [];
+  if (lead.home_sqft) homeDetails.push(`${lead.home_sqft.toLocaleString()} sqft`);
+  if (lead.home_year_built) homeDetails.push(`Built ${lead.home_year_built}`);
+  if (lead.beds || lead.baths) {
+    const parts: string[] = [];
+    if (lead.beds) parts.push(`${lead.beds} bed`);
+    if (lead.baths) parts.push(`${lead.baths} bath`);
+    homeDetails.push(parts.join(" / "));
+  }
 
   return (
     <button
@@ -123,7 +133,7 @@ function LeadCard({
       {/* Top: badge row */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         {typeBadge(lead.system_type)}
-        {hasLeaf && (
+        {lead.has_leaf && (
           <span
             style={{
               display: "inline-flex",
@@ -137,7 +147,7 @@ function LeadCard({
               letterSpacing: "0.03em",
             }}
           >
-            LEAF
+            LEAF Report
           </span>
         )}
         <span style={{ marginLeft: "auto", fontSize: 11, color: TEXT_DIM }}>
@@ -145,13 +155,23 @@ function LeadCard({
         </span>
       </div>
 
+      {/* Title */}
+      <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, marginBottom: 6, lineHeight: 1.3 }}>
+        {lead.title || location || "Oregon"}
+      </div>
+
       {/* Location */}
-      <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginBottom: 4 }}>
-        {location || "Oregon"}
+      <div style={{ fontSize: 12, color: TEXT_SEC, marginBottom: 4 }}>
+        {lead.area || location || "Oregon"} &middot; {lead.zip}
       </div>
-      <div style={{ fontSize: 12, color: TEXT_DIM, marginBottom: 16 }}>
-        ZIP: {lead.zip}
-      </div>
+
+      {/* Home details */}
+      {homeDetails.length > 0 && (
+        <div style={{ fontSize: 11, color: TEXT_DIM, marginBottom: 16 }}>
+          {homeDetails.join(" · ")}
+        </div>
+      )}
+      {homeDetails.length === 0 && <div style={{ marginBottom: 16 }} />}
 
       {/* Price + CTA */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -249,6 +269,9 @@ function PaymentInnerForm({
             hidePostalCode: true,
           }}
         />
+      </div>
+      <div style={{ fontSize: 11, color: TEXT_DIM, marginBottom: 12, textAlign: "center" }}>
+        Test mode — use card <span style={{ fontFamily: "monospace", color: TEXT_MUTED }}>4242 4242 4242 4242</span>, any future expiry, any CVC
       </div>
       <button
         type="submit"
@@ -406,7 +429,7 @@ function LeadDetailModal({
 
           {detail && !loading && purchaseStep !== "success" && (
             <>
-              {/* Type + Location */}
+              {/* Type + LEAF badges */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
                 {typeBadge(detail.system_type)}
                 {hasLeaf && (
@@ -420,17 +443,75 @@ function LeadDetailModal({
                       color: EMERALD,
                     }}
                   >
-                    LEAF Data Available
+                    LEAF Report Included
                   </span>
                 )}
               </div>
 
-              <div style={{ fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 4 }}>
-                {location || "Oregon"}
+              {/* Title */}
+              <div style={{ fontSize: 18, fontWeight: 700, color: TEXT, marginBottom: 6, lineHeight: 1.3 }}>
+                {detail.title || location || "Oregon"}
               </div>
-              <div style={{ fontSize: 13, color: TEXT_DIM, marginBottom: 20 }}>
-                ZIP: {detail.zip} &middot; Posted {timeAgo(detail.posted_date)}
+
+              {/* Location + Posted */}
+              <div style={{ fontSize: 13, color: TEXT_SEC, marginBottom: 4 }}>
+                {detail.area || location || "Oregon"} &middot; {detail.zip}
               </div>
+              <div style={{ fontSize: 12, color: TEXT_DIM, marginBottom: 16 }}>
+                Posted {timeAgo(detail.posted_date)}
+              </div>
+
+              {/* Description */}
+              {detail.description && (
+                <div style={{ fontSize: 13, color: TEXT_SEC, lineHeight: 1.6, marginBottom: 20 }}>
+                  {detail.description}
+                </div>
+              )}
+
+              {/* Home Details Card */}
+              {(detail.home_sqft || detail.home_year_built || detail.home_type || detail.beds || detail.baths) && (
+                <div
+                  style={{
+                    background: BG,
+                    border: `1px solid ${BORDER}`,
+                    borderRadius: 10,
+                    padding: 16,
+                    marginBottom: 20,
+                  }}
+                >
+                  <h4 style={{ color: TEXT_SEC, fontSize: 12, fontWeight: 700, margin: "0 0 12px", letterSpacing: "0.04em" }}>
+                    PROPERTY DETAILS
+                  </h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {detail.home_type && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Type</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{detail.home_type}</div>
+                      </div>
+                    )}
+                    {detail.home_sqft && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Size</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{detail.home_sqft.toLocaleString()} sqft</div>
+                      </div>
+                    )}
+                    {detail.home_year_built && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Year Built</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{detail.home_year_built}</div>
+                      </div>
+                    )}
+                    {(detail.beds || detail.baths) && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Beds / Baths</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>
+                          {[detail.beds && `${detail.beds} bed`, detail.baths && `${detail.baths} bath`].filter(Boolean).join(" / ")}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* LEAF Report Summary */}
               {hasLeaf && (
@@ -444,65 +525,69 @@ function LeadDetailModal({
                   }}
                 >
                   <h4 style={{ color: EMERALD, fontSize: 13, fontWeight: 700, margin: "0 0 12px" }}>
-                    LEAF Report Summary
+                    LEAF Energy Assessment
                   </h4>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    {(leaf as Record<string, unknown>).current_system_age != null && (
+                    {(leaf as Record<string, unknown>).current_system != null && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Current System</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).current_system)}</div>
+                      </div>
+                    )}
+                    {(leaf as Record<string, unknown>).system_age != null && (
                       <div>
                         <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>System Age</div>
-                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).current_system_age)} years</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).system_age)} years</div>
                       </div>
                     )}
-                    {(leaf as Record<string, unknown>).current_system_efficiency != null && (
+                    {(leaf as Record<string, unknown>).efficiency != null && (
                       <div>
                         <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Efficiency</div>
-                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).current_system_efficiency)}</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).efficiency)}</div>
                       </div>
                     )}
-                    {(leaf as Record<string, unknown>).estimated_savings_annual != null && (
+                    {(leaf as Record<string, unknown>).recommendation != null && (
                       <div>
-                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Est. Annual Savings</div>
-                        <div style={{ fontSize: 13, color: EMERALD }}>{money(Number((leaf as Record<string, unknown>).estimated_savings_annual))}</div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Recommendation</div>
+                        <div style={{ fontSize: 13, color: EMERALD, fontWeight: 600 }}>{String((leaf as Record<string, unknown>).recommendation)}</div>
                       </div>
                     )}
-                    {(leaf as Record<string, unknown>).estimated_incentives != null && (
+                    {(leaf as Record<string, unknown>).estimated_cost != null && (
                       <div>
-                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Est. Incentives</div>
-                        <div style={{ fontSize: 13, color: EMERALD }}>{money(Number((leaf as Record<string, unknown>).estimated_incentives))}</div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Est. Cost</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).estimated_cost)}</div>
                       </div>
                     )}
-                    {(leaf as Record<string, unknown>).roi_years != null && (
+                    {(leaf as Record<string, unknown>).annual_savings != null && (
                       <div>
-                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>ROI</div>
-                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).roi_years)} years</div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Annual Savings</div>
+                        <div style={{ fontSize: 13, color: EMERALD }}>{String((leaf as Record<string, unknown>).annual_savings)}</div>
+                      </div>
+                    )}
+                    {(leaf as Record<string, unknown>).payback_years != null && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Payback Period</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{String((leaf as Record<string, unknown>).payback_years)} years</div>
+                      </div>
+                    )}
+                    {(leaf as Record<string, unknown>).priority != null && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Priority</div>
+                        <div style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: String((leaf as Record<string, unknown>).priority) === "Urgent" ? "#ef4444"
+                            : String((leaf as Record<string, unknown>).priority) === "High" ? "#f59e0b"
+                            : EMERALD,
+                        }}>
+                          {String((leaf as Record<string, unknown>).priority)}
+                        </div>
                       </div>
                     )}
                   </div>
-                  {Array.isArray((leaf as Record<string, unknown>).recommended_upgrades) &&
-                    ((leaf as Record<string, unknown>).recommended_upgrades as string[]).length > 0 && (
-                      <div style={{ marginTop: 12 }}>
-                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, marginBottom: 4 }}>
-                          Recommended Upgrades
-                        </div>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {((leaf as Record<string, unknown>).recommended_upgrades as string[]).map((u) => (
-                            <span
-                              key={u}
-                              style={{
-                                padding: "3px 10px",
-                                borderRadius: 12,
-                                fontSize: 11,
-                                fontWeight: 600,
-                                background: "rgba(59,130,246,0.12)",
-                                color: "#3b82f6",
-                              }}
-                            >
-                              {u}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                  <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 12, fontStyle: "italic" }}>
+                    Full LEAF report data unlocks after purchase.
+                  </div>
                 </div>
               )}
 

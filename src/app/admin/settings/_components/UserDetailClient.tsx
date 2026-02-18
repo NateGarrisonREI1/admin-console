@@ -9,6 +9,8 @@ import {
   ClipboardDocumentIcon,
   LinkIcon,
   TrashIcon,
+  KeyIcon,
+  EnvelopeIcon,
 } from "@heroicons/react/24/outline";
 
 import {
@@ -17,6 +19,8 @@ import {
   adminCreatePasswordLink,
   adminCreateMagicLink,
   adminDeleteUser,
+  adminSendPasswordReset,
+  resendInvite,
   setUserRole,
 } from "../_actions/users";
 import type { AdminUserDetail, AuditEvent, UserRelationshipDetail } from "../_actions/users";
@@ -116,8 +120,11 @@ export default function UserDetailClient({ user, auditEvents, relationships }: P
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [toast, setToast] = React.useState<string | null>(null);
+  const [toastError, setToastError] = React.useState(false);
   const [editingProfile, setEditingProfile] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [resetCooldown, setResetCooldown] = React.useState(false);
+  const [inviteCooldown, setInviteCooldown] = React.useState(false);
 
   // Profile form
   const [first, setFirst] = React.useState(user.first_name || "");
@@ -139,9 +146,10 @@ export default function UserDetailClient({ user, auditEvents, relationships }: P
   const roleStyle = ROLE_STYLES[user.role];
   const revalidate = `/admin/settings/users/${user.user_id}`;
 
-  function showToast(msg: string) {
+  function showToast(msg: string, isError = false) {
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setToastError(isError);
+    setTimeout(() => { setToast(null); setToastError(false); }, 3000);
   }
 
   async function withBusy(fn: () => Promise<void>) {
@@ -176,8 +184,11 @@ export default function UserDetailClient({ user, auditEvents, relationships }: P
       {/* Toast */}
       {toast && (
         <div style={{
-          borderRadius: 8, border: "1px solid rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.08)",
-          padding: "10px 16px", fontSize: 13, fontWeight: 600, color: EMERALD,
+          borderRadius: 8,
+          border: `1px solid ${toastError ? "rgba(239,68,68,0.25)" : "rgba(16,185,129,0.25)"}`,
+          background: toastError ? "rgba(239,68,68,0.08)" : "rgba(16,185,129,0.08)",
+          padding: "10px 16px", fontSize: 13, fontWeight: 600,
+          color: toastError ? "#f87171" : EMERALD,
         }}>
           {toast}
         </div>
@@ -533,6 +544,49 @@ export default function UserDetailClient({ user, auditEvents, relationships }: P
               >
                 <ClipboardDocumentIcon style={{ width: 14, height: 14 }} /> Copy User ID
               </ActionButton>
+
+              {/* Divider */}
+              <div style={{ height: 1, background: BORDER, margin: "4px 0" }} />
+
+              <ActionButton
+                disabled={busy || resetCooldown}
+                onClick={async () => {
+                  await withBusy(async () => {
+                    const res = await adminSendPasswordReset(user.user_id);
+                    if (res.success) {
+                      showToast(`Password reset email sent to ${user.email}`);
+                      setResetCooldown(true);
+                      setTimeout(() => setResetCooldown(false), 60000);
+                    } else {
+                      showToast(res.error || "Failed to send password reset.", true);
+                    }
+                  });
+                }}
+              >
+                <KeyIcon style={{ width: 14, height: 14 }} />
+                {resetCooldown ? "Sent (wait 60s)" : "Send Password Reset"}
+              </ActionButton>
+
+              {status === "pending" && (
+                <ActionButton
+                  disabled={busy || inviteCooldown}
+                  onClick={async () => {
+                    await withBusy(async () => {
+                      const res = await resendInvite(user.user_id);
+                      if (res.success) {
+                        showToast(`Invite resent to ${user.email}`);
+                        setInviteCooldown(true);
+                        setTimeout(() => setInviteCooldown(false), 60000);
+                      } else {
+                        showToast(res.error || "Failed to resend invite.", true);
+                      }
+                    });
+                  }}
+                >
+                  <EnvelopeIcon style={{ width: 14, height: 14 }} />
+                  {inviteCooldown ? "Sent (wait 60s)" : "Resend Invite"}
+                </ActionButton>
+              )}
             </div>
           </div>
 

@@ -9,14 +9,23 @@ import { getContractorAuth } from "../_actions/contractor";
 export type JobBoardLead = {
   id: string;
   system_type: string;
+  title: string | null;
+  description: string | null;
   city: string | null;
   state: string;
   zip: string;
+  area: string | null;
+  home_year_built: number | null;
+  home_sqft: number | null;
+  home_type: string | null;
+  beds: number | null;
+  baths: number | null;
   price: number;
+  has_leaf: boolean;
   posted_date: string | null;
   expiration_date: string | null;
   broker_id: string | null;
-  leaf_report_data: Record<string, unknown> | null;
+  is_exclusive: boolean;
   created_at: string;
 };
 
@@ -33,20 +42,30 @@ export type JobBoardData = {
 export type LeadDetail = {
   id: string;
   system_type: string;
+  title: string | null;
+  description: string | null;
   city: string | null;
   state: string;
   zip: string;
+  area: string | null;
   address: string | null;
+  home_year_built: number | null;
+  home_sqft: number | null;
+  home_type: string | null;
+  beds: number | null;
+  baths: number | null;
   price: number;
+  has_leaf: boolean;
+  leaf_report_data: Record<string, unknown> | null;
   posted_date: string | null;
   expiration_date: string | null;
-  leaf_report_data: Record<string, unknown> | null;
   homeowner_name: string | null;
   homeowner_phone: string | null;
   homeowner_email: string | null;
   best_contact_time: string | null;
   status: string;
   broker_id: string | null;
+  is_exclusive: boolean;
 };
 
 export type PurchaseResult = {
@@ -91,10 +110,10 @@ export async function fetchJobBoardData(): Promise<{ data: JobBoardData; isAdmin
         .eq("relationship_type", "in_broker_network"),
       supabaseAdmin
         .from("system_leads")
-        .select("id, system_type, city, state, zip, price, posted_date, expiration_date, broker_id, leaf_report_data, created_at")
+        .select("id, system_type, title, description, city, state, zip, area, home_year_built, home_sqft, home_type, beds, baths, price, has_leaf, posted_date, expiration_date, broker_id, is_exclusive, created_at")
         .eq("status", "available")
         .is("deleted_at", null)
-        .order("posted_date", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(200),
     ]);
 
@@ -138,20 +157,30 @@ export async function fetchLeadDetail(leadId: string): Promise<LeadDetail | null
   return {
     id: data.id,
     system_type: data.system_type,
+    title: data.title ?? null,
+    description: data.description ?? null,
     city: data.city,
     state: data.state,
     zip: data.zip,
+    area: data.area ?? null,
     address: isPurchasedByMe ? data.address : null,
+    home_year_built: data.home_year_built ?? null,
+    home_sqft: data.home_sqft ?? null,
+    home_type: data.home_type ?? null,
+    beds: data.beds ?? null,
+    baths: data.baths ?? null,
     price: data.price,
+    has_leaf: !!data.has_leaf,
+    leaf_report_data: data.leaf_report_data,
     posted_date: data.posted_date,
     expiration_date: data.expiration_date,
-    leaf_report_data: data.leaf_report_data,
     homeowner_name: isPurchasedByMe ? data.homeowner_name : null,
     homeowner_phone: isPurchasedByMe ? data.homeowner_phone : null,
     homeowner_email: isPurchasedByMe ? data.homeowner_email : null,
     best_contact_time: isPurchasedByMe ? data.best_contact_time : null,
     status: data.status,
     broker_id: data.broker_id ?? null,
+    is_exclusive: data.is_exclusive ?? true,
   };
 }
 
@@ -198,7 +227,7 @@ export async function confirmLeadPurchase(
   const userId = await getContractorId();
 
   // Verify payment succeeded
-  const payment = await StripeService.verifyPaymentIntent(paymentIntentId);
+  await StripeService.verifyPaymentIntent(paymentIntentId);
 
   // Get lead details
   const { data: lead } = await supabaseAdmin
@@ -253,6 +282,26 @@ export async function confirmLeadPurchase(
       homeowner_address: lead.address,
       job_type: lead.system_type,
       job_status: "purchased",
+    });
+
+  // Log revenue split: REI 30%, Poster 68.6% (70% - 2% service fee), Service fee 2%
+  const totalAmount = Number(lead.price);
+  const reiAmount = Math.round(totalAmount * 30) / 100;
+  const serviceFee = Math.round(totalAmount * 2) / 100;
+  const posterAmount = Math.round(totalAmount * 68.6) / 100;
+
+  await supabaseAdmin
+    .from("lead_transactions")
+    .insert({
+      lead_id: leadId,
+      contractor_id: userId,
+      poster_id: lead.broker_id ?? null,
+      stripe_payment_intent_id: paymentIntentId,
+      total_amount: totalAmount,
+      rei_amount: reiAmount,
+      poster_amount: posterAmount,
+      service_fee: serviceFee,
+      status: "completed",
     });
 
   return {

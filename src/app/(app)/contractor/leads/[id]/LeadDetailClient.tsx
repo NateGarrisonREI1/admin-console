@@ -58,6 +58,7 @@ const SYSTEM_TYPE_COLORS: Record<
     label: "Electrical",
   },
   plumbing: { bg: "rgba(6,182,212,0.15)", text: "#06b6d4", label: "Plumbing" },
+  general_handyman: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "General Handyman" },
 };
 
 // ─── Refund reasons ──────────────────────────────────────────────────
@@ -596,89 +597,62 @@ export default function LeadDetailClient({ data }: { data: LeadDetailData }) {
                     marginBottom: 14,
                   }}
                 >
-                  <LeafField
-                    label="System Age"
-                    value={
-                      leaf.current_system_age != null
-                        ? `${leaf.current_system_age} years`
-                        : "N/A"
-                    }
-                  />
-                  <LeafField
-                    label="Efficiency"
-                    value={
-                      leaf.current_system_efficiency != null
-                        ? String(leaf.current_system_efficiency)
-                        : "N/A"
-                    }
-                  />
-                  <LeafField
-                    label="Est. Annual Savings"
-                    value={
-                      leaf.estimated_annual_savings != null
-                        ? money(leaf.estimated_annual_savings as number)
-                        : "N/A"
-                    }
-                    valueColor={EMERALD}
-                  />
-                  <LeafField
-                    label="Est. Incentives"
-                    value={
-                      leaf.estimated_incentives != null
-                        ? money(leaf.estimated_incentives as number)
-                        : "N/A"
-                    }
-                    valueColor={EMERALD}
-                  />
-                  <LeafField
-                    label="ROI"
-                    value={
-                      leaf.roi_years != null
-                        ? `${leaf.roi_years} years`
-                        : "N/A"
-                    }
-                  />
-                </div>
-
-                {Array.isArray(leaf.recommended_upgrades) &&
-                  (leaf.recommended_upgrades as string[]).length > 0 && (
-                    <div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: TEXT_DIM,
-                          marginBottom: 6,
-                        }}
-                      >
-                        Recommended Upgrades
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 6,
-                        }}
-                      >
-                        {(leaf.recommended_upgrades as string[]).map(
-                          (u, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                background: "rgba(59,130,246,0.15)",
-                                color: "#3b82f6",
-                                fontSize: 11,
-                                fontWeight: 600,
-                                padding: "3px 10px",
-                                borderRadius: 10,
-                              }}
-                            >
-                              {u}
-                            </span>
-                          ),
-                        )}
-                      </div>
-                    </div>
+                  {leaf.current_system != null && (
+                    <LeafField
+                      label="Current System"
+                      value={String(leaf.current_system)}
+                    />
                   )}
+                  {leaf.system_age != null && (
+                    <LeafField
+                      label="System Age"
+                      value={`${leaf.system_age} years`}
+                    />
+                  )}
+                  {leaf.efficiency != null && (
+                    <LeafField
+                      label="Efficiency"
+                      value={String(leaf.efficiency)}
+                    />
+                  )}
+                  {leaf.recommendation != null && (
+                    <LeafField
+                      label="Recommendation"
+                      value={String(leaf.recommendation)}
+                      valueColor={EMERALD}
+                    />
+                  )}
+                  {leaf.estimated_cost != null && (
+                    <LeafField
+                      label="Estimated Cost"
+                      value={String(leaf.estimated_cost)}
+                    />
+                  )}
+                  {leaf.annual_savings != null && (
+                    <LeafField
+                      label="Annual Savings"
+                      value={String(leaf.annual_savings)}
+                      valueColor={EMERALD}
+                    />
+                  )}
+                  {leaf.payback_years != null && (
+                    <LeafField
+                      label="Payback Period"
+                      value={`${leaf.payback_years} years`}
+                    />
+                  )}
+                  {leaf.priority != null && (
+                    <LeafField
+                      label="Priority"
+                      value={String(leaf.priority)}
+                      valueColor={
+                        String(leaf.priority) === "Urgent" ? "#ef4444"
+                          : String(leaf.priority) === "High" ? "#f59e0b"
+                          : EMERALD
+                      }
+                    />
+                  )}
+                </div>
               </>
             ) : (
               <div style={{ fontSize: 13, color: TEXT_DIM }}>

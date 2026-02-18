@@ -22,6 +22,7 @@ const SYSTEM_TYPE_COLORS: Record<string, { bg: string; text: string; label: stri
   solar: { bg: "rgba(234,179,8,0.15)", text: "#eab308", label: "Solar" },
   electrical: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Electrical" },
   plumbing: { bg: "rgba(6,182,212,0.15)", text: "#06b6d4", label: "Plumbing" },
+  general_handyman: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "General Handyman" },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -173,7 +174,7 @@ export default function LeadsClient({ data }: { data: LeadsPageData }) {
           { label: "Total Purchased", value: data.stats.totalPurchased, color: TEXT },
           { label: "Active", value: data.stats.active, color: "#3b82f6" },
           { label: "Completed", value: data.stats.completed, color: EMERALD },
-          { label: "Close Rate", value: `${data.stats.closeRate}%`, color: "#f59e0b" },
+          { label: "Total Spent", value: money(data.stats.totalSpent), color: "#f59e0b" },
         ].map((s) => (
           <div
             key={s.label}

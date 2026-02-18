@@ -30,7 +30,7 @@ export type LeadsPageData = {
     totalPurchased: number;
     active: number;
     completed: number;
-    closeRate: number;
+    totalSpent: number;
   };
 };
 
@@ -38,7 +38,7 @@ export type LeadsPageData = {
 
 const EMPTY_DATA: LeadsPageData = {
   leads: [],
-  stats: { totalPurchased: 0, active: 0, completed: 0, closeRate: 0 },
+  stats: { totalPurchased: 0, active: 0, completed: 0, totalSpent: 0 },
 };
 
 // ─── Fetch leads ────────────────────────────────────────────────────
@@ -72,10 +72,10 @@ export async function fetchContractorLeads(): Promise<{ data: LeadsPageData; isA
     const totalPurchased = leads.length;
     const active = leads.filter((l) => activeStatuses.includes(l.status)).length;
     const completed = leads.filter((l) => l.status === "closed").length;
-    const closeRate = totalPurchased > 0 ? Math.round((completed / totalPurchased) * 100) : 0;
+    const totalSpent = leads.reduce((sum, l) => sum + (l.system_lead?.price ?? 0), 0);
 
     return {
-      data: { leads, stats: { totalPurchased, active, completed, closeRate } },
+      data: { leads, stats: { totalPurchased, active, completed, totalSpent } },
       isAdmin: false,
     };
   } catch {

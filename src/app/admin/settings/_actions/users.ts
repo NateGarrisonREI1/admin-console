@@ -855,6 +855,35 @@ export async function resendInvite(userId: string): Promise<{ success: boolean; 
   }
 }
 
+// ─── Send password reset email ───────────────────────────────────
+
+export async function adminSendPasswordReset(userId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requireAdmin();
+    const admin = supabaseAdmin;
+
+    const { data: authData, error: authErr } = await admin.auth.admin.getUserById(userId);
+    if (authErr || !authData?.user) return { success: false, error: "User not found." };
+
+    const email = authData.user.email;
+    if (!email) return { success: false, error: "User has no email address." };
+
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+    // Generate a recovery link (this also sends the email)
+    const { error: linkErr } = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: { redirectTo: `${siteUrl}/reset-password` },
+    });
+    if (linkErr) return { success: false, error: linkErr.message };
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Unknown error" };
+  }
+}
+
 // ─── Aliases expected by AdminUsersTable.tsx ────────────────────────
 
 export async function inviteUser(input: {
