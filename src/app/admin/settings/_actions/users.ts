@@ -863,23 +863,28 @@ export async function adminSendPasswordReset(userId: string): Promise<{ success:
     const admin = supabaseAdmin;
 
     const { data: authData, error: authErr } = await admin.auth.admin.getUserById(userId);
-    if (authErr || !authData?.user) return { success: false, error: "User not found." };
+    if (authErr || !authData?.user) {
+      console.error("[adminSendPasswordReset] User lookup failed:", authErr?.message);
+      return { success: false, error: "User not found." };
+    }
 
     const email = authData.user.email;
     if (!email) return { success: false, error: "User has no email address." };
 
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-    // Generate a recovery link (this also sends the email)
-    const { error: linkErr } = await admin.auth.admin.generateLink({
-      type: "recovery",
-      email,
-      options: { redirectTo: `${siteUrl}/reset-password` },
+    // resetPasswordForEmail actually sends the email; generateLink does NOT
+    const { error: resetErr } = await admin.auth.resetPasswordForEmail(email, {
+      redirectTo: `${siteUrl}/reset-password`,
     });
-    if (linkErr) return { success: false, error: linkErr.message };
+    if (resetErr) {
+      console.error("[adminSendPasswordReset] resetPasswordForEmail failed:", resetErr.message);
+      return { success: false, error: resetErr.message };
+    }
 
     return { success: true };
   } catch (e) {
+    console.error("[adminSendPasswordReset] Unexpected error:", e);
     return { success: false, error: e instanceof Error ? e.message : "Unknown error" };
   }
 }

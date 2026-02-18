@@ -98,28 +98,35 @@ const EMPTY_DATA: JobBoardData = {
 export async function fetchJobBoardData(): Promise<{ data: JobBoardData; isAdmin: boolean }> {
   try {
     const auth = await getContractorAuth();
-    if (auth.isAdmin) return { data: EMPTY_DATA, isAdmin: true };
-
+    const isAdmin = auth.isAdmin;
     const userId = auth.userId;
 
-    const [relRes, leadsRes] = await Promise.all([
-      supabaseAdmin
+    // Fetch all available leads (same for admin and contractor)
+    const leadsRes = await supabaseAdmin
+      .from("system_leads")
+      .select("id, system_type, title, description, city, state, zip, area, home_year_built, home_sqft, home_type, beds, baths, price, has_leaf, posted_date, expiration_date, broker_id, is_exclusive, created_at")
+      .eq("status", "available")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    const allLeads = (leadsRes.data ?? []) as JobBoardLead[];
+
+    // Admin sees all leads; network = broker-posted, open market = rest
+    // Contractor sees all leads but network is filtered to their broker relationships
+    let brokerIds: string[] = [];
+    if (!isAdmin) {
+      const relRes = await supabaseAdmin
         .from("user_relationships")
         .select("related_user_id")
         .eq("user_id", userId)
-        .eq("relationship_type", "in_broker_network"),
-      supabaseAdmin
-        .from("system_leads")
-        .select("id, system_type, title, description, city, state, zip, area, home_year_built, home_sqft, home_type, beds, baths, price, has_leaf, posted_date, expiration_date, broker_id, is_exclusive, created_at")
-        .eq("status", "available")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(200),
-    ]);
+        .eq("relationship_type", "in_broker_network");
+      brokerIds = (relRes.data ?? []).map((r: { related_user_id: string }) => r.related_user_id);
+    }
 
-    const brokerIds = (relRes.data ?? []).map((r: { related_user_id: string }) => r.related_user_id);
-    const allLeads = (leadsRes.data ?? []) as JobBoardLead[];
-    const networkLeads = allLeads.filter((l) => l.broker_id && brokerIds.includes(l.broker_id));
+    const networkLeads = isAdmin
+      ? allLeads.filter((l) => l.broker_id != null)
+      : allLeads.filter((l) => l.broker_id && brokerIds.includes(l.broker_id));
 
     return {
       data: {
@@ -131,7 +138,7 @@ export async function fetchJobBoardData(): Promise<{ data: JobBoardData; isAdmin
           openMarketLeads: allLeads.length - networkLeads.length,
         },
       },
-      isAdmin: false,
+      isAdmin,
     };
   } catch {
     return { data: EMPTY_DATA, isAdmin: false };

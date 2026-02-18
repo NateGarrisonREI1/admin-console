@@ -154,7 +154,14 @@ export default function UserDetailClient({ user, auditEvents, relationships }: P
 
   async function withBusy(fn: () => Promise<void>) {
     setBusy(true);
-    try { await fn(); } finally { setBusy(false); }
+    try {
+      await fn();
+    } catch (e) {
+      console.error("[UserDetail] Action failed:", e);
+      showToast(e instanceof Error ? e.message : "Action failed.", true);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

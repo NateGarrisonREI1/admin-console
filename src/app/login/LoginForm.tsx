@@ -195,11 +195,11 @@ export default function LoginForm() {
       const safeNext = safeNextForRole(role, next);
       const dest = safeNext ?? roleHome(role);
 
-      router.replace(dest);
-      router.refresh();
+      // Hard navigation — router.replace() is async and gets interrupted by
+      // the setBusy(false) re-render, causing the "click twice" bug.
+      window.location.href = dest;
     } catch (e: any) {
       setErr(e?.message || "Login failed");
-    } finally {
       setBusy(false);
     }
   }
