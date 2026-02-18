@@ -1,67 +1,90 @@
 "use server";
 
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { BrokerService } from "@/lib/services/BrokerService";
+import type { Broker, BrokerKPIs, BrokerContractor, BrokerLead } from "@/types/broker";
 
-export type BrokerHesRequest = {
-  id: string;
-  property_address: string;
-  city: string;
-  state: string;
-  zip: string;
-  property_type: string;
-  status: string;
-  requested_completion_date: string | null;
-  completion_date: string | null;
-  hes_report_url: string | null;
-  created_at: string;
-  notes: string | null;
+export type BrokerDashboardData = {
+  broker: Broker;
+  kpis: BrokerKPIs;
+  contractors: BrokerContractor[];
+  recentLeads: BrokerLead[];
+  topContractors: {
+    id: string;
+    name: string;
+    leads_sent: number;
+    jobs_closed: number;
+    conversion_rate: number;
+    revenue: number;
+  }[];
 };
 
-export async function fetchBrokerDashboard() {
+export async function fetchBrokerDashboard(): Promise<BrokerDashboardData | null> {
   const supabase = await supabaseServer();
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData?.user?.id;
   if (!userId) return null;
 
-  const { data: requests } = await supabaseAdmin
-    .from("hes_requests")
-    .select("id, property_address, city, state, zip, property_type, status, requested_completion_date, completion_date, hes_report_url, created_at, notes")
-    .eq("broker_id", userId)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const svc = new BrokerService();
+
+  const broker = await svc.getOrCreateBroker(userId);
+  const kpis = await svc.getDashboardKPIs(broker.id);
+
+  // Fetch active contractors (top performers by network)
+  const contractors = await svc.getContractors(broker.id, "active");
+
+  // Fetch the most recent 10 leads
+  const allLeads = await svc.getLeads(broker.id);
+  const recentLeads = allLeads.slice(0, 10);
+
+  // Build top-contractors from lead purchase data
+  const { data: contractorLeadsRaw } = await supabaseAdmin
+    .from("broker_leads")
+    .select("purchased_by_contractor_id, status, broker_commission")
+    .eq("broker_id", broker.id)
+    .not("purchased_by_contractor_id", "is", null);
+
+  const contractorMap: Record<string, { leads: number; closed: number; revenue: number }> = {};
+  for (const l of (contractorLeadsRaw ?? []) as any[]) {
+    const cid = l.purchased_by_contractor_id as string;
+    if (!cid) continue;
+    if (!contractorMap[cid]) contractorMap[cid] = { leads: 0, closed: 0, revenue: 0 };
+    contractorMap[cid].leads++;
+    if (l.status === "closed") {
+      contractorMap[cid].closed++;
+      contractorMap[cid].revenue += l.broker_commission ?? 0;
+    }
+  }
+
+  const contractorIds = Object.keys(contractorMap);
+  const contractorNames: Record<string, string> = {};
+  if (contractorIds.length > 0) {
+    const { data: names } = await supabaseAdmin
+      .from("broker_contractors")
+      .select("id, contractor_name")
+      .in("id", contractorIds);
+    for (const n of (names ?? []) as any[]) {
+      contractorNames[n.id] = n.contractor_name;
+    }
+  }
+
+  const topContractors = Object.entries(contractorMap)
+    .map(([id, stats]) => ({
+      id,
+      name: contractorNames[id] || "Unknown",
+      leads_sent: stats.leads,
+      jobs_closed: stats.closed,
+      conversion_rate: stats.leads > 0 ? Math.round((stats.closed / stats.leads) * 100) : 0,
+      revenue: stats.revenue,
+    }))
+    .sort((a, b) => b.jobs_closed - a.jobs_closed)
+    .slice(0, 10);
 
   return {
-    requests: (requests ?? []) as BrokerHesRequest[],
+    broker,
+    kpis,
+    contractors,
+    recentLeads,
+    topContractors,
   };
-}
-
-export async function submitHesRequest(formData: {
-  property_address: string;
-  city: string;
-  state: string;
-  zip: string;
-  property_type: string;
-  requested_completion_date: string | null;
-  notes: string;
-}) {
-  const supabase = await supabaseServer();
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData?.user?.id;
-  if (!userId) throw new Error("Not authenticated");
-
-  const { error } = await supabaseAdmin
-    .from("hes_requests")
-    .insert({
-      broker_id: userId,
-      property_address: formData.property_address.trim(),
-      city: formData.city.trim(),
-      state: formData.state.trim(),
-      zip: formData.zip.trim(),
-      property_type: formData.property_type || "single_family",
-      requested_completion_date: formData.requested_completion_date || null,
-      notes: formData.notes?.trim() || null,
-    });
-
-  if (error) throw new Error(error.message);
 }

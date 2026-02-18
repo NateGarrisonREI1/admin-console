@@ -11,7 +11,7 @@ type StatCardProps = {
 export default function StatCard({ label, value, icon, trend, className = "" }: StatCardProps) {
   return (
     <div
-      className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}
+      className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}
     >
       <div className="flex items-start justify-between">
         <div className="text-sm font-medium text-slate-500">{label}</div>

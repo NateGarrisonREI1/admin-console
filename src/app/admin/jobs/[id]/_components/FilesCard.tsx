@@ -4,15 +4,22 @@ export default function FilesCard(props: { files: any[]; signed: Record<string, 
   const { files, signed } = props;
 
   return (
-    <div className="admin-card">
+    <div
+      style={{
+        background: "#1e293b",
+        border: "1px solid #334155",
+        borderRadius: 12,
+        padding: 20,
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ fontWeight: 950 }}>Files</div>
-        <div style={{ fontSize: 12, opacity: 0.65 }}>Signed links (15 minutes)</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#f1f5f9" }}>Files</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>Signed links (15 minutes)</div>
       </div>
 
       <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
         {files.length === 0 ? (
-          <div style={{ fontSize: 13, opacity: 0.7 }}>No files uploaded.</div>
+          <div style={{ fontSize: 13, color: "#94a3b8" }}>No files uploaded.</div>
         ) : (
           files.map((f: any) => {
             const url = signed[String(f.id)];
@@ -20,24 +27,24 @@ export default function FilesCard(props: { files: any[]; signed: Record<string, 
               <div
                 key={f.id}
                 style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 14,
+                  border: "1px solid #334155",
+                  borderRadius: 12,
                   padding: 12,
                   display: "flex",
                   justifyContent: "space-between",
                   gap: 12,
                   flexWrap: "wrap",
                   alignItems: "center",
-                  background: "#fff",
+                  background: "#0f172a",
                 }}
               >
                 <div style={{ minWidth: 220, flex: "1 1 520px" }}>
-                  <div style={{ fontWeight: 900, wordBreak: "break-word" }}>{f._name}</div>
+                  <div style={{ fontWeight: 700, color: "#f1f5f9", wordBreak: "break-word" }}>{f._name}</div>
                   <div
                     style={{
                       marginTop: 4,
                       fontSize: 12,
-                      opacity: 0.72,
+                      color: "#94a3b8",
                       display: "flex",
                       gap: 10,
                       flexWrap: "wrap",
@@ -55,13 +62,13 @@ export default function FilesCard(props: { files: any[]; signed: Record<string, 
                       href={url}
                       target="_blank"
                       rel="noreferrer"
-                      className="admin-btn"
-                      style={{ textDecoration: "none", borderRadius: 999, paddingInline: 12 }}
+                      className="admin-btn-primary"
+                      style={{ textDecoration: "none", borderRadius: 999, paddingInline: 14, paddingBlock: 6, fontSize: 13, fontWeight: 700 }}
                     >
                       Download
                     </a>
                   ) : (
-                    <span style={{ fontSize: 12, opacity: 0.6 }}>No link</span>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>No link</span>
                   )}
                 </div>
               </div>

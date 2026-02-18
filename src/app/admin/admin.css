@@ -1,10 +1,30 @@
+/* =========================================================
+   Admin Dark Theme — Phase 6A
+   ========================================================= */
+
 :root {
   --rei-green: #43a419;
+  --admin-bg: #0f172a;
+  --admin-surface: #1e293b;
+  --admin-surface-light: #273548;
+  --admin-border: #334155;
+  --admin-border-light: #475569;
+  --admin-text: #f1f5f9;
+  --admin-text-secondary: #cbd5e1;
+  --admin-text-muted: #94a3b8;
+  --admin-emerald: #10b981;
+  --admin-emerald-light: rgba(16, 185, 129, 0.12);
+  --admin-emerald-border: rgba(16, 185, 129, 0.30);
 }
 
 /* =========================
    Layout containers
 ========================= */
+
+.admin-root {
+  background: var(--admin-bg);
+  color: var(--admin-text);
+}
 
 .admin-shell {
   width: 100%;
@@ -14,16 +34,16 @@
 }
 
 /* =========================
-   Cards
+   Cards (dark)
 ========================= */
 
 .admin-card {
   display: block;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: 12px;
   padding: 18px;
-  color: inherit;
+  color: var(--admin-text);
   text-decoration: none;
   transition: all 0.15s ease;
   max-width: 100%;
@@ -31,15 +51,15 @@
 }
 
 .admin-card:hover {
-  border-color: var(--rei-green);
-  box-shadow: 0 10px 26px rgba(67, 164, 25, 0.14);
+  border-color: var(--admin-emerald);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
   transform: translateY(-2px);
 }
 
 .admin-card-cta {
   margin-top: 14px;
-  font-weight: 800;
-  color: var(--rei-green);
+  font-weight: 700;
+  color: var(--admin-emerald);
 }
 
 /* =========================
@@ -47,18 +67,72 @@
 ========================= */
 
 .admin-btn {
-  padding: 9px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(67, 164, 25, 0.45);
-  background: rgba(67, 164, 25, 0.12);
-  color: var(--rei-green);
-  font-weight: 900;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-emerald-border);
+  background: var(--admin-emerald-light);
+  color: var(--admin-emerald);
+  font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-btn:hover {
+  background: rgba(16, 185, 129, 0.18);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.admin-btn-primary {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--admin-emerald);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.admin-btn-primary:hover {
+  background: #059669;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.admin-btn-secondary {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-btn-secondary:hover {
+  background: var(--admin-surface-light);
+  border-color: var(--admin-border-light);
+}
+
+.admin-btn-danger {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.30);
+  background: rgba(239, 68, 68, 0.10);
+  color: #f87171;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.18);
 }
 
 .admin-link {
-  font-weight: 800;
-  color: var(--rei-green);
+  font-weight: 600;
+  color: var(--admin-emerald);
   text-decoration: none;
 }
 
@@ -72,22 +146,113 @@
 
 .pill-live {
   font-size: 12px;
-  font-weight: 800;
-  color: var(--rei-green);
-  background: rgba(67, 164, 25, 0.12);
-  border: 1px solid rgba(67, 164, 25, 0.35);
-  padding: 4px 8px;
-  border-radius: 999px;
+  font-weight: 600;
+  color: var(--admin-emerald);
+  background: var(--admin-emerald-light);
+  border: 1px solid var(--admin-emerald-border);
+  padding: 4px 10px;
+  border-radius: 9999px;
 }
 
 .pill-later {
   font-size: 12px;
-  font-weight: 800;
-  color: #64748b;
-  background: #f1f5f9;
-  border: 1px solid #e5e7eb;
-  padding: 4px 8px;
-  border-radius: 999px;
+  font-weight: 600;
+  color: var(--admin-text-muted);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  padding: 4px 10px;
+  border-radius: 9999px;
+}
+
+/* =========================
+   Tables (dark)
+========================= */
+
+.admin-table {
+  width: 100%;
+  font-size: 14px;
+  border-collapse: collapse;
+}
+
+.admin-table thead th {
+  padding: 10px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--admin-text-muted);
+  background: var(--admin-surface);
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-table tbody tr {
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  transition: background 0.1s ease;
+}
+
+.admin-table tbody tr:hover {
+  background: var(--admin-surface-light);
+}
+
+.admin-table tbody td {
+  padding: 10px 16px;
+  color: var(--admin-text-secondary);
+}
+
+/* Alternating rows */
+.admin-table tbody tr:nth-child(even) {
+  background: rgba(30, 41, 59, 0.5);
+}
+
+.admin-table tbody tr:nth-child(even):hover {
+  background: var(--admin-surface-light);
+}
+
+/* =========================
+   Inputs (dark)
+========================= */
+
+.admin-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-input::placeholder {
+  color: var(--admin-text-muted);
+}
+
+.admin-input:focus {
+  border-color: var(--admin-emerald);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+.admin-input[type="file"] {
+  width: 100%;
+}
+
+.admin-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--admin-border);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.admin-select:focus {
+  border-color: var(--admin-emerald);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
 }
 
 /* =========================

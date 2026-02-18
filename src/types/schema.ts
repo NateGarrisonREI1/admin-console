@@ -293,3 +293,166 @@ export type Payment = {
   created_at: string;
   refunded_date: string | null;
 };
+
+// ──────────────────────────────────────────
+// user_relationships
+// ──────────────────────────────────────────
+
+export type RelationshipType = "invited_by" | "in_broker_network" | "broker_for" | "manages";
+
+export type UserRelationship = {
+  id: string;
+  user_id: string;
+  related_user_id: string;
+  relationship_type: RelationshipType;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserRelationshipInsert = {
+  id?: string;
+  user_id: string;
+  related_user_id: string;
+  relationship_type: RelationshipType;
+  metadata?: Record<string, unknown>;
+};
+
+// ──────────────────────────────────────────
+// user_sources
+// ──────────────────────────────────────────
+
+export type SourceType = "rei_direct" | "broker_campaign" | "broker_invite" | "organic_website" | "admin_created";
+
+export type UserSource = {
+  id: string;
+  user_id: string;
+  source_type: SourceType;
+  source_ref_id: string | null;
+  campaign_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type UserSourceInsert = {
+  id?: string;
+  user_id: string;
+  source_type?: SourceType;
+  source_ref_id?: string | null;
+  campaign_id?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+// ──────────────────────────────────────────
+// Lead Pricing Config
+// ──────────────────────────────────────────
+
+export type SystemTypeSlug = "hvac" | "water_heater" | "solar" | "electrical" | "plumbing";
+
+export type LeadPricingConfig = {
+  id: string;
+  system_type: SystemTypeSlug;
+  display_name: string;
+  min_price: number;
+  max_price: number;
+  default_price: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// ──────────────────────────────────────────
+// Contractor Network / Customers / Referrals
+// ──────────────────────────────────────────
+
+export type ContractorNetworkContact = {
+  id: string;
+  contractor_id: string;
+  contact_name: string;
+  contact_email: string | null;
+  contact_phone: string | null;
+  company_name: string | null;
+  trade: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type ContractorCustomer = {
+  id: string;
+  contractor_id: string;
+  lead_id: string | null;
+  homeowner_name: string;
+  homeowner_email: string | null;
+  homeowner_phone: string | null;
+  homeowner_address: string | null;
+  job_type: string;
+  job_date: string | null;
+  job_status: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type ReferralStatus = "sent" | "accepted" | "completed" | "declined";
+
+export type ContractorReferral = {
+  id: string;
+  from_contractor_id: string;
+  to_contractor_id: string | null;
+  to_contact_name: string | null;
+  to_contact_email: string | null;
+  to_contact_phone: string | null;
+  customer_id: string | null;
+  customer_name: string;
+  customer_phone: string | null;
+  customer_address: string | null;
+  job_description: string | null;
+  sent_via: string;
+  sent_at: string;
+  status: ReferralStatus;
+};
+
+// ──────────────────────────────────────────
+// Service Catalog
+// ──────────────────────────────────────────
+
+export type ServiceCategorySlug = "hes" | "inspection";
+
+export type ServiceCategory = {
+  id: string;
+  name: string;
+  slug: ServiceCategorySlug;
+  description: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ServiceTier = {
+  id: string;
+  category_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  size_label: string;
+  sq_ft_min: number | null;
+  sq_ft_max: number | null;
+  price: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+};
+
+export type ServiceAddon = {
+  id: string;
+  category_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  price: number;
+  price_range_low: number | null;
+  price_range_high: number | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+};

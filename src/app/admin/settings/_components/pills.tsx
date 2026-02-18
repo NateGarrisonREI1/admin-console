@@ -1,25 +1,26 @@
 // src/app/admin/settings/_components/pills.tsx
 import * as React from "react";
 
-export type AppRole = "admin" | "broker" | "contractor" | "homeowner" | "affiliate";
+export type AppRole = "admin" | "rei_staff" | "broker" | "contractor" | "homeowner" | "affiliate";
 
 // pending = invited / not yet signed in
 export type UserStatus = "pending" | "active" | "disabled";
 
-type Style = { bg: string; text: string; ring: string; dot?: string };
+type Style = { bg: string; tx: string; bd: string };
 
 export const ROLE_STYLES: Record<AppRole, Style> = {
-  admin: { bg: "bg-emerald-50", text: "text-emerald-900", ring: "ring-emerald-200", dot: "bg-emerald-500" },
-  broker: { bg: "bg-sky-50", text: "text-sky-900", ring: "ring-sky-200", dot: "bg-sky-500" },
-  contractor: { bg: "bg-amber-50", text: "text-amber-900", ring: "ring-amber-200", dot: "bg-amber-500" },
-  homeowner: { bg: "bg-indigo-50", text: "text-indigo-900", ring: "ring-indigo-200", dot: "bg-indigo-500" },
-  affiliate: { bg: "bg-violet-50", text: "text-violet-900", ring: "ring-violet-200", dot: "bg-violet-500" },
+  admin: { bg: "rgba(16,185,129,0.12)", tx: "#10b981", bd: "rgba(16,185,129,0.30)" },
+  rei_staff: { bg: "rgba(6,182,212,0.12)", tx: "#06b6d4", bd: "rgba(6,182,212,0.30)" },
+  broker: { bg: "rgba(56,189,248,0.12)", tx: "#38bdf8", bd: "rgba(56,189,248,0.30)" },
+  contractor: { bg: "rgba(251,191,36,0.12)", tx: "#fbbf24", bd: "rgba(251,191,36,0.30)" },
+  homeowner: { bg: "rgba(129,140,248,0.12)", tx: "#818cf8", bd: "rgba(129,140,248,0.30)" },
+  affiliate: { bg: "rgba(167,139,250,0.12)", tx: "#a78bfa", bd: "rgba(167,139,250,0.30)" },
 };
 
 export const STATUS_STYLES: Record<UserStatus, Style> = {
-  pending: { bg: "bg-sky-50", text: "text-sky-900", ring: "ring-sky-200", dot: "bg-sky-500" },
-  active: { bg: "bg-emerald-50", text: "text-emerald-900", ring: "ring-emerald-200", dot: "bg-emerald-500" },
-  disabled: { bg: "bg-rose-50", text: "text-rose-900", ring: "ring-rose-200", dot: "bg-rose-500" },
+  pending: { bg: "rgba(56,189,248,0.12)", tx: "#38bdf8", bd: "rgba(56,189,248,0.30)" },
+  active: { bg: "rgba(16,185,129,0.12)", tx: "#10b981", bd: "rgba(16,185,129,0.30)" },
+  disabled: { bg: "rgba(244,63,94,0.12)", tx: "#fb7185", bd: "rgba(244,63,94,0.30)" },
 };
 
 function titleize(v: string) {
@@ -27,18 +28,23 @@ function titleize(v: string) {
   return v.slice(0, 1).toUpperCase() + v.slice(1);
 }
 
-export function Pill(props: { label: string; style: Style; subtle?: boolean }) {
+export function Pill(props: { label: string; style: Style }) {
   const { label, style } = props;
   return (
     <span
-      className={[
-        "inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-extrabold ring-1",
-        style.bg,
-        style.text,
-        style.ring,
-      ].join(" ")}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "4px 10px",
+        borderRadius: 9999,
+        fontSize: 11,
+        fontWeight: 700,
+        background: style.bg,
+        color: style.tx,
+        border: `1px solid ${style.bd}`,
+      }}
     >
-      {style.dot ? <span className={["h-1.5 w-1.5 rounded-full", style.dot].join(" ")} /> : null}
       {label}
     </span>
   );

@@ -2,7 +2,7 @@
 import "./admin.css";
 import AdminSidebar from "./_components/AdminSidebar";
 import AdminShell from "./_components/AdminShell";
-import AdminAuthButton from "./_components/AdminAuthButton";
+import ProfileMenu from "@/components/ProfileMenu";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const env =
@@ -15,7 +15,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       style={{
         display: "flex",
         minHeight: "100vh",
-        background: "#f8fafc",
         maxWidth: "100%",
         overflowX: "hidden",
       }}
@@ -25,15 +24,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <main
         style={{
           flex: 1,
-          minWidth: 0, // CRITICAL for preventing flex overflow
+          minWidth: 0,
           maxWidth: "100%",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
+        {/* Dark gradient header */}
         <header
           style={{
-            background: "white",
-            borderBottom: "1px solid #e5e7eb",
-            padding: "12px 16px",
+            background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+            borderBottom: "1px solid #334155",
+            padding: "12px 20px",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -42,21 +44,46 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             zIndex: 10,
           }}
         >
-          <div style={{ fontWeight: 800 }}>REI Admin</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#10b981",
+                boxShadow: "0 0 8px rgba(16,185,129,0.4)",
+              }}
+            />
+            <span style={{ fontWeight: 700, fontSize: 14, color: "#f1f5f9" }}>
+              REI Admin
+            </span>
+          </div>
 
-          {/* ✅ Right side cluster: env + auth */}
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <div style={{ fontSize: 12, opacity: 0.65 }}>env: {env}</div>
-            <AdminAuthButton />
+            <span
+              style={{
+                fontSize: 11,
+                padding: "3px 10px",
+                borderRadius: 9999,
+                background: "rgba(148,163,184,0.12)",
+                border: "1px solid rgba(148,163,184,0.2)",
+                color: "#94a3b8",
+                fontWeight: 500,
+              }}
+            >
+              {env}
+            </span>
+            <ProfileMenu settingsHref="/admin/settings" loginRedirect="/login" />
           </div>
         </header>
 
         <div
           style={{
-            padding: 16,
+            padding: 20,
             maxWidth: "100%",
             minWidth: 0,
             overflowX: "hidden",
+            flex: 1,
           }}
         >
           <AdminShell>{children}</AdminShell>
@@ -64,10 +91,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         <style>{`
           @media (min-width: 768px) {
-            main > div { padding: 24px !important; }
+            main > div:last-of-type { padding: 24px !important; }
           }
           @media (min-width: 1280px) {
-            main > div { padding: 28px !important; }
+            main > div:last-of-type { padding: 28px !important; }
           }
         `}</style>
       </main>

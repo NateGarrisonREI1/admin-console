@@ -9,13 +9,38 @@ export default async function BrokerDashboardPage() {
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-700">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 48,
+        }}
+      >
+        <div
+          style={{
+            background: "#1e293b",
+            border: "1px solid #ef4444",
+            borderRadius: 12,
+            padding: "20px 28px",
+            color: "#fca5a5",
+            fontSize: 14,
+            fontWeight: 500,
+          }}
+        >
           Unable to load dashboard. Please sign in as a broker.
         </div>
       </div>
     );
   }
 
-  return <BrokerDashboardClient requests={data.requests} />;
+  return (
+    <BrokerDashboardClient
+      broker={data.broker}
+      kpis={data.kpis}
+      contractors={data.contractors}
+      recentLeads={data.recentLeads}
+      topContractors={data.topContractors}
+    />
+  );
 }

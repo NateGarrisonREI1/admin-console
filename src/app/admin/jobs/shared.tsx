@@ -77,11 +77,12 @@ export function statusPill(status?: string | null) {
   const norm = normalizeResponse(status);
   const label = STATUS_DISPLAY[norm] ?? norm.replace(/_/g, " ");
 
+  // Dark theme status pills
   const tones = {
-    good: "bg-green-50 text-green-700 border-green-200",
-    info: "bg-blue-50 text-blue-800 border-blue-200",
-    danger: "bg-red-50 text-red-800 border-red-200",
-    neutral: "bg-slate-100 text-slate-700 border-slate-200",
+    good: "bg-emerald-900/40 text-emerald-400 border-emerald-700/50",
+    info: "bg-blue-900/40 text-blue-400 border-blue-700/50",
+    danger: "bg-red-900/40 text-red-400 border-red-700/50",
+    neutral: "bg-slate-700/40 text-slate-400 border-slate-600/50",
   } as const;
 
   const tone = STATUS_TONE[norm] ?? "neutral";
@@ -96,7 +97,7 @@ export function statusPill(status?: string | null) {
 export function addrLine(job: Pick<BrokerJob, "address1" | "city" | "state" | "zip">) {
   const a1 = safeStr(job.address1);
   const parts = [safeStr(job.city), safeStr(job.state), safeStr(job.zip)].filter(Boolean).join(", ");
-  return a1 && parts ? `${a1} — ${parts}` : a1 || parts || "—";
+  return a1 && parts ? `${a1} \u2014 ${parts}` : a1 || parts || "\u2014";
 }
 
 export function outputsFromRequested(requested_outputs?: string[] | null) {
@@ -133,9 +134,9 @@ export function makePhoneHref(job: Pick<BrokerJob, "intake_payload">) {
   return digits ? `tel:${digits}` : null;
 }
 
-const GREEN = "#43a419";
-const GREEN_LIGHT = "rgba(67,164,25,0.12)";
-const GREEN_BORDER = "rgba(67,164,25,0.3)";
+const EMERALD = "#10b981";
+const EMERALD_LIGHT = "rgba(16,185,129,0.12)";
+const EMERALD_BORDER = "rgba(16,185,129,0.3)";
 
 export function outputChip(labelText: string, active: boolean) {
   const base = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border";
@@ -144,12 +145,19 @@ export function outputChip(labelText: string, active: boolean) {
     return (
       <span
         className={base}
-        style={{ background: GREEN_LIGHT, color: GREEN, borderColor: GREEN_BORDER }}
+        style={{ background: EMERALD_LIGHT, color: EMERALD, borderColor: EMERALD_BORDER }}
       >
         {labelText}
       </span>
     );
   }
 
-  return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>{labelText}</span>;
+  return (
+    <span
+      className={base}
+      style={{ background: "rgba(51,65,85,0.4)", color: "#64748b", borderColor: "#334155" }}
+    >
+      {labelText}
+    </span>
+  );
 }

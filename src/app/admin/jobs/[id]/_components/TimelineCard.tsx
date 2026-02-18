@@ -11,7 +11,6 @@ export default function TimelineCard(props: {
 
   const count = events?.length ?? 0;
 
-  // Auto-collapse if there are lots of events
   const autoCollapsed = count > 6;
   const [open, setOpen] = useState(!autoCollapsed);
 
@@ -29,7 +28,14 @@ export default function TimelineCard(props: {
   }, [events]);
 
   return (
-    <div className="admin-card">
+    <div
+      style={{
+        background: "#1e293b",
+        border: "1px solid #334155",
+        borderRadius: 12,
+        padding: 20,
+      }}
+    >
       {/* Header row */}
       <div
         style={{
@@ -41,17 +47,17 @@ export default function TimelineCard(props: {
         }}
       >
         <div>
-          <div style={{ fontWeight: 950, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#f1f5f9", display: "flex", alignItems: "center", gap: 10 }}>
             <span>Activity Timeline</span>
             <span
               style={{
-                fontSize: 12,
-                opacity: 0.65,
+                fontSize: 11,
+                color: "#94a3b8",
                 padding: "2px 8px",
                 borderRadius: 999,
-                border: "1px solid rgba(0,0,0,0.08)",
-                background: "rgba(0,0,0,0.02)",
-                fontWeight: 850,
+                border: "1px solid #334155",
+                background: "rgba(100,116,139,0.10)",
+                fontWeight: 700,
                 whiteSpace: "nowrap",
               }}
               title={`${count} events`}
@@ -59,20 +65,19 @@ export default function TimelineCard(props: {
               {count ? `${count} events` : "empty"}
             </span>
           </div>
-          <div style={{ fontSize: 12, opacity: 0.65, marginTop: 6 }}>Internal log (for now)</div>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>Internal log (for now)</div>
         </div>
 
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="admin-btn"
+          className="admin-btn-secondary"
           style={{
-            borderRadius: 999,
+            borderRadius: 8,
             width: "fit-content",
-            padding: "6px 10px",
-            fontSize: 13,
-            fontWeight: 900,
-            opacity: 0.95,
+            padding: "6px 12px",
+            fontSize: 12,
+            fontWeight: 700,
           }}
           aria-expanded={open}
           aria-controls="timeline-body"
@@ -87,12 +92,12 @@ export default function TimelineCard(props: {
           style={{
             marginTop: 12,
             padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.08)",
-            background: "rgba(0,0,0,0.02)",
+            borderRadius: 10,
+            border: "1px solid #334155",
+            background: "#0f172a",
             fontSize: 13,
             lineHeight: "18px",
-            opacity: 0.9,
+            color: "#cbd5e1",
             whiteSpace: "pre-wrap",
           }}
         >
@@ -110,36 +115,42 @@ export default function TimelineCard(props: {
               placeholder="Log note: called broker, requested docs, sent draft, etc."
               style={{ flex: "1 1 420px" }}
             />
-            <select className="admin-input" name="type" defaultValue="note" style={{ width: 160 }}>
+            <select className="admin-select" name="type" defaultValue="note" style={{ width: 160 }}>
               <option value="note">note</option>
               <option value="contact">contact</option>
               <option value="delivery">delivery</option>
               <option value="status">status</option>
             </select>
-            <button className="admin-btn" type="submit" style={{ borderRadius: 999 }}>
+            <button
+              className="admin-btn-primary"
+              type="submit"
+              style={{ borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 700 }}
+            >
               Add
             </button>
           </form>
 
           <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
             {events.length === 0 ? (
-              <div style={{ fontSize: 13, opacity: 0.7 }}>No activity yet.</div>
+              <div style={{ fontSize: 13, color: "#94a3b8" }}>No activity yet.</div>
             ) : (
               events.map((e: any, idx: number) => (
                 <div
                   key={`${e.ts || idx}-${idx}`}
                   style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
+                    border: "1px solid #334155",
+                    borderRadius: 10,
                     padding: 12,
-                    background: "#fff",
+                    background: "#0f172a",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                    <div style={{ fontWeight: 850 }}>{(e.type || "note").toString().toUpperCase()}</div>
-                    <div style={{ fontSize: 12, opacity: 0.65 }}>{fmtDate(e.ts)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 12, color: "#f1f5f9", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      {(e.type || "note").toString().toUpperCase()}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>{fmtDate(e.ts)}</div>
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9, whiteSpace: "pre-wrap" }}>
+                  <div style={{ marginTop: 6, fontSize: 13, color: "#cbd5e1", whiteSpace: "pre-wrap" }}>
                     {e.message || "—"}
                   </div>
                 </div>

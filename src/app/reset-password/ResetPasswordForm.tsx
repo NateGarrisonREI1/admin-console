@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import { validatePassword } from "@/lib/auth/password";
+import { logAuthEvent } from "@/lib/auth/events";
 
 export default function ResetPasswordForm() {
   const router = useRouter();
@@ -57,7 +59,10 @@ export default function ResetPasswordForm() {
       const { error } = await supabase.auth.resetPasswordForEmail(e, { redirectTo });
       if (error) throw error;
 
-      // Always show a neutral success message (don’t leak if account exists)
+      // Log the reset request
+      logAuthEvent({ email: e, action: "password_reset_request" });
+
+      // Always show a neutral success message (don't leak if account exists)
       setMsg("If that email exists, a reset link was sent. Check inbox + spam.");
     } catch (e: any) {
       setErr(e?.message || "Could not send reset email");
@@ -76,12 +81,14 @@ export default function ResetPasswordForm() {
       return;
     }
 
-    if (pw1.length < 8) {
-      setErr("Password must be at least 8 characters.");
-      return;
-    }
     if (pw1 !== pw2) {
       setErr("Passwords do not match.");
+      return;
+    }
+
+    const check = validatePassword(pw1, email || undefined);
+    if (!check.valid) {
+      setErr(check.errors.join(". ") + ".");
       return;
     }
 
@@ -91,9 +98,12 @@ export default function ResetPasswordForm() {
       const { error } = await supabase.auth.updateUser({ password: pw1 });
       if (error) throw error;
 
-      setMsg("Password updated. Redirecting to login…");
+      // Log the password reset completion
+      logAuthEvent({ email: email || "unknown", action: "password_reset_complete" });
 
-      // Optional: sign out to ensure clean login after reset
+      setMsg("Password updated. Redirecting to login\u2026");
+
+      // Sign out to ensure clean login after reset
       await supabase.auth.signOut();
 
       setTimeout(() => {

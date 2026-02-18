@@ -192,16 +192,16 @@ export default async function JobsPage({
   };
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
+    <div className="space-y-5">
+      <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, padding: 20 }}>
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900">Projects</h1>
-            <p className="mt-1.5 text-sm text-slate-600">
-              {view === "archived" ? "Archived projects" : "Active projects"} • Status managed in Console
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#f1f5f9", letterSpacing: -0.3 }}>Projects</h1>
+            <p style={{ marginTop: 6, fontSize: 13, color: "#94a3b8" }}>
+              {view === "archived" ? "Archived projects" : "Active projects"} {"\u2022"} Status managed in Console
             </p>
             {error && (
-              <p className="mt-2 text-sm text-red-600">
+              <p style={{ marginTop: 8, fontSize: 13, color: "#ef4444" }}>
                 Error loading jobs: {String((error as any)?.message ?? error)}
               </p>
             )}
@@ -210,29 +210,52 @@ export default async function JobsPage({
           <div className="flex flex-wrap gap-3">
             <Link
               href="/intake/broker"
-              className="inline-flex items-center px-5 py-2.5 bg-green-600 text-white font-medium rounded-lg shadow-sm hover:bg-green-700 transition-colors"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 16px",
+                background: "#10b981",
+                color: "white",
+                fontWeight: 600,
+                fontSize: 13,
+                borderRadius: 8,
+                textDecoration: "none",
+                transition: "background 0.15s ease",
+              }}
             >
-              Open Broker Intake ↗
+              Open Broker Intake {"\u2197"}
             </Link>
 
             <div className="flex gap-2">
               <Link
                 href="/admin/jobs"
-                className={`px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                  view === "active"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white border-slate-200 hover:bg-slate-50"
-                }`}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  border: view === "active" ? "1px solid rgba(16,185,129,0.25)" : "1px solid #334155",
+                  background: view === "active" ? "rgba(16,185,129,0.10)" : "transparent",
+                  color: view === "active" ? "#10b981" : "#94a3b8",
+                  transition: "all 0.15s ease",
+                }}
               >
                 Active
               </Link>
               <Link
                 href="/admin/jobs?view=archived"
-                className={`px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                  view === "archived"
-                    ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-white border-slate-200 hover:bg-slate-50"
-                }`}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                  border: view === "archived" ? "1px solid rgba(16,185,129,0.25)" : "1px solid #334155",
+                  background: view === "archived" ? "rgba(16,185,129,0.10)" : "transparent",
+                  color: view === "archived" ? "#10b981" : "#94a3b8",
+                  transition: "all 0.15s ease",
+                }}
               >
                 Archived
               </Link>
@@ -240,11 +263,11 @@ export default async function JobsPage({
           </div>
         </div>
 
-        <div className="mt-5 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           {outputChip(`${outs.snapshot} Snapshot`, !!outs.snapshot)}
           {outputChip(`${outs.inspection} Inspection`, !!outs.inspection)}
           {outputChip(`${outs.hes} HES`, !!outs.hes)}
-          <span className="text-sm text-slate-500 self-center">
+          <span style={{ fontSize: 13, color: "#64748b", alignSelf: "center" }}>
             Showing up to 200 {view === "archived" ? "archived" : "active"} projects
           </span>
         </div>
@@ -253,7 +276,14 @@ export default async function JobsPage({
       {sortedWithNorm.length ? (
         <JobsTableClient jobs={sortedWithNorm} mode={view} contractors={contractors} systems={systems} />
       ) : (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-10 text-center text-slate-500">
+        <div style={{
+          borderRadius: 12,
+          border: "1px dashed #334155",
+          background: "rgba(30,41,59,0.5)",
+          padding: "40px 16px",
+          textAlign: "center",
+          color: "#64748b",
+        }}>
           No {view === "archived" ? "archived" : "active"} projects found.
         </div>
       )}

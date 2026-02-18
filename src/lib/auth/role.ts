@@ -1,11 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type AppRole = "admin" | "broker" | "contractor" | "homeowner" | "affiliate";
+export type AppRole = "admin" | "rei_staff" | "broker" | "contractor" | "homeowner" | "affiliate";
 
 export function defaultPathForRole(role: AppRole): string {
   switch (role) {
     case "admin":
       return "/admin";
+    case "rei_staff":
+      return "/rei-team/dashboard";
     case "broker":
       return "/broker/dashboard";
     case "contractor":

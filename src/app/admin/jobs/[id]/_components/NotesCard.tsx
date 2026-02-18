@@ -11,7 +11,6 @@ export default function NotesCard(props: {
   const noteText = (adminNotes ?? "").toString();
   const noteLen = noteText.trim().length;
 
-  // Auto-collapse if notes are long
   const autoCollapsed = noteLen > 280;
   const [open, setOpen] = useState(!autoCollapsed);
 
@@ -24,7 +23,14 @@ export default function NotesCard(props: {
   }, [noteText]);
 
   return (
-    <div className="admin-card">
+    <div
+      style={{
+        background: "#1e293b",
+        border: "1px solid #334155",
+        borderRadius: 12,
+        padding: 20,
+      }}
+    >
       {/* Header row */}
       <div
         style={{
@@ -35,17 +41,17 @@ export default function NotesCard(props: {
         }}
       >
         <div>
-          <div style={{ fontWeight: 950, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: "#f1f5f9", display: "flex", alignItems: "center", gap: 10 }}>
             <span>Internal Notes</span>
             <span
               style={{
-                fontSize: 12,
-                opacity: 0.65,
+                fontSize: 11,
+                color: "#94a3b8",
                 padding: "2px 8px",
                 borderRadius: 999,
-                border: "1px solid rgba(0,0,0,0.08)",
-                background: "rgba(0,0,0,0.02)",
-                fontWeight: 850,
+                border: "1px solid #334155",
+                background: "rgba(100,116,139,0.10)",
+                fontWeight: 700,
                 whiteSpace: "nowrap",
               }}
               title={`${noteLen} characters`}
@@ -53,7 +59,7 @@ export default function NotesCard(props: {
               {noteLen ? `${noteLen} chars` : "empty"}
             </span>
           </div>
-          <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>
+          <div style={{ marginTop: 6, fontSize: 13, color: "#94a3b8" }}>
             Not visible to broker/client.
           </div>
         </div>
@@ -61,14 +67,13 @@ export default function NotesCard(props: {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="admin-btn"
+          className="admin-btn-secondary"
           style={{
-            borderRadius: 999,
+            borderRadius: 8,
             width: "fit-content",
-            padding: "6px 10px",
-            fontSize: 13,
-            fontWeight: 900,
-            opacity: 0.95,
+            padding: "6px 12px",
+            fontSize: 12,
+            fontWeight: 700,
           }}
           aria-expanded={open}
           aria-controls="admin-notes-body"
@@ -83,12 +88,12 @@ export default function NotesCard(props: {
           style={{
             marginTop: 12,
             padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.08)",
-            background: "rgba(0,0,0,0.02)",
+            borderRadius: 10,
+            border: "1px solid #334155",
+            background: "#0f172a",
             fontSize: 13,
             lineHeight: "18px",
-            opacity: 0.9,
+            color: "#cbd5e1",
             whiteSpace: "pre-wrap",
           }}
         >
@@ -108,7 +113,11 @@ export default function NotesCard(props: {
               placeholder="Internal notes…"
               style={{ resize: "vertical" }}
             />
-            <button className="admin-btn" type="submit" style={{ borderRadius: 999, width: "fit-content" }}>
+            <button
+              className="admin-btn-primary"
+              type="submit"
+              style={{ borderRadius: 8, width: "fit-content", padding: "8px 16px", fontSize: 13, fontWeight: 700 }}
+            >
               Save Notes
             </button>
           </form>

@@ -1,8 +1,20 @@
 // src/lib/services/EmailService.ts
-// Email notification helpers.
-// Currently logs emails to console. Swap in Resend/SendGrid when ready.
+// Email sending via Resend + campaign email helpers.
 
 import { supabaseAdmin } from "@/lib/supabase/server";
+
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@leafenergy.app";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://leafenergy.app";
+
+// Lazy-init Resend to avoid build-time errors when API key is missing
+let _resend: import("resend").Resend | null = null;
+function getResend() {
+  if (!_resend && process.env.RESEND_API_KEY) {
+    const { Resend } = require("resend") as typeof import("resend");
+    _resend = new Resend(process.env.RESEND_API_KEY);
+  }
+  return _resend;
+}
 
 type EmailPayload = {
   to: string;
@@ -11,11 +23,94 @@ type EmailPayload = {
 };
 
 async function sendEmail(payload: EmailPayload) {
-  // TODO: Replace with Resend or SendGrid integration
-  console.log("[EmailService] Would send email:", {
-    to: payload.to,
-    subject: payload.subject,
-  });
+  if (!process.env.RESEND_API_KEY) {
+    console.log("[EmailService] No RESEND_API_KEY set, logging email:", {
+      to: payload.to,
+      subject: payload.subject,
+    });
+    return;
+  }
+
+  const resend = getResend();
+  if (!resend) return;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: `LEAF Energy <${FROM_EMAIL}>`,
+      to: [payload.to],
+      subject: payload.subject,
+      html: payload.html,
+    });
+    if (error) console.error("[EmailService] Send failed:", error.message);
+  } catch (err) {
+    console.error("[EmailService] Send error:", err);
+  }
+}
+
+// ──────────────────────────────────────────
+// Campaign email helpers
+// ──────────────────────────────────────────
+
+export interface CampaignEmailInput {
+  to: string;
+  recipientName: string;
+  brokerName: string;
+  subject: string;
+  message: string;
+  recipientId: string;
+}
+
+export async function sendCampaignEmail(input: CampaignEmailInput): Promise<boolean> {
+  const trackUrl = `${APP_URL}/api/v1/broker/campaigns/track?rid=${input.recipientId}&event=open`;
+  const clickUrl = `${APP_URL}/api/v1/broker/campaigns/track?rid=${input.recipientId}&event=click`;
+
+  const paragraphs = input.message
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((l) => `<p style="margin:0 0 12px;">${l}</p>`)
+    .join("");
+
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1e293b;">
+      <p style="margin:0 0 12px;">Hi ${input.recipientName},</p>
+      ${paragraphs}
+      <div style="margin:24px 0;text-align:center;">
+        <a href="${clickUrl}" style="display:inline-block;padding:14px 32px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;">
+          View Your Assessment
+        </a>
+      </div>
+      <p style="color:#64748b;font-size:13px;margin-top:24px;">
+        This assessment was prepared for you by ${input.brokerName} through the LEAF Home Energy Program.
+      </p>
+      <img src="${trackUrl}" width="1" height="1" alt="" style="display:none;" />
+    </div>
+  `;
+
+  await sendEmail({ to: input.to, subject: input.subject, html });
+  return true;
+}
+
+export async function sendBatchCampaignEmails(
+  emails: CampaignEmailInput[],
+): Promise<{ sent: number; failed: number }> {
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < emails.length; i += 10) {
+    const batch = emails.slice(i, i + 10);
+    const results = await Promise.allSettled(batch.map((e) => sendCampaignEmail(e)));
+
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) sent++;
+      else failed++;
+    }
+
+    if (i + 10 < emails.length) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+
+  return { sent, failed };
 }
 
 /**
