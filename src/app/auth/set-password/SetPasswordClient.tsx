@@ -31,14 +31,52 @@ function roleDestination(role: string, onboardingComplete: boolean): string {
   }
 }
 
-export default function SetPasswordClient({ email }: { email: string }) {
+export default function SetPasswordClient() {
   const router = useRouter();
+
+  // Stable supabase client — created once per component lifecycle
+  const supabaseRef = React.useRef(supabaseBrowser());
+
+  const [loading, setLoading] = React.useState(true);
+  const [email, setEmail] = React.useState("");
+  const [noSession, setNoSession] = React.useState(false);
 
   const [pw1, setPw1] = React.useState("");
   const [pw2, setPw2] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState(false);
+
+  // ─── Check session on mount ───────────────────────────────────────
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const supabase = supabaseRef.current;
+        const { data, error: sessionErr } = await supabase.auth.getSession();
+
+        if (sessionErr) {
+          console.error("[set-password] getSession error:", sessionErr);
+          setNoSession(true);
+          setLoading(false);
+          return;
+        }
+
+        if (!data.session) {
+          console.error("[set-password] No active session found");
+          setNoSession(true);
+          setLoading(false);
+          return;
+        }
+
+        setEmail(data.session.user.email ?? "");
+        setLoading(false);
+      } catch (e) {
+        console.error("[set-password] Session check failed:", e);
+        setNoSession(true);
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   // Live validation feedback
   const checks = React.useMemo(() => validatePassword(pw1, email), [pw1, email]);
@@ -61,9 +99,21 @@ export default function SetPasswordClient({ email }: { email: string }) {
 
     setBusy(true);
     try {
-      const supabase = supabaseBrowser();
+      const supabase = supabaseRef.current;
+
+      // Verify session is still valid before updating
+      const { data: sessionCheck } = await supabase.auth.getSession();
+      if (!sessionCheck.session) {
+        setError("Your session has expired. Please use your invite link again.");
+        setBusy(false);
+        return;
+      }
+
       const { error: updateErr } = await supabase.auth.updateUser({ password: pw1 });
-      if (updateErr) throw updateErr;
+      if (updateErr) {
+        console.error("[set-password] updateUser error:", updateErr);
+        throw updateErr;
+      }
 
       // Mark profile as active and get redirect destination
       const { role, onboardingComplete } = await activateProfile();
@@ -75,12 +125,78 @@ export default function SetPasswordClient({ email }: { email: string }) {
         router.refresh();
       }, 600);
     } catch (e: unknown) {
+      console.error("[set-password] handleSubmit error:", e);
       setError(e instanceof Error ? e.message : "Failed to set password. Please try again.");
     } finally {
       setBusy(false);
     }
   }
 
+  // ─── Loading state ────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", background: BG, display: "grid", placeItems: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              width: 32, height: 32, borderRadius: "50%",
+              border: `3px solid ${BORDER}`, borderTopColor: EMERALD,
+              animation: "spin 0.8s linear infinite",
+              margin: "0 auto 16px",
+            }}
+          />
+          <p style={{ color: TEXT_DIM, fontSize: 14, fontWeight: 500 }}>
+            Checking your session...
+          </p>
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── No session state ─────────────────────────────────────────────
+  if (noSession) {
+    return (
+      <div style={{ minHeight: "100vh", background: BG, display: "grid", placeItems: "center", padding: 24 }}>
+        <div style={{ width: "100%", maxWidth: 420, textAlign: "center" }}>
+          <div
+            style={{
+              width: 48, height: 48, borderRadius: 14,
+              background: "rgba(239,68,68,0.15)",
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 16,
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </div>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: TEXT, margin: "0 0 8px" }}>
+            Session Expired
+          </h1>
+          <p style={{ fontSize: 14, color: TEXT_DIM, marginBottom: 24 }}>
+            Your invite link may have expired. Please request a new one from your admin.
+          </p>
+          <a
+            href="/login"
+            style={{
+              display: "inline-block",
+              padding: "10px 24px", borderRadius: 8,
+              background: EMERALD, color: "#fff",
+              fontSize: 14, fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            Back to Login
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Password form ────────────────────────────────────────────────
   return (
     <div
       style={{
@@ -181,7 +297,7 @@ export default function SetPasswordClient({ email }: { email: string }) {
                   boxSizing: "border-box",
                 }}
               >
-                {email}
+                {email || "—"}
               </div>
             </div>
 

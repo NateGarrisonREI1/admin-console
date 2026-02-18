@@ -2,8 +2,6 @@
 "use server";
 
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
-import { stripe } from "@/lib/stripe";
-import { StripeService } from "@/lib/services/StripeService";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -122,13 +120,17 @@ export async function updateContractorProfile(updates: {
   service_radius_miles?: number;
   insurance_verified?: boolean;
   onboarding_complete?: boolean;
-}) {
-  const userId = await getContractorId();
-  const { error } = await supabaseAdmin
-    .from("contractor_profiles")
-    .update(updates)
-    .eq("id", userId);
-  if (error) throw new Error(error.message);
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const userId = await getContractorId();
+    const { error } = await supabaseAdmin
+      .from("contractor_profiles")
+      .upsert({ id: userId, ...updates }, { onConflict: "id" });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Unknown error" };
+  }
 }
 
 // ─── Complete onboarding ────────────────────────────────────────────
@@ -145,6 +147,9 @@ export async function completeOnboarding() {
 // ─── Stripe SetupIntent for saving payment method ───────────────────
 
 export async function createSetupIntent(): Promise<{ clientSecret: string }> {
+  const { stripe } = await import("@/lib/stripe");
+  const { StripeService } = await import("@/lib/services/StripeService");
+
   const supabase = await supabaseServer();
   const { data: userData } = await supabase.auth.getUser();
   const user = userData?.user;
@@ -173,6 +178,8 @@ export async function createSetupIntent(): Promise<{ clientSecret: string }> {
 // ─── Check if contractor has payment method ─────────────────────────
 
 export async function hasPaymentMethod(): Promise<boolean> {
+  const { stripe } = await import("@/lib/stripe");
+
   const userId = await getContractorId();
   const { data } = await supabaseAdmin
     .from("contractor_profiles")

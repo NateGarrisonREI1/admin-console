@@ -25,6 +25,17 @@ function rolePrefix(role: Role) {
   }
 }
 
+function roleHome(role: Role) {
+  switch (role) {
+    case "broker":
+      return "/broker/dashboard";
+    case "contractor":
+      return "/contractor/dashboard";
+    default:
+      return rolePrefix(role);
+  }
+}
+
 function safeNextForRole(role: Role, nextPath: string | null) {
   if (!nextPath) return null;
 
@@ -56,11 +67,78 @@ export default function LoginForm() {
   const sp = useSearchParams();
 
   const next = sp.get("next");
+  const errorParam = sp.get("error");
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const [processingInvite, setProcessingInvite] = React.useState(false);
+
+  // ─── Handle invite link hash tokens ───────────────────────────────
+  React.useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash || !hash.includes("access_token")) return;
+
+    // Parse hash fragment: #access_token=xxx&refresh_token=yyy&...
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+
+    if (!accessToken || !refreshToken) return;
+
+    setProcessingInvite(true);
+
+    // Clear hash from URL to prevent re-processing
+    window.history.replaceState(null, "", window.location.pathname);
+
+    (async () => {
+      try {
+        const supabase = supabaseBrowser();
+        const { error: sessionErr } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (sessionErr) throw sessionErr;
+
+        // Invited users need to set their password
+        router.replace("/auth/set-password");
+        router.refresh();
+      } catch (e: unknown) {
+        setProcessingInvite(false);
+        setErr(
+          e instanceof Error
+            ? e.message
+            : "Failed to process invite. Please try again or request a new link."
+        );
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Friendly error for missing_code without hash tokens ──────────
+  React.useEffect(() => {
+    if (errorParam === "missing_code" && !processingInvite) {
+      // Only show if we didn't find hash tokens (otherwise the invite flow handles it)
+      const hash = window.location.hash;
+      if (!hash || !hash.includes("access_token")) {
+        setErr("Your invite link may have expired. Please request a new one.");
+      }
+    }
+  }, [errorParam, processingInvite]);
+
+  // Show loading state while processing invite tokens
+  if (processingInvite) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8">
+        <div
+          className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-emerald-500"
+        />
+        <p className="text-sm font-semibold text-slate-600">
+          Setting up your account...
+        </p>
+      </div>
+    );
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -115,7 +193,7 @@ export default function LoginForm() {
       const role = (await ensureProfileAndGetRole(supabase as any, user.id)) as Role;
 
       const safeNext = safeNextForRole(role, next);
-      const dest = safeNext ?? rolePrefix(role);
+      const dest = safeNext ?? roleHome(role);
 
       router.replace(dest);
       router.refresh();

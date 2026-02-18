@@ -43,7 +43,7 @@ export default function BrokersClient({ data }: { data: BrokersPageData }) {
   };
 
   return (
-    <div style={{ padding: 28, maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* ── Header ──────────────────────────────────────────────── */}
       <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: 0 }}>
         My Brokers
@@ -76,13 +76,28 @@ export default function BrokersClient({ data }: { data: BrokersPageData }) {
               }}
             >
               <div style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>
-                {c.broker_name ?? "Unknown Broker"}
+                {c.broker_name || c.broker_email || "Unknown Broker"}
               </div>
-              {c.broker_company && (
-                <div style={{ fontSize: 13, color: TEXT_SEC, marginTop: 2 }}>
-                  {c.broker_company}
-                </div>
-              )}
+
+              {/* Contact info */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6 }}>
+                {c.broker_email && (
+                  <a
+                    href={`mailto:${c.broker_email}`}
+                    style={{ fontSize: 12, color: "#3b82f6", textDecoration: "none" }}
+                  >
+                    {c.broker_email}
+                  </a>
+                )}
+                {c.broker_phone && (
+                  <a
+                    href={`tel:${c.broker_phone}`}
+                    style={{ fontSize: 12, color: "#3b82f6", textDecoration: "none" }}
+                  >
+                    {c.broker_phone}
+                  </a>
+                )}
+              </div>
 
               {/* Stats badges */}
               <div
@@ -121,22 +136,6 @@ export default function BrokersClient({ data }: { data: BrokersPageData }) {
               <div style={{ fontSize: 12, color: TEXT_DIM, marginTop: 12 }}>
                 Connected since {formatDate(c.connected_since)}
               </div>
-
-              {/* Email */}
-              {c.broker_email && (
-                <a
-                  href={`mailto:${c.broker_email}`}
-                  style={{
-                    fontSize: 12,
-                    color: "#3b82f6",
-                    textDecoration: "none",
-                    display: "inline-block",
-                    marginTop: 6,
-                  }}
-                >
-                  {c.broker_email}
-                </a>
-              )}
             </div>
           ))}
         </div>
@@ -182,13 +181,8 @@ export default function BrokersClient({ data }: { data: BrokersPageData }) {
                 >
                   <div>
                     <div style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>
-                      {b.full_name ?? "Unknown Broker"}
+                      {b.name || b.email || "Unknown Broker"}
                     </div>
-                    {b.company_name && (
-                      <div style={{ fontSize: 13, color: TEXT_SEC, marginTop: 2 }}>
-                        {b.company_name}
-                      </div>
-                    )}
                     {b.email && (
                       <a
                         href={`mailto:${b.email}`}

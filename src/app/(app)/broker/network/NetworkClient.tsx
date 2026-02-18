@@ -4,7 +4,7 @@
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Broker, BrokerContractor, ProviderType } from "@/types/broker";
-import { addContractor, updateContractor, removeContractor, brokerInviteContractor } from "./actions";
+import { addContractor, updateContractor, removeContractor, brokerInviteContractor, resendBrokerInvite } from "./actions";
 import type { PendingInvite } from "./actions";
 
 // ─── Provider Tab Config ─────────────────────────────────────────────────────
@@ -1113,7 +1113,11 @@ function InviteContractorModal({
 
 // ─── Pending Invites Section ────────────────────────────────────────────────
 
-function PendingInvitesSection({ invites }: { invites: PendingInvite[] }) {
+function PendingInvitesSection({ invites, onResend, resendCooldowns }: {
+  invites: PendingInvite[];
+  onResend: (userId: string, email: string) => void;
+  resendCooldowns: Record<string, boolean>;
+}) {
   if (invites.length === 0) return null;
 
   const pendingCount = invites.filter((i) => i.status === "pending").length;
@@ -1148,55 +1152,78 @@ function PendingInvitesSection({ invites }: { invites: PendingInvite[] }) {
       <div style={{
         background: "#1e293b", border: "1px solid #334155", borderRadius: 12, overflow: "hidden",
       }}>
-        {invites.map((inv, i) => (
-          <div
-            key={inv.id}
-            style={{
-              display: "flex", alignItems: "center", gap: 14,
-              padding: "12px 16px",
-              borderBottom: i < invites.length - 1 ? "1px solid rgba(51,65,85,0.5)" : undefined,
-            }}
-          >
-            {/* Avatar placeholder */}
-            <div style={{
-              width: 36, height: 36, borderRadius: "50%",
-              background: inv.status === "active" ? "rgba(16,185,129,0.12)" : "rgba(251,191,36,0.12)",
-              border: `1px solid ${inv.status === "active" ? "rgba(16,185,129,0.25)" : "rgba(251,191,36,0.25)"}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 14, fontWeight: 700, flexShrink: 0,
-              color: inv.status === "active" ? "#10b981" : "#fbbf24",
-            }}>
-              {(inv.name || inv.email)[0].toUpperCase()}
-            </div>
-
-            {/* Info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>
-                {inv.name || inv.email}
+        {invites.map((inv, i) => {
+          const onCooldown = !!resendCooldowns[inv.id];
+          return (
+            <div
+              key={inv.id}
+              style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "12px 16px",
+                borderBottom: i < invites.length - 1 ? "1px solid rgba(51,65,85,0.5)" : undefined,
+              }}
+            >
+              {/* Avatar placeholder */}
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%",
+                background: inv.status === "active" ? "rgba(16,185,129,0.12)" : "rgba(251,191,36,0.12)",
+                border: `1px solid ${inv.status === "active" ? "rgba(16,185,129,0.25)" : "rgba(251,191,36,0.25)"}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14, fontWeight: 700, flexShrink: 0,
+                color: inv.status === "active" ? "#10b981" : "#fbbf24",
+              }}>
+                {(inv.name || inv.email)[0].toUpperCase()}
               </div>
-              <div style={{ fontSize: 12, color: "#64748b", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <span>{inv.email}</span>
-                {inv.trade && <span style={{ color: "#475569" }}>| {inv.trade}</span>}
-                {inv.invited_at && (
-                  <span style={{ color: "#475569" }}>
-                    | Invited {new Date(inv.invited_at).toLocaleDateString()}
-                  </span>
-                )}
-              </div>
-            </div>
 
-            {/* Status badge */}
-            <span style={{
-              display: "inline-flex", alignItems: "center", padding: "3px 10px",
-              borderRadius: 9999, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
-              ...(inv.status === "active"
-                ? { background: "rgba(16,185,129,0.12)", color: "#10b981", border: "1px solid rgba(16,185,129,0.25)" }
-                : { background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }),
-            }}>
-              {inv.status === "active" ? "Active" : "Pending"}
-            </span>
-          </div>
-        ))}
+              {/* Info */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>
+                  {inv.name || inv.email}
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span>{inv.email}</span>
+                  {inv.trade && <span style={{ color: "#475569" }}>| {inv.trade}</span>}
+                  {inv.invited_at && (
+                    <span style={{ color: "#475569" }}>
+                      | Invited {new Date(inv.invited_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Resend button (pending only) */}
+              {inv.status === "pending" && (
+                <button
+                  type="button"
+                  onClick={() => onResend(inv.id, inv.email)}
+                  disabled={onCooldown}
+                  style={{
+                    padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+                    background: onCooldown ? "rgba(56,189,248,0.05)" : "rgba(56,189,248,0.1)",
+                    color: onCooldown ? "#475569" : "#38bdf8",
+                    border: `1px solid ${onCooldown ? "#334155" : "rgba(56,189,248,0.25)"}`,
+                    cursor: onCooldown ? "not-allowed" : "pointer",
+                    transition: "all 0.15s", whiteSpace: "nowrap",
+                    opacity: onCooldown ? 0.5 : 1,
+                  }}
+                >
+                  {onCooldown ? "Sent" : "Resend"}
+                </button>
+              )}
+
+              {/* Status badge */}
+              <span style={{
+                display: "inline-flex", alignItems: "center", padding: "3px 10px",
+                borderRadius: 9999, fontSize: 11, fontWeight: 700, whiteSpace: "nowrap",
+                ...(inv.status === "active"
+                  ? { background: "rgba(16,185,129,0.12)", color: "#10b981", border: "1px solid rgba(16,185,129,0.25)" }
+                  : { background: "rgba(251,191,36,0.12)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)" }),
+              }}>
+                {inv.status === "active" ? "Active" : "Pending"}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1235,6 +1262,27 @@ export default function NetworkClient({
   // Invite modal state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
+
+  // Resend invite cooldowns (keyed by user ID)
+  const [resendCooldowns, setResendCooldowns] = useState<Record<string, boolean>>({});
+
+  async function handleResendInvite(userId: string, email: string) {
+    if (resendCooldowns[userId]) return;
+    setResendCooldowns((prev) => ({ ...prev, [userId]: true }));
+    try {
+      const result = await resendBrokerInvite(userId);
+      if (result.success) {
+        setInviteSuccess(`Invite resent to ${email}`);
+      } else {
+        setInviteSuccess(`Failed: ${result.error || "Unknown error"}`);
+      }
+    } catch (e: unknown) {
+      setInviteSuccess(`Failed: ${e instanceof Error ? e.message : "Unknown error"}`);
+    }
+    setTimeout(() => {
+      setResendCooldowns((prev) => ({ ...prev, [userId]: false }));
+    }, 60000);
+  }
 
   // Reset filters when switching tabs
   useEffect(() => {
@@ -1520,7 +1568,13 @@ export default function NetworkClient({
         </div>
 
         {/* ── Pending Invites ── */}
-        {activeTab === "contractor" && <PendingInvitesSection invites={pendingInvites} />}
+        {activeTab === "contractor" && (
+          <PendingInvitesSection
+            invites={pendingInvites}
+            onResend={handleResendInvite}
+            resendCooldowns={resendCooldowns}
+          />
+        )}
 
         {/* ── KPI Summary ── */}
         <div

@@ -247,8 +247,6 @@ export default function SettingsClient() {
     <div
       style={{
         padding: 28,
-        maxWidth: 800,
-        margin: "0 auto",
         backgroundColor: BG,
         minHeight: "100vh",
       }}

@@ -272,7 +272,7 @@ export default function BillingClient({ data }: { data: BillingPageData }) {
   const pm = data.paymentMethod;
 
   return (
-    <div style={{ padding: 28, maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* ── Header ───────────────────────────────────────────────── */}
       <h1
         style={{

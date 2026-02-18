@@ -9,8 +9,8 @@ export type BrokerConnection = {
   id: string;
   broker_id: string;
   broker_name: string | null;
-  broker_company: string | null;
   broker_email: string | null;
+  broker_phone: string | null;
   connected_since: string;
   leads_count: number;
   jobs_completed: number;
@@ -18,8 +18,7 @@ export type BrokerConnection = {
 
 export type AvailableBroker = {
   id: string;
-  full_name: string | null;
-  company_name: string | null;
+  name: string | null;
   email: string | null;
 };
 
@@ -58,15 +57,37 @@ export async function fetchBrokersData(): Promise<{ data: BrokersPageData; isAdm
 
     const brokerIds = (rels ?? []).map((r: { related_user_id: string }) => r.related_user_id);
 
+    // Helper: resolve a display name from app_profiles columns
+    function resolveName(p: Record<string, unknown> | undefined): string | null {
+      if (!p) return null;
+      const full = p.full_name as string | null;
+      if (full) return full;
+      const parts = [p.first_name as string | null, p.last_name as string | null].filter(Boolean);
+      if (parts.length > 0) return parts.join(" ");
+      return (p.email as string | null) || null;
+    }
+
     let connections: BrokerConnection[] = [];
     if (brokerIds.length > 0) {
-      const { data: profiles } = await supabaseAdmin
+      // Query app_profiles — no company_name column exists here;
+      // broker "company name" is stored in full_name during onboarding
+      const { data: profiles, error: profErr } = await supabaseAdmin
         .from("app_profiles")
-        .select("id, full_name, company_name, email")
+        .select("id, full_name, first_name, last_name, email, phone")
         .in("id", brokerIds);
+
+      if (profErr) {
+        console.error("[fetchBrokersData] Error fetching broker profiles:", profErr.message);
+      }
 
       const profileMap = new Map(
         (profiles ?? []).map((p: Record<string, unknown>) => [p.id as string, p])
+      );
+
+      // Also look up auth emails as fallback (app_profiles.email may be null)
+      const { data: authList } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 5000 });
+      const authEmailMap = new Map(
+        (authList?.users ?? []).map((u) => [u.id, u.email || null])
       );
 
       const { data: leads } = await supabaseAdmin
@@ -88,12 +109,13 @@ export async function fetchBrokersData(): Promise<{ data: BrokersPageData; isAdm
         const brokerId = r.related_user_id as string;
         const profile = profileMap.get(brokerId) as Record<string, unknown> | undefined;
         const counts = leadCounts.get(brokerId) ?? { total: 0, completed: 0 };
+        const brokerEmail = (profile?.email as string) || authEmailMap.get(brokerId) || null;
         return {
           id: r.id as string,
           broker_id: brokerId,
-          broker_name: (profile?.full_name as string) ?? null,
-          broker_company: (profile?.company_name as string) ?? null,
-          broker_email: (profile?.email as string) ?? null,
+          broker_name: resolveName(profile),
+          broker_email: brokerEmail,
+          broker_phone: (profile?.phone as string) || null,
           connected_since: r.created_at as string,
           leads_count: counts.total,
           jobs_completed: counts.completed,
@@ -101,19 +123,22 @@ export async function fetchBrokersData(): Promise<{ data: BrokersPageData; isAdm
       });
     }
 
-    const { data: allBrokers } = await supabaseAdmin
+    const { data: allBrokers, error: allBrokersErr } = await supabaseAdmin
       .from("app_profiles")
-      .select("id, full_name, company_name, email")
+      .select("id, full_name, first_name, last_name, email")
       .eq("role", "broker")
       .limit(50);
+
+    if (allBrokersErr) {
+      console.error("[fetchBrokersData] Error fetching available brokers:", allBrokersErr.message);
+    }
 
     const available = (allBrokers ?? [])
       .filter((b: Record<string, unknown>) => !brokerIds.includes(b.id as string))
       .map((b: Record<string, unknown>) => ({
         id: b.id as string,
-        full_name: b.full_name as string | null,
-        company_name: b.company_name as string | null,
-        email: b.email as string | null,
+        name: resolveName(b),
+        email: (b.email as string) || null,
       }));
 
     return { data: { connections, available }, isAdmin: false };

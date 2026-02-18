@@ -101,18 +101,22 @@ export default function BrokerOnboardingClient({ profile }: { profile: BrokerOnb
     setSaving(true);
     setError(null);
     try {
+      let result: { success: boolean; error?: string } = { success: true };
       switch (s) {
         case 1:
-          await updateBrokerOnboarding({
+          result = await updateBrokerOnboarding({
             company_name: companyName.trim(),
             phone: phone.trim() || null,
             email: email.trim() || null,
+            website: website.trim() || null,
+            bio: bio.trim() || null,
           });
           break;
         case 2:
-          await updateBrokerOnboarding({ service_areas: serviceAreas });
+          result = await updateBrokerOnboarding({ service_areas: serviceAreas });
           break;
       }
+      if (!result.success) throw new Error(result.error || "Save failed");
     } finally {
       setSaving(false);
     }
@@ -134,13 +138,29 @@ export default function BrokerOnboardingClient({ profile }: { profile: BrokerOnb
     setSaving(true);
     setError(null);
     try {
-      await updateBrokerOnboarding({
-        company_name: companyName.trim(),
-        phone: phone.trim() || null,
-        email: email.trim() || null,
-        onboarding_complete: true,
-      });
+      const result = await Promise.race([
+        updateBrokerOnboarding({
+          company_name: companyName.trim(),
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+          website: website.trim() || null,
+          bio: bio.trim() || null,
+          service_areas: serviceAreas,
+          brand_color: brandColor,
+          tagline: tagline.trim() || null,
+          onboarding_complete: true,
+        }),
+        new Promise<{ success: false; error: string }>((resolve) =>
+          setTimeout(() => resolve({ success: false, error: "Save timed out, please try again" }), 10000)
+        ),
+      ]);
+      if (!result.success) {
+        setSaving(false);
+        setError(result.error || "Failed to complete setup.");
+        return;
+      }
       router.push("/broker/dashboard");
+      router.refresh();
     } catch (e) {
       setSaving(false);
       setError(e instanceof Error ? e.message : "Failed to complete setup. Please try again.");

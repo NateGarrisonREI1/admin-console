@@ -50,7 +50,7 @@ export default function RefundsClient({ data }: { data: RefundsPageData }) {
   const deniedCount = requests.filter((r) => r.status === "denied").length;
 
   return (
-    <div style={{ padding: 28, maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>Refund Requests</h1>

@@ -323,7 +323,7 @@ export default function ContractorsClient({
 
   // ── Render ───────────────────────────────────────────────────────
   return (
-    <div style={{ padding: 28, maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* ── Header ──────────────────────────────────────────────── */}
       <div
         style={{

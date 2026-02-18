@@ -144,7 +144,7 @@ export default function CustomersClient({
 
   if (customers.length === 0) {
     return (
-      <div style={{ padding: 28, maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ padding: 28 }}>
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
           <h1
@@ -207,7 +207,7 @@ export default function CustomersClient({
   // ── Main View ────────────────────────────────────────────────────
 
   return (
-    <div style={{ padding: 28, maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: 0 }}>

@@ -151,7 +151,7 @@ export default function LeadsClient({ data }: { data: LeadsPageData }) {
   }, [data.leads, statusFilter]);
 
   return (
-    <div style={{ padding: 28, maxWidth: 1200, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>My Leads</h1>

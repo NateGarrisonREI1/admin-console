@@ -13,6 +13,7 @@ import {
   TrashIcon,
   NoSymbolIcon,
   CheckCircleIcon,
+  EnvelopeIcon,
 } from "@heroicons/react/24/outline";
 
 import {
@@ -22,6 +23,7 @@ import {
   adminCreateMagicLink,
   adminUpdateUserProfile,
   adminDeleteUser,
+  resendInvite,
 } from "../_actions/users";
 import type { AdminUserRow, AdminListUsersResult } from "../_actions/users";
 
@@ -187,10 +189,29 @@ export default function AdminUsersTable(props: {
 
   const [toast, setToast] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
+  const [resendCooldowns, setResendCooldowns] = React.useState<Record<string, boolean>>({});
 
   function showToast(msg: string) {
     setToast(msg);
-    setTimeout(() => setToast(null), 2000);
+    setTimeout(() => setToast(null), 3000);
+  }
+
+  async function handleResendInvite(userId: string, email: string) {
+    if (resendCooldowns[userId]) return;
+    setResendCooldowns((prev) => ({ ...prev, [userId]: true }));
+    try {
+      const result = await resendInvite(userId);
+      if (result.success) {
+        showToast(`Invite resent to ${email}`);
+      } else {
+        showToast(`Failed: ${result.error || "Unknown error"}`);
+      }
+    } catch (e: unknown) {
+      showToast(`Failed: ${e instanceof Error ? e.message : "Unknown error"}`);
+    }
+    setTimeout(() => {
+      setResendCooldowns((prev) => ({ ...prev, [userId]: false }));
+    }, 60000);
   }
 
   function pushFilters(overrides: Record<string, string>) {
@@ -512,6 +533,18 @@ export default function AdminUsersTable(props: {
                       {/* Actions */}
                       <td onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
+                          {status === "pending" && (
+                            <ActionBtn
+                              title={resendCooldowns[r.user_id] ? "Invite sent — wait 60s" : "Resend invite"}
+                              onClick={() => handleResendInvite(r.user_id, r.email)}
+                            >
+                              <EnvelopeIcon style={{
+                                width: 15, height: 15,
+                                color: resendCooldowns[r.user_id] ? "#475569" : "#38bdf8",
+                                opacity: resendCooldowns[r.user_id] ? 0.5 : 1,
+                              }} />
+                            </ActionBtn>
+                          )}
                           <ActionBtn title="Edit user" onClick={() => openEdit(r)}>
                             <PencilSquareIcon style={{ width: 15, height: 15 }} />
                           </ActionBtn>

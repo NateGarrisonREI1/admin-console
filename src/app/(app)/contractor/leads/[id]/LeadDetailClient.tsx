@@ -296,7 +296,7 @@ export default function LeadDetailClient({ data }: { data: LeadDetailData }) {
 
   // ─── Render ──────────────────────────────────────────────────────
   return (
-    <div style={{ padding: 28, maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* ── Back button ─────────────────────────────────────────── */}
       <button
         onClick={() => router.push("/contractor/leads")}

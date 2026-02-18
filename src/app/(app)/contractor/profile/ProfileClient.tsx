@@ -135,13 +135,14 @@ function CompanyInfoSection({
   async function handleSave() {
     setSaving(true);
     try {
-      await updateContractorProfile({
+      const result = await updateContractorProfile({
         company_name: companyName || null,
         phone: phone || null,
         email: email || null,
         license_number: license || null,
         website: website || null,
       });
+      if (!result.success) throw new Error(result.error || "Save failed");
       setEditing(false);
       onSaved();
     } catch (e) {
@@ -245,7 +246,8 @@ function ServicesSection({
   async function handleSave() {
     setSaving(true);
     try {
-      await updateContractorProfile({ system_specialties: selected });
+      const result = await updateContractorProfile({ system_specialties: selected });
+      if (!result.success) throw new Error(result.error || "Save failed");
       setEditing(false);
       onSaved();
     } catch (e) {
@@ -308,7 +310,8 @@ function AreasSection({
   async function handleSave() {
     setSaving(true);
     try {
-      await updateContractorProfile({ service_zip_codes: selected });
+      const result = await updateContractorProfile({ service_zip_codes: selected });
+      if (!result.success) throw new Error(result.error || "Save failed");
       setEditing(false);
       onSaved();
     } catch (e) {
@@ -386,7 +389,7 @@ export default function ProfileClient({ profile }: { profile: ContractorProfileD
   const completeness = computeCompleteness(profile);
 
   return (
-    <div style={{ padding: 28, maxWidth: 800, margin: "0 auto" }}>
+    <div style={{ padding: 28 }}>
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>Profile</h1>

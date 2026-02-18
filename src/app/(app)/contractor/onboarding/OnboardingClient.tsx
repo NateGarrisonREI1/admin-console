@@ -158,27 +158,29 @@ export default function OnboardingClient({ profile }: { profile: ContractorProfi
     setSaving(true);
     setError(null);
     try {
+      let result: { success: boolean; error?: string } = { success: true };
       switch (s) {
         case 1:
-          await updateContractorProfile({
+          result = await updateContractorProfile({
             company_name: company_name.trim(),
             phone: phone.trim() || null,
             email: email.trim() || null,
           });
           break;
         case 2:
-          await updateContractorProfile({
+          result = await updateContractorProfile({
             system_specialties: specialties,
             service_types: specialties,
           });
           break;
         case 3:
-          await updateContractorProfile({
+          result = await updateContractorProfile({
             service_zip_codes: serviceAreas,
             service_areas: serviceAreas,
           });
           break;
       }
+      if (!result.success) throw new Error(result.error || "Failed to save.");
     } finally {
       setSaving(false);
     }
@@ -202,18 +204,31 @@ export default function OnboardingClient({ profile }: { profile: ContractorProfi
     setSaving(true);
     setError(null);
     try {
-      // Final bulk save of all data + mark onboarding complete
-      await updateContractorProfile({
-        company_name: company_name.trim(),
-        phone: phone.trim() || null,
-        email: email.trim() || null,
-        system_specialties: specialties,
-        service_types: specialties,
-        service_zip_codes: serviceAreas,
-        service_areas: serviceAreas,
-        onboarding_complete: true,
-      });
+      // Race the save against a 10-second timeout
+      const result = await Promise.race([
+        updateContractorProfile({
+          company_name: company_name.trim(),
+          phone: phone.trim() || null,
+          email: email.trim() || null,
+          system_specialties: specialties,
+          service_types: specialties,
+          service_zip_codes: serviceAreas,
+          service_areas: serviceAreas,
+          onboarding_complete: true,
+        }),
+        new Promise<{ success: false; error: string }>((resolve) =>
+          setTimeout(() => resolve({ success: false, error: "Save timed out, please try again" }), 10000)
+        ),
+      ]);
+
+      if (!result.success) {
+        setSaving(false);
+        setError(result.error || "Failed to complete setup.");
+        return;
+      }
+
       router.push("/contractor/dashboard");
+      router.refresh();
     } catch (e) {
       setSaving(false);
       setError(e instanceof Error ? e.message : "Failed to complete setup. Please try again.");

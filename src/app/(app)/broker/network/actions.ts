@@ -232,6 +232,49 @@ export async function brokerInviteContractor(input: {
   return { ok: true, message: `Invite sent to ${email}` };
 }
 
+// ─── Resend invite ──────────────────────────────────────────────────
+
+export async function resendBrokerInvite(contractorUserId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await supabaseServer();
+    const { data: userData } = await supabase.auth.getUser();
+    const brokerId = userData?.user?.id;
+    if (!brokerId) return { success: false, error: "Not authenticated" };
+
+    const admin = supabaseAdmin;
+
+    // Verify this contractor is in the broker's network
+    const { data: rel } = await admin
+      .from("user_relationships")
+      .select("id")
+      .eq("user_id", contractorUserId)
+      .eq("related_user_id", brokerId)
+      .eq("relationship_type", "in_broker_network")
+      .maybeSingle();
+
+    if (!rel) return { success: false, error: "This user is not in your network." };
+
+    // Get the contractor's email
+    const { data: authData, error: authErr } = await admin.auth.admin.getUserById(contractorUserId);
+    if (authErr || !authData?.user?.email) {
+      return { success: false, error: "User not found." };
+    }
+
+    const email = authData.user.email;
+
+    // Re-send invite
+    const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: { role: "contractor" },
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback`,
+    });
+    if (inviteErr) return { success: false, error: inviteErr.message };
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Unknown error" };
+  }
+}
+
 // ─── Fetch pending invites ──────────────────────────────────────────
 
 export async function fetchPendingInvites(): Promise<PendingInvite[]> {

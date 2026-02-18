@@ -818,6 +818,43 @@ export async function adminGetUserRelationships(userId: string): Promise<UserRel
   });
 }
 
+// ─── Resend invite ──────────────────────────────────────────────────
+
+export async function resendInvite(userId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await requireAdmin();
+    const admin = supabaseAdmin;
+
+    // Get the user's email and role
+    const { data: authData, error: authErr } = await admin.auth.admin.getUserById(userId);
+    if (authErr || !authData?.user) {
+      return { success: false, error: "User not found." };
+    }
+
+    const email = authData.user.email;
+    if (!email) return { success: false, error: "User has no email address." };
+
+    const { data: profile } = await admin
+      .from("app_profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const role = (profile?.role as string) || "homeowner";
+
+    // Re-send the invite via inviteUserByEmail
+    const { error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: { role },
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/auth/callback`,
+    });
+    if (inviteErr) return { success: false, error: inviteErr.message };
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Unknown error" };
+  }
+}
+
 // ─── Aliases expected by AdminUsersTable.tsx ────────────────────────
 
 export async function inviteUser(input: {
