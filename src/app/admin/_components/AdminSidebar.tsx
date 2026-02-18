@@ -4,63 +4,106 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-const GREEN = "#43a419";
-const STORAGE_KEY = "rei_admin_sidebar_prefs_v4";
+const STORAGE_KEY = "rei_admin_sidebar_v6";
 
-type LinkItem = { href: string; label: string; group: "admin" | "dash" };
+type LinkItem = { href: string; label: string; icon: string };
 
-const ALL_ADMIN_LINKS: LinkItem[] = [
-  { href: "/admin", label: "Home", group: "admin" },
-  { href: "/admin/intake", label: "Admin Intake", group: "admin" },
-  { href: "/admin/jobs", label: "Projects", group: "admin" },
-  { href: "/admin/contractor-leads", label: "Job Board", group: "admin" },
-  { href: "/admin/schedule", label: "Inspection Scheduler", group: "admin" },
-  { href: "/admin/refunds", label: "Refunds", group: "admin" },
-
-  // Settings
-  { href: "/admin/settings", label: "Settings", group: "admin" },
-  { href: "/admin/settings/users", label: "— Users (All)", group: "admin" },
+const OVERVIEW: LinkItem[] = [
+  { href: "/admin", label: "Dashboard", icon: "\u2302" },
 ];
 
-const ALL_DASHBOARD_LINKS: LinkItem[] = [
-  // NOTE: keep these as-is for now to avoid breaking existing temp shortcuts.
-  // If/when you move dashboards to /app/*, update these hrefs too.
-  { href: "/contractor/job-board", label: "Contractor Dashboard", group: "dash" },
-  { href: "/broker/dashboard", label: "Broker Dashboard", group: "dash" },
-  { href: "/homeowner/dashboard", label: "Homeowner Dashboard", group: "dash" },
-  { href: "/affiliate/dashboard", label: "Affiliate Dashboard", group: "dash" },
+const OPS: LinkItem[] = [
+  { href: "/admin/team", label: "REI Team", icon: "\u2637" },
+  { href: "/admin/settings/services", label: "Service Catalog", icon: "\u25C9" },
+  { href: "/admin/settings/lead-pricing", label: "Lead Pricing", icon: "\u25CE" },
+  { href: "/admin/direct-leads", label: "Direct Leads", icon: "\u2794" },
+  { href: "/admin/jobs", label: "Projects", icon: "\u25A3" },
 ];
 
-const ALL_LINKS: LinkItem[] = [...ALL_ADMIN_LINKS, ...ALL_DASHBOARD_LINKS];
+const BROKER_PLATFORM: LinkItem[] = [
+  { href: "/admin/broker-platform", label: "Broker Dashboard", icon: "\u25C8" },
+  { href: "/admin/brokers", label: "Brokers", icon: "\u2B21" },
+  { href: "/admin/partners", label: "Partner Network", icon: "\u2696" },
+];
 
-function NavLink({ href, label }: { href: string; label: string }) {
+const SYSTEM: LinkItem[] = [
+  { href: "/admin/intake", label: "Admin Intake", icon: "\u2630" },
+  { href: "/admin/refunds", label: "Refunds", icon: "\u21A9" },
+  { href: "/admin/auth-logs", label: "Auth Logs", icon: "\u2263" },
+];
+
+const DASHBOARDS: LinkItem[] = [
+  { href: "/contractor/job-board", label: "Contractor", icon: "\u2692" },
+  { href: "/broker/dashboard", label: "Broker", icon: "\u2709" },
+  { href: "/homeowner/dashboard", label: "Homeowner", icon: "\u2302" },
+  { href: "/affiliate/dashboard", label: "Affiliate", icon: "\u2734" },
+];
+
+function NavLink({ href, label, icon, collapsed }: LinkItem & { collapsed: boolean }) {
   const pathname = usePathname();
-  const isActive = pathname === href || (href !== "/" && pathname?.startsWith(href));
+  const isActive = pathname === href || (href !== "/admin" && href !== "/" && pathname?.startsWith(href));
+
+  if (collapsed) {
+    return (
+      <Link
+        href={href}
+        title={label}
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 8,
+          textDecoration: "none",
+          fontSize: 16,
+          lineHeight: 1,
+          transition: "all 0.15s ease",
+          color: isActive ? "#f1f5f9" : "#94a3b8",
+          background: isActive ? "rgba(16,185,129,0.12)" : "transparent",
+          border: isActive ? "1px solid rgba(16,185,129,0.25)" : "1px solid transparent",
+          display: "grid",
+          placeItems: "center",
+        }}
+        onMouseEnter={(e) => {
+          if (isActive) return;
+          e.currentTarget.style.background = "rgba(148,163,184,0.08)";
+          e.currentTarget.style.color = "#cbd5e1";
+        }}
+        onMouseLeave={(e) => {
+          if (isActive) return;
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "#94a3b8";
+        }}
+      >
+        {icon}
+      </Link>
+    );
+  }
 
   return (
     <Link
       href={href}
       style={{
-        padding: "10px 12px",
-        borderRadius: 10,
+        padding: "8px 12px",
+        borderRadius: 8,
         textDecoration: "none",
-        fontWeight: 800,
+        fontWeight: 600,
+        fontSize: 13,
         transition: "all 0.15s ease",
-        color: isActive ? GREEN : "#111827",
-        background: isActive ? "rgba(67,164,25,0.12)" : "transparent",
-        border: isActive ? "1px solid rgba(67,164,25,0.35)" : "1px solid transparent",
+        color: isActive ? "#f1f5f9" : "#94a3b8",
+        background: isActive ? "rgba(16,185,129,0.12)" : "transparent",
+        border: isActive ? "1px solid rgba(16,185,129,0.25)" : "1px solid transparent",
+        display: "block",
       }}
       onMouseEnter={(e) => {
         if (isActive) return;
-        e.currentTarget.style.background = "rgba(67,164,25,0.10)";
-        e.currentTarget.style.color = GREEN;
+        e.currentTarget.style.background = "rgba(148,163,184,0.08)";
+        e.currentTarget.style.color = "#cbd5e1";
       }}
       onMouseLeave={(e) => {
         if (isActive) return;
         e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.color = "#111827";
+        e.currentTarget.style.color = "#94a3b8";
       }}
     >
       {label}
@@ -68,560 +111,288 @@ function NavLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function KebabButton({
-  open,
-  onToggle,
-  btnRef,
-}: {
-  open: boolean;
-  onToggle: () => void;
-  btnRef: React.RefObject<HTMLButtonElement>;
-}) {
+function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <button
-      ref={btnRef}
-      type="button"
-      aria-label="Sidebar settings"
-      onClick={onToggle}
+    <div
       style={{
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        border: open ? "1px solid rgba(67,164,25,0.35)" : "1px solid #e5e7eb",
-        background: open ? "rgba(67,164,25,0.10)" : "white",
-        color: open ? GREEN : "#111827",
-        display: "grid",
-        placeItems: "center",
-        cursor: "pointer",
-        transition: "all 0.15s ease",
-        boxShadow: open ? "0 8px 20px rgba(0,0,0,0.10)" : "none",
-      }}
-      onMouseEnter={(e) => {
-        if (open) return;
-        e.currentTarget.style.background = "rgba(67,164,25,0.08)";
-        e.currentTarget.style.border = "1px solid rgba(67,164,25,0.25)";
-        e.currentTarget.style.color = GREEN;
-      }}
-      onMouseLeave={(e) => {
-        if (open) return;
-        e.currentTarget.style.background = "white";
-        e.currentTarget.style.border = "1px solid #e5e7eb";
-        e.currentTarget.style.color = "#111827";
+        fontSize: 10,
+        color: "#64748b",
+        fontWeight: 700,
+        marginBottom: 6,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
       }}
     >
-      <span style={{ fontSize: 18, lineHeight: 1 }}>⋮</span>
-    </button>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 900, margin: "10px 0 6px" }}>
       {children}
     </div>
   );
 }
 
-function TogglePill({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!checked)}
-      aria-pressed={checked}
-      style={{
-        width: 54,
-        height: 30,
-        borderRadius: 999,
-        border: checked ? "1px solid rgba(67,164,25,0.35)" : "1px solid #e5e7eb",
-        background: checked ? "rgba(67,164,25,0.14)" : "#f8fafc",
-        position: "relative",
-        cursor: "pointer",
-        transition: "all 0.15s ease",
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 3,
-          left: checked ? 26 : 3,
-          width: 24,
-          height: 24,
-          borderRadius: 999,
-          background: checked ? GREEN : "white",
-          border: checked ? "1px solid rgba(0,0,0,0.06)" : "1px solid #e5e7eb",
-          boxShadow: "0 4px 10px rgba(0,0,0,0.10)",
-          transition: "all 0.15s ease",
-        }}
-      />
-    </button>
-  );
+function Divider() {
+  return <div style={{ margin: "12px 0 10px", height: 1, background: "#334155" }} />;
 }
 
-function CheckboxRow({
-  label,
-  rightTag,
-  checked,
-  onToggle,
-}: {
-  label: string;
-  rightTag?: string;
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <label
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 10px",
-        borderRadius: 12,
-        border: "1px solid #f1f5f9",
-        cursor: "pointer",
-        userSelect: "none",
-        background: checked ? "rgba(67,164,25,0.06)" : "white",
-      }}
-    >
-      <input type="checkbox" checked={checked} onChange={onToggle} style={{ accentColor: GREEN }} />
-      <span style={{ fontSize: 13, fontWeight: 900, color: "#111827" }}>{label}</span>
-      {rightTag ? (
-        <span style={{ marginLeft: "auto", fontSize: 10, opacity: 0.55, fontWeight: 900 }}>
-          {rightTag}
-        </span>
-      ) : null}
-    </label>
-  );
+function CollapsedDivider() {
+  return <div style={{ width: 24, height: 1, background: "#334155", margin: "6px 0" }} />;
 }
 
 export default function AdminSidebar() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"minimal" | "normal">("minimal");
+  const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
 
-  const [visibleHrefs, setVisibleHrefs] = useState<Set<string>>(() => new Set(ALL_LINKS.map((l) => l.href)));
-
-  const [minimalMode, setMinimalMode] = useState(false);
-  const [minimalHrefs, setMinimalHrefs] = useState<Set<string>>(() => {
-    // Updated minimal defaults to avoid any deleted settings pages
-    return new Set([
-      "/admin",
-      "/admin/jobs",
-      "/admin/contractor-leads",
-      "/admin/settings/users",
-      "/contractor/job-board",
-    ]);
-  });
-
-  const kebabBtnRef = useRef<HTMLButtonElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const [popPos, setPopPos] = useState<{ top: number; left: number } | null>(null);
-
+  // Load collapsed state from localStorage
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed) return;
-
-      if (typeof parsed.minimalMode === "boolean") setMinimalMode(parsed.minimalMode);
-
-      if (Array.isArray(parsed.visibleHrefs)) {
-        const v = new Set<string>();
-        for (const h of parsed.visibleHrefs) if (typeof h === "string") v.add(h);
-        if (v.size > 0) setVisibleHrefs(v);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.collapsed === "boolean") setCollapsed(parsed.collapsed);
       }
-
-      if (Array.isArray(parsed.minimalHrefs)) {
-        const m = new Set<string>();
-        for (const h of parsed.minimalHrefs) if (typeof h === "string") m.add(h);
-        if (m.size > 0) setMinimalHrefs(m);
-      }
-
-      if (parsed.activeTab === "minimal" || parsed.activeTab === "normal") setActiveTab(parsed.activeTab);
     } catch {}
   }, []);
 
+  // Persist collapsed state
   useEffect(() => {
     try {
-      window.localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({
-          minimalMode,
-          visibleHrefs: Array.from(visibleHrefs),
-          minimalHrefs: Array.from(minimalHrefs),
-          activeTab,
-        })
-      );
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ collapsed }));
     } catch {}
-  }, [minimalMode, visibleHrefs, minimalHrefs, activeTab]);
+  }, [collapsed]);
 
-  function toggleInSet(setter: React.Dispatch<React.SetStateAction<Set<string>>>, href: string) {
-    setter((prev) => {
-      const next = new Set(prev);
-      if (next.has(href)) next.delete(href);
-      else next.add(href);
-      if (next.size === 0) return new Set(prev);
-      return next;
-    });
-  }
+  const settingsActive = pathname?.startsWith("/admin/settings");
 
-  function showAllNormal() {
-    setVisibleHrefs(new Set(ALL_LINKS.map((l) => l.href)));
-  }
+  // ── Collapsed: 60px with icons ──
+  if (collapsed) {
+    return (
+      <aside
+        style={{
+          width: 60,
+          minWidth: 60,
+          borderRight: "1px solid #334155",
+          background: "#1e293b",
+          height: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          padding: "14px 0",
+          transition: "width 0.15s ease",
+        }}
+      >
+        {/* Expand button */}
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            border: "1px solid #334155",
+            background: "transparent",
+            color: "#94a3b8",
+            cursor: "pointer",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 14,
+            transition: "all 0.15s ease",
+            marginBottom: 8,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(148,163,184,0.08)";
+            e.currentTarget.style.color = "#cbd5e1";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#94a3b8";
+          }}
+        >
+          {"\u276F"}
+        </button>
 
-  function resetMinimalToDefault() {
-    setMinimalHrefs(
-      new Set([
-        "/admin",
-        "/admin/jobs",
-        "/admin/contractor-leads",
-        "/admin/settings/users",
-        "/contractor/job-board",
-      ])
+        {/* Nav icons by section */}
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "center", flex: 1, overflow: "auto" }}>
+          {OVERVIEW.map((l) => <NavLink key={l.href} {...l} collapsed />)}
+          <CollapsedDivider />
+          {OPS.map((l) => <NavLink key={l.href} {...l} collapsed />)}
+          <CollapsedDivider />
+          {BROKER_PLATFORM.map((l) => <NavLink key={l.href} {...l} collapsed />)}
+          <CollapsedDivider />
+          {SYSTEM.map((l) => <NavLink key={l.href} {...l} collapsed />)}
+          <CollapsedDivider />
+          {DASHBOARDS.map((l) => <NavLink key={l.href} {...l} collapsed />)}
+        </nav>
+
+        {/* Settings gear */}
+        <Link
+          href="/admin/settings"
+          title="Settings"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            border: settingsActive ? "1px solid rgba(16,185,129,0.25)" : "1px solid transparent",
+            background: settingsActive ? "rgba(16,185,129,0.12)" : "transparent",
+            color: settingsActive ? "#f1f5f9" : "#94a3b8",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 16,
+            textDecoration: "none",
+            transition: "all 0.15s ease",
+            marginTop: 8,
+          }}
+          onMouseEnter={(e) => {
+            if (settingsActive) return;
+            e.currentTarget.style.background = "rgba(148,163,184,0.08)";
+            e.currentTarget.style.color = "#cbd5e1";
+          }}
+          onMouseLeave={(e) => {
+            if (settingsActive) return;
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#94a3b8";
+          }}
+        >
+          {"\u2699"}
+        </Link>
+      </aside>
     );
   }
 
-  const activeSet = minimalMode ? minimalHrefs : visibleHrefs;
-
-  const adminLinks = useMemo(() => ALL_ADMIN_LINKS.filter((l) => activeSet.has(l.href)), [activeSet]);
-  const dashboardLinks = useMemo(() => ALL_DASHBOARD_LINKS.filter((l) => activeSet.has(l.href)), [activeSet]);
-
-  function recomputePopoverPosition() {
-    const btn = kebabBtnRef.current;
-    if (!btn) return;
-
-    const rect = btn.getBoundingClientRect();
-    const popW = 320;
-    const margin = 12;
-
-    let left = rect.right + 10;
-    if (left + popW > window.innerWidth - margin) {
-      left = rect.left - popW - 10;
-    }
-    left = Math.max(margin, Math.min(left, window.innerWidth - popW - margin));
-
-    let top = rect.top;
-    const maxTop = window.innerHeight - margin;
-    top = Math.max(margin, Math.min(top, maxTop));
-
-    setPopPos({ top, left });
-  }
-
-  function toggleMenu() {
-    setMenuOpen((v) => {
-      const next = !v;
-      if (!v && next) {
-        setTimeout(() => recomputePopoverPosition(), 0);
-      }
-      return next;
-    });
-  }
-
-  useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (!menuOpen) return;
-      const pop = popoverRef.current;
-      const btn = kebabBtnRef.current;
-      if (!pop || !btn) return;
-      if (e.target instanceof Node && !pop.contains(e.target) && !btn.contains(e.target)) {
-        setMenuOpen(false);
-      }
-    }
-    function onKey(e: KeyboardEvent) {
-      if (!menuOpen) return;
-      if (e.key === "Escape") setMenuOpen(false);
-    }
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onResize = () => recomputePopoverPosition();
-    window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", onResize, true);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onResize, true);
-    };
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    if (!popPos) return;
-    const pop = popoverRef.current;
-    if (!pop) return;
-
-    const margin = 12;
-    const h = pop.getBoundingClientRect().height;
-    let top = popPos.top;
-    if (top + h > window.innerHeight - margin) top = window.innerHeight - margin - h;
-    top = Math.max(margin, top);
-    if (top !== popPos.top) setPopPos({ top, left: popPos.left });
-  }, [menuOpen, popPos]);
-
+  // ── Expanded sidebar ──
   return (
     <aside
       style={{
-        width: 270,
-        borderRight: "1px solid #e5e7eb",
-        padding: 16,
-        background: "white",
-        position: "relative",
+        width: 220,
+        minWidth: 220,
+        borderRight: "1px solid #334155",
+        padding: 14,
+        background: "#1e293b",
         height: "100vh",
-        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
+        transition: "width 0.15s ease",
       }}
     >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-        <div style={{ flex: 1 }}>
+      {/* Header: logo + collapse button */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          paddingBottom: 14,
+          marginBottom: 14,
+          borderBottom: "1px solid #334155",
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
           <Image
-            src="/brand/rei-logo.png"
-            alt="Renewable Energy Incentives"
-            width={210}
-            height={60}
-            style={{ objectFit: "contain" }}
+            src="/images/rei-logo.png"
+            alt="REI"
+            width={200}
+            height={56}
+            style={{ objectFit: "contain", maxWidth: "100%", height: "auto" }}
             priority
           />
         </div>
 
-        <KebabButton open={menuOpen} onToggle={toggleMenu} btnRef={kebabBtnRef} />
+        <button
+          type="button"
+          onClick={() => setCollapsed(true)}
+          aria-label="Collapse sidebar"
+          title="Collapse sidebar"
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            border: "1px solid #334155",
+            background: "transparent",
+            color: "#94a3b8",
+            cursor: "pointer",
+            display: "grid",
+            placeItems: "center",
+            fontSize: 14,
+            transition: "all 0.15s ease",
+            flexShrink: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(148,163,184,0.08)";
+            e.currentTarget.style.borderColor = "#475569";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.borderColor = "#334155";
+          }}
+        >
+          {"\u276E"}
+        </button>
       </div>
 
-      {minimalMode && (
-        <div
+      {/* Nav links */}
+      <div style={{ flex: 1, overflow: "auto", paddingRight: 2 }}>
+        <SectionLabel>Overview</SectionLabel>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {OVERVIEW.map((l) => <NavLink key={l.href} {...l} collapsed={false} />)}
+        </nav>
+
+        <Divider />
+        <SectionLabel>In-House Ops</SectionLabel>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {OPS.map((l) => <NavLink key={l.href} {...l} collapsed={false} />)}
+        </nav>
+
+        <Divider />
+        <SectionLabel>Broker Platform</SectionLabel>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {BROKER_PLATFORM.map((l) => <NavLink key={l.href} {...l} collapsed={false} />)}
+        </nav>
+
+        <Divider />
+        <SectionLabel>System</SectionLabel>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {SYSTEM.map((l) => <NavLink key={l.href} {...l} collapsed={false} />)}
+        </nav>
+
+        <Divider />
+        <SectionLabel>Dashboards</SectionLabel>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {DASHBOARDS.map((l) => <NavLink key={l.href} {...l} collapsed={false} />)}
+        </nav>
+      </div>
+
+      {/* Bottom: Settings */}
+      <div style={{ borderTop: "1px solid #334155", paddingTop: 12, marginTop: 12 }}>
+        <Link
+          href="/admin/settings"
           style={{
-            display: "inline-flex",
+            padding: "8px 12px",
+            borderRadius: 8,
+            textDecoration: "none",
+            fontWeight: 600,
+            fontSize: 13,
+            transition: "all 0.15s ease",
+            color: settingsActive ? "#f1f5f9" : "#94a3b8",
+            background: settingsActive ? "rgba(16,185,129,0.12)" : "transparent",
+            border: settingsActive ? "1px solid rgba(16,185,129,0.25)" : "1px solid transparent",
+            display: "flex",
             alignItems: "center",
             gap: 8,
-            padding: "6px 10px",
-            borderRadius: 999,
-            border: "1px solid rgba(67,164,25,0.25)",
-            background: "rgba(67,164,25,0.08)",
-            color: GREEN,
-            fontWeight: 950,
-            fontSize: 12,
-            width: "fit-content",
-            marginBottom: 12,
+          }}
+          onMouseEnter={(e) => {
+            if (settingsActive) return;
+            e.currentTarget.style.background = "rgba(148,163,184,0.08)";
+            e.currentTarget.style.color = "#cbd5e1";
+          }}
+          onMouseLeave={(e) => {
+            if (settingsActive) return;
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = "#94a3b8";
           }}
         >
-          Minimal mode
-        </div>
-      )}
-
-      {/* Nav scroll area */}
-      <div style={{ flex: 1, overflow: "auto", paddingRight: 2 }}>
-        <div style={{ fontSize: 12, opacity: 0.55, marginBottom: 10 }}>ADMIN NAVIGATION</div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {adminLinks.map((l) => (
-            <NavLink key={l.href} href={l.href} label={l.label} />
-          ))}
-        </nav>
-
-        <div style={{ margin: "20px 0 10px", height: 1, background: "#e5e7eb" }} />
-
-        <div style={{ fontSize: 12, opacity: 0.55, marginBottom: 10 }}>DASHBOARDS (TEMP)</div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {dashboardLinks.map((l) => (
-            <NavLink key={l.href} href={l.href} label={l.label} />
-          ))}
-        </nav>
-
-        <div style={{ marginTop: 18, fontSize: 12, opacity: 0.55 }}>
-          Tip: Dashboards are temporary shortcuts during buildout.
-        </div>
+          <span style={{ fontSize: 16 }}>{"\u2699"}</span>
+          Settings
+        </Link>
       </div>
-
-      {/* FIXED popover */}
-      {menuOpen && popPos && (
-        <div
-          ref={popoverRef}
-          style={{
-            position: "fixed",
-            top: popPos.top,
-            left: popPos.left,
-            width: 320,
-            borderRadius: 16,
-            border: "1px solid #e5e7eb",
-            background: "white",
-            boxShadow: "0 22px 50px rgba(0,0,0,0.18)",
-            padding: 12,
-            zIndex: 9999,
-            maxHeight: "calc(100vh - 24px)",
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 950, color: "#111827" }}>Sidebar settings</div>
-              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>Choose what appears in the left nav.</div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setMenuOpen(false)}
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "white",
-                cursor: "pointer",
-                fontWeight: 900,
-              }}
-              aria-label="Close"
-              title="Close"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              padding: "10px 10px",
-              borderRadius: 14,
-              border: "1px solid #f1f5f9",
-              background: "white",
-            }}
-          >
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 950, color: "#111827" }}>Minimal mode</div>
-              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 2 }}>
-                When enabled, sidebar shows only your Minimal Set.
-              </div>
-            </div>
-            <TogglePill checked={minimalMode} onChange={setMinimalMode} />
-          </div>
-
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button
-              type="button"
-              onClick={() => setActiveTab("minimal")}
-              style={{
-                flex: 1,
-                padding: "9px 10px",
-                borderRadius: 12,
-                border: activeTab === "minimal" ? "1px solid rgba(67,164,25,0.35)" : "1px solid #e5e7eb",
-                background: activeTab === "minimal" ? "rgba(67,164,25,0.10)" : "white",
-                color: activeTab === "minimal" ? GREEN : "#111827",
-                fontWeight: 950,
-                cursor: "pointer",
-              }}
-            >
-              Minimal Set
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("normal")}
-              style={{
-                flex: 1,
-                padding: "9px 10px",
-                borderRadius: 12,
-                border: activeTab === "normal" ? "1px solid rgba(67,164,25,0.35)" : "1px solid #e5e7eb",
-                background: activeTab === "normal" ? "rgba(67,164,25,0.10)" : "white",
-                color: activeTab === "normal" ? GREEN : "#111827",
-                fontWeight: 950,
-                cursor: "pointer",
-              }}
-            >
-              Normal Set
-            </button>
-          </div>
-
-          <div style={{ marginTop: 10, overflow: "auto", maxHeight: "calc(100vh - 260px)", paddingRight: 4 }}>
-            {activeTab === "minimal" ? (
-              <>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={resetMinimalToDefault}
-                    style={{
-                      flex: 1,
-                      padding: "8px 10px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(67,164,25,0.25)",
-                      background: "rgba(67,164,25,0.08)",
-                      color: GREEN,
-                      fontWeight: 950,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Reset minimal
-                  </button>
-                </div>
-
-                <SectionTitle>Admin nav</SectionTitle>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {ALL_ADMIN_LINKS.map((l) => (
-                    <CheckboxRow
-                      key={`min-${l.href}`}
-                      label={l.label}
-                      rightTag="ADMIN"
-                      checked={minimalHrefs.has(l.href)}
-                      onToggle={() => toggleInSet(setMinimalHrefs, l.href)}
-                    />
-                  ))}
-                </div>
-
-                <SectionTitle>Dashboards</SectionTitle>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {ALL_DASHBOARD_LINKS.map((l) => (
-                    <CheckboxRow
-                      key={`min-${l.href}`}
-                      label={l.label}
-                      rightTag="DASH"
-                      checked={minimalHrefs.has(l.href)}
-                      onToggle={() => toggleInSet(setMinimalHrefs, l.href)}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={showAllNormal}
-                    style={{
-                      flex: 1,
-                      padding: "8px 10px",
-                      borderRadius: 12,
-                      border: "1px solid #e5e7eb",
-                      background: "white",
-                      fontWeight: 950,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Show all
-                  </button>
-                </div>
-
-                <SectionTitle>All items</SectionTitle>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {ALL_LINKS.map((l) => (
-                    <CheckboxRow
-                      key={`vis-${l.href}`}
-                      label={l.label}
-                      rightTag={l.group === "admin" ? "ADMIN" : "DASH"}
-                      checked={visibleHrefs.has(l.href)}
-                      onToggle={() => toggleInSet(setVisibleHrefs, l.href)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </aside>
   );
 }

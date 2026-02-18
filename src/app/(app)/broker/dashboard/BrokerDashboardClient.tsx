@@ -1,243 +1,674 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import type { BrokerHesRequest } from "./actions";
-import { submitHesRequest } from "./actions";
-import { StatusBadge } from "@/components/dashboard";
+import { useRouter } from "next/navigation";
+import type { BrokerKPIs, BrokerContractor, BrokerLead, Broker } from "@/types/broker";
 
-const GREEN = "#43a419";
+// ─── Design tokens ──────────────────────────────────────────────────────────
+const BG_CARD = "#1e293b";
+const BORDER = "#334155";
+const RADIUS = 12;
+const TEXT_PRIMARY = "#f1f5f9";
+const TEXT_SECONDARY = "#cbd5e1";
+const TEXT_MUTED = "#94a3b8";
+const TEXT_DIM = "#64748b";
+const ACCENT_EMERALD = "#10b981";
+const ACCENT_CYAN = "#06b6d4";
+const ACCENT_VIOLET = "#8b5cf6";
+const ACCENT_AMBER = "#f59e0b";
 
-const STATUS_LABELS: Record<string, { icon: string; label: string }> = {
-  pending: { icon: "\u23F3", label: "Pending (REI reviewing)" },
-  assigned_internal: { icon: "\uD83C\uDFD7\uFE0F", label: "Assigned to REI" },
-  assigned_affiliate: { icon: "\uD83D\uDC64", label: "Assigned to Affiliate" },
-  completed: { icon: "\u2705", label: "Completed" },
-  cancelled: { icon: "\u274C", label: "Cancelled" },
-};
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function fmtDate(iso?: string | null) {
-  if (!iso) return "\u2014";
+function fmtDate(iso?: string | null): string {
+  if (!iso) return "—";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "\u2014";
+  if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export default function BrokerDashboardClient({ requests }: { requests: BrokerHesRequest[] }) {
-  const [showForm, setShowForm] = useState(false);
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState(false);
-
-  // Form state
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [zip, setZip] = useState("");
-  const [propType, setPropType] = useState("single_family");
-  const [completionDate, setCompletionDate] = useState("");
-  const [notes, setNotes] = useState("");
-
-  function handleSubmit() {
-    if (!address.trim() || !city.trim() || !state.trim() || !zip.trim()) {
-      setError("Address, city, state, and zip are required");
-      return;
-    }
-    setError("");
-    startTransition(async () => {
-      try {
-        await submitHesRequest({
-          property_address: address,
-          city,
-          state,
-          zip,
-          property_type: propType,
-          requested_completion_date: completionDate || null,
-          notes,
-        });
-        setSuccess(true);
-        setAddress(""); setCity(""); setState(""); setZip(""); setNotes(""); setCompletionDate("");
-        setTimeout(() => {
-          setSuccess(false);
-          window.location.reload();
-        }, 1500);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Submission failed");
-      }
-    });
+function fmtCurrency(value: number): string {
+  if (value >= 1000) {
+    return "$" + (value / 1000).toFixed(1).replace(/\.0$/, "") + "k";
   }
+  return "$" + value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function systemLabel(type: string): string {
+  const map: Record<string, string> = {
+    hvac: "HVAC",
+    solar: "Solar",
+    water_heater: "Water Heater",
+    electrical: "Electrical",
+    insulation: "Insulation",
+  };
+  return map[type] ?? type.replace(/_/g, " ");
+}
+
+function leadStatusColor(status: string): string {
+  switch (status) {
+    case "active": return ACCENT_EMERALD;
+    case "sold": return ACCENT_CYAN;
+    case "in_progress": return ACCENT_AMBER;
+    case "closed": return "#10b981";
+    case "expired": return TEXT_DIM;
+    case "lost": return "#ef4444";
+    default: return TEXT_MUTED;
+  }
+}
+
+function leadStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    active: "Active",
+    sold: "Sold",
+    in_progress: "In Progress",
+    closed: "Closed",
+    expired: "Expired",
+    lost: "Lost",
+  };
+  return map[status] ?? status;
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+type KPICardProps = {
+  label: string;
+  value: string;
+  accent: string;
+  dotChar: string;
+};
+
+function KPICard({ label, value, accent, dotChar }: KPICardProps) {
+  return (
+    <div
+      style={{
+        background: BG_CARD,
+        border: `1px solid ${BORDER}`,
+        borderLeft: `3px solid ${accent}`,
+        borderRadius: RADIUS,
+        padding: "18px 20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        minWidth: 0,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            background: accent + "22",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 14,
+            flexShrink: 0,
+          }}
+        >
+          {dotChar}
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {label}
+        </span>
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: TEXT_PRIMARY, lineHeight: 1, letterSpacing: "-0.02em" }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+type StatusPillProps = { color: string; label: string };
+
+function StatusPill({ color, label }: StatusPillProps) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 9px",
+        borderRadius: 20,
+        fontSize: 11,
+        fontWeight: 600,
+        background: color + "22",
+        color: color,
+        border: `1px solid ${color}44`,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ─── Props ───────────────────────────────────────────────────────────────────
+
+type TopContractor = {
+  id: string;
+  name: string;
+  leads_sent: number;
+  jobs_closed: number;
+  conversion_rate: number;
+  revenue: number;
+};
+
+type Props = {
+  broker: Broker;
+  kpis: BrokerKPIs;
+  contractors: BrokerContractor[];
+  recentLeads: BrokerLead[];
+  topContractors: TopContractor[];
+};
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
+export default function BrokerDashboardClient({
+  broker,
+  kpis,
+  recentLeads,
+  topContractors,
+}: Props) {
+  const router = useRouter();
+  const companyName = broker.company_name || "Your Company";
+
+  const kpiCards: KPICardProps[] = [
+    {
+      label: "Homes Assessed",
+      value: String(kpis.homes_assessed),
+      accent: ACCENT_EMERALD,
+      dotChar: "🏠",
+    },
+    {
+      label: "Revenue",
+      value: fmtCurrency(kpis.revenue),
+      accent: ACCENT_CYAN,
+      dotChar: "💰",
+    },
+    {
+      label: "Leads Posted",
+      value: String(kpis.leads_posted),
+      accent: ACCENT_VIOLET,
+      dotChar: "📋",
+    },
+    {
+      label: "Jobs Closed",
+      value: String(kpis.jobs_closed),
+      accent: ACCENT_AMBER,
+      dotChar: "✅",
+    },
+  ];
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Broker Dashboard</h1>
-          <p className="mt-1 text-sm text-slate-600">Submit HES requests and track their progress.</p>
-        </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90"
-          style={{ background: GREEN }}
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
+      {/* ── Header ── */}
+      <div>
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: TEXT_PRIMARY,
+            letterSpacing: "-0.02em",
+            margin: 0,
+          }}
         >
-          {showForm ? "Close Form" : "+ New HES Request"}
+          Welcome back, {companyName}
+        </h1>
+        <p style={{ marginTop: 4, fontSize: 13, color: TEXT_MUTED, margin: "4px 0 0" }}>
+          Here is a summary of your broker activity for the last 30 days.
+        </p>
+      </div>
+
+      {/* ── Quick Actions ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: 14,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => router.push("/broker/assessments")}
+          style={{
+            background: `linear-gradient(135deg, ${ACCENT_EMERALD}18, ${ACCENT_EMERALD}08)`,
+            border: `1px solid ${ACCENT_EMERALD}44`,
+            borderRadius: RADIUS,
+            padding: "20px 24px",
+            cursor: "pointer",
+            textAlign: "left",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 16,
+            transition: "transform 0.15s, box-shadow 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-2px)";
+            e.currentTarget.style.boxShadow = `0 8px 24px ${ACCENT_EMERALD}22`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <span
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: `${ACCENT_EMERALD}22`,
+              border: `1px solid ${ACCENT_EMERALD}44`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              flexShrink: 0,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M10 3v14M3 10h14" stroke={ACCENT_EMERALD} strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: ACCENT_EMERALD }}>
+              + New Assessment
+            </div>
+            <div style={{ fontSize: 12, color: TEXT_MUTED, marginTop: 4, lineHeight: 1.4 }}>
+              Send an assessment link to a homeowner customer
+            </div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => router.push("/broker/network")}
+          style={{
+            background: `linear-gradient(135deg, ${ACCENT_VIOLET}18, ${ACCENT_VIOLET}08)`,
+            border: `1px solid ${ACCENT_VIOLET}44`,
+            borderRadius: RADIUS,
+            padding: "20px 24px",
+            cursor: "pointer",
+            textAlign: "left",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 16,
+            transition: "transform 0.15s, box-shadow 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = "translateY(-2px)";
+            e.currentTarget.style.boxShadow = `0 8px 24px ${ACCENT_VIOLET}22`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = "translateY(0)";
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <span
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 10,
+              background: `${ACCENT_VIOLET}22`,
+              border: `1px solid ${ACCENT_VIOLET}44`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              flexShrink: 0,
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M13 7a3 3 0 11-6 0 3 3 0 016 0zM4 17a6 6 0 0112 0" stroke={ACCENT_VIOLET} strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M16 8v4M14 10h4" stroke={ACCENT_VIOLET} strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: ACCENT_VIOLET }}>
+              + Add Contractor
+            </div>
+            <div style={{ fontSize: 12, color: TEXT_MUTED, marginTop: 4, lineHeight: 1.4 }}>
+              Expand your contractor network to sell more leads
+            </div>
+          </div>
         </button>
       </div>
 
-      {/* Request Form */}
-      {showForm && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-900 mb-1">Submit New HES Request</h2>
-          <p className="text-sm text-slate-500 mb-5">
-            REI will complete this HES or assign to a certified Home Energy Assessor.
-          </p>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Property Address</label>
-              <input
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="123 Main St"
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">City</label>
-              <input
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">State</label>
-                <input
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  maxLength={2}
-                  placeholder="OR"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">ZIP</label>
-                <input
-                  value={zip}
-                  onChange={(e) => setZip(e.target.value)}
-                  maxLength={10}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Property Type</label>
-              <select
-                value={propType}
-                onChange={(e) => setPropType(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
-              >
-                <option value="single_family">Single Family</option>
-                <option value="multi_family">Multi Family</option>
-                <option value="commercial">Commercial</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Requested Completion Date</label>
-              <input
-                type="date"
-                value={completionDate}
-                onChange={(e) => setCompletionDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Notes (optional)</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-          </div>
-
-          {error && <div className="mt-3 text-sm text-red-600">{error}</div>}
-          {success && <div className="mt-3 text-sm text-green-700 font-medium">Request submitted successfully!</div>}
-
-          <button
-            onClick={handleSubmit}
-            disabled={pending}
-            className="mt-4 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50"
-            style={{ background: GREEN }}
-          >
-            {pending ? "Submitting..." : "Submit Request"}
-          </button>
-        </div>
-      )}
-
-      {/* Status Legend */}
-      <div className="flex flex-wrap gap-3">
-        {Object.entries(STATUS_LABELS).map(([key, { icon, label }]) => (
-          <div key={key} className="flex items-center gap-1.5 text-xs text-slate-600">
-            <span>{icon}</span>
-            <span>{label}</span>
-          </div>
+      {/* ── KPI Cards ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 14,
+        }}
+      >
+        {kpiCards.map((card) => (
+          <KPICard key={card.label} {...card} />
         ))}
       </div>
 
-      {/* Requests Table */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-900">My Requests ({requests.length})</h2>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", fontSize: 14 }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid #f1f5f9" }}>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Address</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Location</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Requested</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500">Completed</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500">Report</th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                    No HES requests yet. Click &quot;+ New HES Request&quot; to submit your first one.
-                  </td>
-                </tr>
-              ) : (
-                requests.map((r) => (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #f8fafc" }}>
-                    <td className="px-4 py-3 font-medium text-slate-900">{r.property_address}</td>
-                    <td className="px-4 py-3 text-slate-600">{r.city}, {r.state} {r.zip}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{fmtDate(r.created_at)}</td>
-                    <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                    <td className="px-4 py-3 text-sm text-slate-500">{fmtDate(r.completion_date)}</td>
-                    <td className="px-4 py-3 text-right">
-                      {r.status === "completed" && r.hes_report_url ? (
-                        <a
-                          href={r.hes_report_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-100"
-                        >
-                          Download
-                        </a>
-                      ) : r.status === "completed" ? (
-                        <span className="text-xs text-slate-400">Report pending</span>
-                      ) : null}
-                    </td>
+      {/* ── Bottom two-column layout ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        {/* ── Top Performers ── */}
+        <div
+          style={{
+            background: BG_CARD,
+            border: `1px solid ${BORDER}`,
+            borderRadius: RADIUS,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "14px 18px",
+              borderBottom: `1px solid ${BORDER}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, color: TEXT_PRIMARY }}>
+              Top Performers
+            </span>
+            <span style={{ fontSize: 11, color: TEXT_DIM }}>Active Contractors</span>
+          </div>
+
+          {topContractors.length === 0 ? (
+            <div style={{ padding: "32px 18px", textAlign: "center", color: TEXT_MUTED, fontSize: 13 }}>
+              No contractor activity yet. Add contractors to your network to get started.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                    <th
+                      style={{
+                        padding: "10px 18px",
+                        textAlign: "left",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: TEXT_DIM,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Contractor
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px 12px",
+                        textAlign: "right",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: TEXT_DIM,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Leads Sent
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px 12px",
+                        textAlign: "right",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: TEXT_DIM,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Closed
+                    </th>
+                    <th
+                      style={{
+                        padding: "10px 18px 10px 12px",
+                        textAlign: "right",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: TEXT_DIM,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Conv. Rate
+                    </th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {topContractors.map((c, i) => (
+                    <tr
+                      key={c.id}
+                      style={{
+                        borderBottom: i < topContractors.length - 1 ? `1px solid ${BORDER}44` : "none",
+                      }}
+                    >
+                      <td style={{ padding: "11px 18px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <span
+                            style={{
+                              width: 26,
+                              height: 26,
+                              borderRadius: "50%",
+                              background: ACCENT_EMERALD + "22",
+                              border: `1px solid ${ACCENT_EMERALD}44`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 10,
+                              fontWeight: 700,
+                              color: ACCENT_EMERALD,
+                              flexShrink: 0,
+                            }}
+                          >
+                            {c.name.charAt(0).toUpperCase()}
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: TEXT_PRIMARY, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>
+                            {c.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td style={{ padding: "11px 12px", textAlign: "right", color: TEXT_SECONDARY, fontWeight: 500 }}>
+                        {c.leads_sent}
+                      </td>
+                      <td style={{ padding: "11px 12px", textAlign: "right", color: ACCENT_EMERALD, fontWeight: 600 }}>
+                        {c.jobs_closed}
+                      </td>
+                      <td style={{ padding: "11px 18px 11px 12px", textAlign: "right" }}>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: c.conversion_rate >= 50 ? ACCENT_EMERALD : c.conversion_rate >= 25 ? ACCENT_AMBER : TEXT_MUTED,
+                          }}
+                        >
+                          {c.conversion_rate}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ── Recent Activity ── */}
+        <div
+          style={{
+            background: BG_CARD,
+            border: `1px solid ${BORDER}`,
+            borderRadius: RADIUS,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              padding: "14px 18px",
+              borderBottom: `1px solid ${BORDER}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 700, color: TEXT_PRIMARY }}>
+              Recent Leads
+            </span>
+            <button
+              className="admin-btn-secondary"
+              style={{ fontSize: 11, padding: "4px 10px" }}
+              onClick={() => router.push("/broker/leads")}
+            >
+              View All
+            </button>
+          </div>
+
+          {recentLeads.length === 0 ? (
+            <div style={{ padding: "32px 18px", textAlign: "center", color: TEXT_MUTED, fontSize: 13 }}>
+              No leads yet. Post your first lead to start connecting with contractors.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {recentLeads.map((lead, i) => (
+                <div
+                  key={lead.id}
+                  style={{
+                    padding: "12px 18px",
+                    borderBottom: i < recentLeads.length - 1 ? `1px solid ${BORDER}44` : "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: ACCENT_VIOLET,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {systemLabel(lead.system_type)}
+                      </span>
+                      <StatusPill color={leadStatusColor(lead.status)} label={leadStatusLabel(lead.status)} />
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: TEXT_SECONDARY,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {lead.description || lead.assessment?.customer_name || "Lead #" + lead.id.slice(0, 8)}
+                    </div>
+                    <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>
+                      {fmtDate(lead.created_at)}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: ACCENT_CYAN,
+                      flexShrink: 0,
+                      textAlign: "right",
+                    }}
+                  >
+                    {fmtCurrency(lead.price)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ── Secondary Stats Row ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            background: BG_CARD,
+            border: `1px solid ${BORDER}`,
+            borderRadius: RADIUS,
+            padding: "16px 20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
+          <span style={{ fontSize: 10, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Active Contractors
+          </span>
+          <span style={{ fontSize: 24, fontWeight: 700, color: TEXT_PRIMARY }}>
+            {kpis.active_contractors}
+          </span>
+          <span style={{ fontSize: 11, color: TEXT_MUTED }}>In your network</span>
+        </div>
+
+        <div
+          style={{
+            background: BG_CARD,
+            border: `1px solid ${BORDER}`,
+            borderRadius: RADIUS,
+            padding: "16px 20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
+          <span style={{ fontSize: 10, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Conversion Rate
+          </span>
+          <span style={{ fontSize: 24, fontWeight: 700, color: kpis.conversion_rate >= 25 ? ACCENT_EMERALD : ACCENT_AMBER }}>
+            {kpis.conversion_rate}%
+          </span>
+          <span style={{ fontSize: 11, color: TEXT_MUTED }}>Leads to closed jobs</span>
+        </div>
+
+        <div
+          style={{
+            background: BG_CARD,
+            border: `1px solid ${BORDER}`,
+            borderRadius: RADIUS,
+            padding: "16px 20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+          }}
+        >
+          <span style={{ fontSize: 10, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Avg. Lead Price
+          </span>
+          <span style={{ fontSize: 24, fontWeight: 700, color: ACCENT_CYAN }}>
+            {fmtCurrency(kpis.avg_lead_price)}
+          </span>
+          <span style={{ fontSize: 11, color: TEXT_MUTED }}>Per lead posted</span>
+        </div>
+      </div>
+
     </div>
   );
 }

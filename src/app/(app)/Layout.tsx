@@ -33,7 +33,8 @@ export default async function AppLayout({
     pathname === "broker" ||
     pathname === "contractor" ||
     pathname === "homeowner" ||
-    pathname === "affiliate"
+    pathname === "affiliate" ||
+    pathname === "rei-team"
   ) {
     requirePortalRole(role, pathname);
   }

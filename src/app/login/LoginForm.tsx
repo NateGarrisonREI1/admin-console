@@ -3,13 +3,16 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/browser";
+import { checkLoginRateLimit, logAuthEvent } from "@/lib/auth/events";
 
-type Role = "admin" | "broker" | "contractor" | "homeowner" | "affiliate";
+type Role = "admin" | "rei_staff" | "broker" | "contractor" | "homeowner" | "affiliate";
 
 function rolePrefix(role: Role) {
   switch (role) {
     case "admin":
       return "/admin";
+    case "rei_staff":
+      return "/rei-team";
     case "broker":
       return "/broker";
     case "contractor":
@@ -25,7 +28,6 @@ function rolePrefix(role: Role) {
 function safeNextForRole(role: Role, nextPath: string | null) {
   if (!nextPath) return null;
 
-  // Disallow sending anyone to these auth/public pages
   if (
     nextPath === "/login" ||
     nextPath.startsWith("/login?") ||
@@ -36,21 +38,24 @@ function safeNextForRole(role: Role, nextPath: string | null) {
     return null;
   }
 
-  // Admin can go anywhere inside the app
   if (role === "admin") return nextPath;
 
-  // Non-admin: only allow within their role prefix
   const prefix = rolePrefix(role);
   if (nextPath === prefix || nextPath.startsWith(prefix + "/")) return nextPath;
 
   return null;
 }
 
+function formatRetry(seconds: number): string {
+  const mins = Math.ceil(seconds / 60);
+  return mins === 1 ? "1 minute" : `${mins} minutes`;
+}
+
 export default function LoginForm() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const next = sp.get("next"); // IMPORTANT: do NOT default this
+  const next = sp.get("next");
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -62,25 +67,53 @@ export default function LoginForm() {
     setErr(null);
     setBusy(true);
 
+    const trimmedEmail = email.trim();
+
     try {
+      // Rate limit check
+      const rateCheck = await checkLoginRateLimit(trimmedEmail);
+      if (!rateCheck.allowed) {
+        const retryMsg = rateCheck.retryAfterSeconds
+          ? `Try again in ${formatRetry(rateCheck.retryAfterSeconds)}.`
+          : "Try again later.";
+        setErr(`Too many login attempts. ${retryMsg}`);
+        setBusy(false);
+        return;
+      }
+
       const supabase = supabaseBrowser();
 
       const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: trimmedEmail,
         password,
       });
-      if (error) throw error;
+
+      if (error) {
+        // Log failed attempt
+        logAuthEvent({
+          email: trimmedEmail,
+          action: "login_failed",
+          metadata: { reason: error.message },
+        });
+        throw error;
+      }
 
       const { data: userRes, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
       const user = userRes?.user;
       if (!user) throw new Error("No user returned after login.");
 
+      // Log successful login
+      logAuthEvent({
+        email: trimmedEmail,
+        action: "login_success",
+        userId: user.id,
+      });
+
       // Ensure profile exists + determine role
       const { ensureProfileAndGetRole } = await import("@/lib/auth/role");
       const role = (await ensureProfileAndGetRole(supabase as any, user.id)) as Role;
 
-      // Default by role (no /dashboard route)
       const safeNext = safeNextForRole(role, next);
       const dest = safeNext ?? rolePrefix(role);
 
@@ -130,7 +163,7 @@ export default function LoginForm() {
         className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-extrabold text-white hover:bg-slate-800 disabled:opacity-60"
         type="submit"
       >
-        {busy ? "Signing in…" : "Sign in"}
+        {busy ? "Signing in\u2026" : "Sign in"}
       </button>
     </form>
   );

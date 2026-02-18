@@ -41,12 +41,12 @@ function leadStatusOf(job: BrokerJob): LeadStatus {
 function LeadStatusPill({ value }: { value: LeadStatus }) {
   const base = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border";
   if (value === "purchased") {
-    return <span className={`${base} bg-green-50 text-green-700 border-green-200`}>Purchased</span>;
+    return <span className={`${base} bg-emerald-900/40 text-emerald-400 border-emerald-700/50`}>Purchased</span>;
   }
   if (value === "posted") {
-    return <span className={`${base} bg-blue-50 text-blue-800 border-blue-200`}>Posted</span>;
+    return <span className={`${base} bg-blue-900/40 text-blue-400 border-blue-700/50`}>Posted</span>;
   }
-  return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>Not posted</span>;
+  return <span className={`${base} bg-slate-700/40 text-slate-400 border-slate-600/50`}>Not posted</span>;
 }
 
 function getNameLines(job: BrokerJob) {
@@ -64,13 +64,12 @@ function getNameLines(job: BrokerJob) {
 function ServicesCell({ job }: { job: BrokerJob }) {
   const outs = outputsFromRequested(job.requested_outputs);
 
-  // Neutral-only chips to reduce color noise
   const chip = (label: string, on: boolean) => {
     const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border";
     return on ? (
-      <span className={`${base} bg-slate-100 text-slate-800 border-slate-200`}>{label}</span>
+      <span className={`${base}`} style={{ background: "rgba(148,163,184,0.1)", color: "#cbd5e1", borderColor: "#475569" }}>{label}</span>
     ) : (
-      <span className={`${base} bg-white text-slate-300 border-slate-200`}>{label}</span>
+      <span className={`${base}`} style={{ background: "transparent", color: "#475569", borderColor: "#334155" }}>{label}</span>
     );
   };
 
@@ -299,24 +298,45 @@ export default function JobsTableClient({
   const emailHref = drawerJob ? makeEmailHref(drawerJob) : null;
   const archivedDate = drawerJob ? fmtArchivedAt(drawerJob.archived_at) : null;
 
+  const filterBtn = (label: string, active: boolean, onClick: () => void) => (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "6px 14px",
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: 600,
+        border: active ? "1px solid rgba(16,185,129,0.25)" : "1px solid #334155",
+        background: active ? "rgba(16,185,129,0.10)" : "transparent",
+        color: active ? "#10b981" : "#94a3b8",
+        cursor: "pointer",
+        transition: "all 0.1s ease",
+      }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="space-y-3">
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        {/* Toolbar ABOVE columns */}
-        <div className="border-b border-slate-200 bg-white p-3">
+      <div style={{ overflow: "hidden", borderRadius: 12, border: "1px solid #334155", background: "#1e293b" }}>
+        {/* Toolbar */}
+        <div style={{ borderBottom: "1px solid #334155", padding: 12 }}>
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex-1">
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search name, address, zip, job id…"
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+                placeholder="Search name, address, zip, job id\u2026"
+                className="admin-input"
+                style={{ maxWidth: 400 }}
               />
             </div>
 
             <div className="flex flex-wrap gap-2">
               <select
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="admin-select"
+                style={{ width: "auto", minWidth: 140 }}
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
               >
@@ -329,7 +349,8 @@ export default function JobsTableClient({
               </select>
 
               <select
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                className="admin-select"
+                style={{ width: "auto", minWidth: 140 }}
                 value={leadFilter}
                 onChange={(e) => setLeadFilter(e.target.value as any)}
               >
@@ -339,66 +360,42 @@ export default function JobsTableClient({
                 <option value="purchased">Purchased</option>
               </select>
 
-              <button
-                onClick={() => setNeedSnapshot((v) => !v)}
-                className={`rounded-xl border px-3 py-2 text-sm ${
-                  needSnapshot ? "bg-slate-100 border-slate-200 text-slate-900" : "bg-white border-slate-200 text-slate-600"
-                }`}
-              >
-                Snapshot
-              </button>
-
-              <button
-                onClick={() => setNeedHes((v) => !v)}
-                className={`rounded-xl border px-3 py-2 text-sm ${
-                  needHes ? "bg-slate-100 border-slate-200 text-slate-900" : "bg-white border-slate-200 text-slate-600"
-                }`}
-              >
-                HES
-              </button>
-
-              <button
-                onClick={() => setNeedInspection((v) => !v)}
-                className={`rounded-xl border px-3 py-2 text-sm ${
-                  needInspection ? "bg-slate-100 border-slate-200 text-slate-900" : "bg-white border-slate-200 text-slate-600"
-                }`}
-              >
-                Inspection
-              </button>
+              {filterBtn("Snapshot", needSnapshot, () => setNeedSnapshot((v) => !v))}
+              {filterBtn("HES", needHes, () => setNeedHes((v) => !v))}
+              {filterBtn("Inspection", needInspection, () => setNeedInspection((v) => !v))}
             </div>
           </div>
 
-          <div className="mt-2 text-sm text-slate-500">
-            Showing <span className="font-medium text-slate-900">{filtered.length}</span> of{" "}
-            <span className="font-medium text-slate-900">{jobs.length}</span> {mode} projects
+          <div style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>
+            Showing <span style={{ fontWeight: 600, color: "#cbd5e1" }}>{filtered.length}</span> of{" "}
+            <span style={{ fontWeight: 600, color: "#cbd5e1" }}>{jobs.length}</span> {mode} projects
           </div>
         </div>
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr className="text-left text-slate-600">
-                <th className="px-4 py-3 w-[220px]">Name</th>
-                <th className="px-4 py-3">Address</th>
-                <th className="px-4 py-3 w-[180px]">Project Status</th>
-                <th className="px-4 py-3 w-[260px]">Services Requested</th>
-                <th className="px-4 py-3 w-[150px]">Lead Status</th>
-                <th className="px-4 py-3 w-[170px] text-right">Actions</th>
+          <table className="admin-table" style={{ minWidth: 980 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 220 }}>Name</th>
+                <th>Address</th>
+                <th style={{ width: 180 }}>Project Status</th>
+                <th style={{ width: 260 }}>Services Requested</th>
+                <th style={{ width: 150 }}>Lead Status</th>
+                <th style={{ width: 170, textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {filtered.map((job, idx) => {
+              {filtered.map((job) => {
                 const status = (job as any).__normalized_status as JobStatus | undefined;
                 const lead = leadStatusOf(job);
                 const { primary, secondary } = getNameLines(job);
-                const zebra = idx % 2 === 0 ? "bg-white" : "bg-slate-50/70";
 
                 return (
                   <Fragment key={job.id}>
                     <tr
-                      className={`border-t border-slate-100 ${zebra} hover:bg-slate-100/70 cursor-pointer`}
+                      className="cursor-pointer"
                       onClick={() => router.push(`/admin/jobs/${job.id}`)}
                       role="button"
                       tabIndex={0}
@@ -406,34 +403,44 @@ export default function JobsTableClient({
                         if (e.key === "Enter" || e.key === " ") router.push(`/admin/jobs/${job.id}`);
                       }}
                     >
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-slate-900">{primary}</div>
-                        {secondary ? <div className="mt-0.5 text-xs text-slate-400">{secondary}</div> : null}
+                      <td>
+                        <div style={{ fontWeight: 600, color: "#f1f5f9" }}>{primary}</div>
+                        {secondary ? <div style={{ marginTop: 2, fontSize: 12, color: "#64748b" }}>{secondary}</div> : null}
                       </td>
 
-                      <td className="px-4 py-3 text-slate-700">
-                        <div className="max-w-[520px] truncate">{addrLine(job)}</div>
-                        {job.source ? <div className="mt-0.5 text-xs text-slate-400">Source: {String(job.source)}</div> : null}
+                      <td>
+                        <div style={{ maxWidth: 520 }} className="truncate">{addrLine(job)}</div>
+                        {job.source ? <div style={{ marginTop: 2, fontSize: 12, color: "#64748b" }}>Source: {String(job.source)}</div> : null}
                       </td>
 
-                      <td className="px-4 py-3">{statusPill(status ?? job.response_status)}</td>
+                      <td>{statusPill(status ?? job.response_status)}</td>
 
-                      <td className="px-4 py-3">
+                      <td>
                         <ServicesCell job={job} />
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td>
                         <LeadStatusPill value={lead} />
                       </td>
 
-                      <td className="px-4 py-3">
+                      <td>
                         <div className="flex justify-end gap-2">
                           <Link
                             href={`/admin/jobs/${job.id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center rounded-xl bg-[#43a419] px-3 py-2 text-xs font-medium text-white hover:bg-[#3a8f16]"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              background: "#10b981",
+                              color: "white",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              textDecoration: "none",
+                            }}
                           >
-                            Console →
+                            Console {"\u2192"}
                           </Link>
 
                           <button
@@ -442,10 +449,21 @@ export default function JobsTableClient({
                               e.stopPropagation();
                               openDrawer(job);
                             }}
-                            className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-50"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "6px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #334155",
+                              background: "transparent",
+                              color: "#94a3b8",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
                             aria-label="Open actions"
                           >
-                            •••
+                            {"\u2022\u2022\u2022"}
                           </button>
                         </div>
                       </td>
@@ -456,7 +474,7 @@ export default function JobsTableClient({
 
               {!filtered.length && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-slate-500">
+                  <td colSpan={6} style={{ padding: "40px 24px", textAlign: "center", color: "#64748b" }}>
                     No projects match your search/filters.
                   </td>
                 </tr>
@@ -466,25 +484,28 @@ export default function JobsTableClient({
         </div>
       </div>
 
-      {/* Drawer (unchanged behavior) */}
+      {/* Drawer */}
       {drawerOpen && drawerJob && (
         <div className="fixed inset-0 z-[70]">
-          <div className="absolute inset-0 bg-black/30" onClick={closeDrawer} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeDrawer} />
 
-          <div className="absolute right-0 top-0 h-full w-full sm:w-[540px] bg-white shadow-2xl border-l border-slate-200 flex flex-col">
-            <div className="p-5 border-b border-slate-200">
+          <div
+            className="absolute right-0 top-0 h-full w-full sm:w-[540px] flex flex-col"
+            style={{ background: "#0f172a", borderLeft: "1px solid #334155", boxShadow: "0 0 40px rgba(0,0,0,0.5)" }}
+          >
+            <div style={{ padding: 20, borderBottom: "1px solid #334155" }}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="text-xs text-slate-500">Project Actions</div>
-                  <h2 className="text-lg font-semibold text-slate-900 truncate">{getNameLines(drawerJob).primary}</h2>
-                  <div className="mt-1 text-sm text-slate-600">{addrLine(drawerJob)}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Project Actions</div>
+                  <h2 style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9" }} className="truncate">{getNameLines(drawerJob).primary}</h2>
+                  <div style={{ marginTop: 4, fontSize: 13, color: "#94a3b8" }}>{addrLine(drawerJob)}</div>
 
-                  <div className="mt-2 flex flex-wrap gap-2 items-center">
+                  <div className="mt-3 flex flex-wrap gap-2 items-center">
                     {statusPill(drawerStatus ?? drawerJob.response_status)}
                     <LeadStatusPill value={drawerLead} />
                     {drawerJob.is_archived ? (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700 border border-slate-200">
-                        Archived{archivedDate ? ` • ${archivedDate}` : ""}
+                      <span className="rounded-full px-2.5 py-0.5 text-xs font-medium border" style={{ background: "rgba(51,65,85,0.4)", color: "#94a3b8", borderColor: "#334155" }}>
+                        Archived{archivedDate ? ` \u2022 ${archivedDate}` : ""}
                       </span>
                     ) : null}
                   </div>
@@ -494,9 +515,17 @@ export default function JobsTableClient({
                   type="button"
                   disabled={isPending}
                   onClick={closeDrawer}
-                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #334155",
+                    background: "#1e293b",
+                    color: "#94a3b8",
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
                 >
-                  ✕
+                  {"\u2715"}
                 </button>
               </div>
 
@@ -505,53 +534,49 @@ export default function JobsTableClient({
                   href={mapHref}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="admin-btn-secondary"
+                  style={{ fontSize: 13, padding: "6px 14px" }}
                 >
-                  📍 Map
+                  Map
                 </a>
 
                 {phoneHref ? (
-                  <a
-                    href={phoneHref}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    📞 Call
+                  <a href={phoneHref} className="admin-btn-secondary" style={{ fontSize: 13, padding: "6px 14px" }}>
+                    Call
                   </a>
                 ) : (
-                  <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-400">
-                    📞 Call
+                  <span className="admin-btn-secondary" style={{ fontSize: 13, padding: "6px 14px", opacity: 0.4 }}>
+                    Call
                   </span>
                 )}
 
                 {emailHref ? (
-                  <a
-                    href={emailHref}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    ✉️ Email
+                  <a href={emailHref} className="admin-btn-secondary" style={{ fontSize: 13, padding: "6px 14px" }}>
+                    Email
                   </a>
                 ) : (
-                  <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-400">
-                    ✉️ Email
+                  <span className="admin-btn-secondary" style={{ fontSize: 13, padding: "6px 14px", opacity: 0.4 }}>
+                    Email
                   </span>
                 )}
 
                 <button
                   type="button"
                   onClick={() => router.push(`/admin/jobs/${drawerJob.id}`)}
-                  className="ml-auto inline-flex items-center gap-2 rounded-xl bg-[#43a419] px-4 py-2 text-sm font-medium text-white hover:bg-[#3a8f16]"
+                  className="admin-btn-primary ml-auto"
+                  style={{ fontSize: 13, padding: "6px 14px" }}
                 >
-                  Open Console →
+                  Open Console {"\u2192"}
                 </button>
               </div>
             </div>
 
-            <div className="p-5 overflow-auto flex-1 space-y-6">
-              <div className="rounded-2xl border border-slate-200 p-4">
+            <div style={{ padding: 20 }} className="overflow-auto flex-1 space-y-5">
+              <div style={{ borderRadius: 12, border: "1px solid #334155", padding: 16 }}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-sm font-semibold text-slate-900">Lead</div>
-                    <div className="text-xs text-slate-500">Not posted / Posted / Purchased.</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>Lead</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Not posted / Posted / Purchased.</div>
                   </div>
 
                   {drawerLead === "not_posted" ? (
@@ -559,7 +584,8 @@ export default function JobsTableClient({
                       type="button"
                       disabled={isPending}
                       onClick={() => setDrawerLeadMode("create")}
-                      className="rounded-xl bg-[#43a419] px-3 py-2 text-xs font-semibold text-white hover:bg-[#3a8f16] disabled:opacity-50"
+                      className="admin-btn-primary"
+                      style={{ fontSize: 12, padding: "5px 12px" }}
                     >
                       Configure + Post
                     </button>
@@ -569,7 +595,8 @@ export default function JobsTableClient({
                         type="button"
                         disabled={isPending}
                         onClick={() => setDrawerLeadMode("edit")}
-                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50"
+                        className="admin-btn-secondary"
+                        style={{ fontSize: 12, padding: "5px 12px" }}
                       >
                         Edit
                       </button>
@@ -577,7 +604,8 @@ export default function JobsTableClient({
                         type="button"
                         disabled={isPending}
                         onClick={removeLead}
-                        className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        className="admin-btn-danger"
+                        style={{ fontSize: 12, padding: "5px 12px" }}
                       >
                         Remove
                       </button>
@@ -586,40 +614,40 @@ export default function JobsTableClient({
                 </div>
 
                 <div className="mt-4 grid gap-4">
-                  <div className="text-sm font-medium text-slate-900">
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>
                     {drawerLeadMode === "create" ? "Configure + Post Lead" : "Edit Lead"}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-900">Price (USD)</label>
-                    <div className="mt-2 flex items-center gap-2">
-                      <span className="text-slate-500">$</span>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>Price (USD)</label>
+                    <div className="flex items-center gap-2">
+                      <span style={{ color: "#64748b" }}>$</span>
                       <input
                         value={priceDollars}
                         onChange={(e) => setPriceDollars(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        className="admin-input"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-900">Expiration</label>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>Expiration</label>
                     <input
                       type="datetime-local"
                       value={expiresAt}
                       onChange={(e) => setExpiresAt(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="admin-input"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-900">System (optional)</label>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>System (optional)</label>
                     <select
                       value={systemId}
                       onChange={(e) => setSystemId(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="admin-select"
                     >
-                      <option value="">— None —</option>
+                      <option value="">{"\u2014"} None {"\u2014"}</option>
                       {systems?.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name}
@@ -628,18 +656,19 @@ export default function JobsTableClient({
                     </select>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 p-4">
+                  <div style={{ borderRadius: 12, border: "1px solid #334155", padding: 14 }}>
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-medium text-slate-900">Assign to contractor</div>
-                        <div className="text-xs text-slate-500">Assigned-only = only that contractor sees it.</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>Assign to contractor</div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>Assigned-only = only that contractor sees it.</div>
                       </div>
-                      <label className="inline-flex items-center gap-2 text-sm">
+                      <label className="inline-flex items-center gap-2" style={{ fontSize: 12, color: "#94a3b8" }}>
                         <input
                           type="checkbox"
                           checked={assignedOnly}
                           onChange={(e) => setAssignedOnly(e.target.checked)}
                           className="h-4 w-4"
+                          style={{ accentColor: "#10b981" }}
                         />
                         Assigned-only
                       </label>
@@ -648,9 +677,10 @@ export default function JobsTableClient({
                     <select
                       value={assignedContractorId}
                       onChange={(e) => setAssignedContractorId(e.target.value)}
-                      className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="admin-select"
+                      style={{ marginTop: 10 }}
                     >
-                      <option value="">— No assignment —</option>
+                      <option value="">{"\u2014"} No assignment {"\u2014"}</option>
                       {contractors?.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name}
@@ -660,21 +690,22 @@ export default function JobsTableClient({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-900">Title (optional)</label>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>Title (optional)</label>
                     <input
                       value={titleOverride}
                       onChange={(e) => setTitleOverride(e.target.value)}
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="admin-input"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-slate-900">Summary (optional)</label>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#cbd5e1", marginBottom: 6 }}>Summary (optional)</label>
                     <textarea
                       value={summaryOverride}
                       onChange={(e) => setSummaryOverride(e.target.value)}
                       rows={3}
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="admin-input"
+                      style={{ resize: "vertical" }}
                     />
                   </div>
 
@@ -683,7 +714,8 @@ export default function JobsTableClient({
                       type="button"
                       disabled={isPending}
                       onClick={submitLead}
-                      className="rounded-xl bg-[#43a419] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#3a8f16] disabled:opacity-50"
+                      className="admin-btn-primary"
+                      style={{ fontSize: 13, opacity: isPending ? 0.5 : 1 }}
                     >
                       {drawerLeadMode === "create" ? "Post Lead" : "Save Changes"}
                     </button>
@@ -691,26 +723,28 @@ export default function JobsTableClient({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <div className="text-sm font-semibold text-slate-900">Project</div>
+              <div style={{ borderRadius: 12, border: "1px solid #334155", padding: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>Project</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {mode === "active" ? (
                     <button
                       type="button"
                       disabled={isPending}
                       onClick={archiveJob}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                      className="admin-btn-secondary"
+                      style={{ fontSize: 13 }}
                     >
-                      📦 Archive Project
+                      Archive Project
                     </button>
                   ) : (
                     <button
                       type="button"
                       disabled={isPending}
                       onClick={unarchiveJob}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                      className="admin-btn-secondary"
+                      style={{ fontSize: 13 }}
                     >
-                      ♻️ Unarchive
+                      Unarchive
                     </button>
                   )}
 
@@ -719,22 +753,24 @@ export default function JobsTableClient({
                       type="button"
                       disabled={isPending}
                       onClick={hardDeleteJob}
-                      className="ml-auto rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                      className="admin-btn-danger ml-auto"
+                      style={{ fontSize: 13 }}
                     >
-                      🗑️ Delete Permanently
+                      Delete Permanently
                     </button>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="p-4 border-t border-slate-200 flex items-center justify-between">
-              <div className="text-xs text-slate-500">{isPending ? "Saving…" : "All edits happen here or in Console."}</div>
+            <div style={{ padding: 14, borderTop: "1px solid #334155", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 12, color: "#64748b" }}>{isPending ? "Saving\u2026" : "All edits happen here or in Console."}</div>
               <button
                 type="button"
                 disabled={isPending}
                 onClick={closeDrawer}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                className="admin-btn-secondary"
+                style={{ fontSize: 13 }}
               >
                 Close
               </button>

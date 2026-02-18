@@ -41,7 +41,8 @@ function isPortalProtectedPath(pathname: string) {
     pathname.startsWith("/broker") ||
     pathname.startsWith("/contractor") ||
     pathname.startsWith("/homeowner") ||
-    pathname.startsWith("/affiliate")
+    pathname.startsWith("/affiliate") ||
+    pathname.startsWith("/rei-team")
   );
 }
 
@@ -115,5 +116,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/broker/:path*", "/contractor/:path*", "/homeowner/:path*", "/affiliate/:path*"],
+  matcher: ["/admin/:path*", "/broker/:path*", "/contractor/:path*", "/homeowner/:path*", "/affiliate/:path*", "/rei-team/:path*"],
 };

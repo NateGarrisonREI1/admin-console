@@ -3,17 +3,16 @@ export default function AdminHomeHeader() {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16 }}>
       <div>
-        <h1 style={{ fontSize: 34, fontWeight: 950, marginBottom: 6, letterSpacing: -0.4 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 6, letterSpacing: -0.4, color: "#f1f5f9" }}>
           Admin Console
         </h1>
-        <p style={{ opacity: 0.75, marginBottom: 0 }}>
+        <p style={{ color: "#94a3b8", marginBottom: 0, fontSize: 14 }}>
           Command center for systems, jobs, and the contractor marketplace.
         </p>
       </div>
 
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Pill tone="neutral">env: local</Pill>
-        <Pill tone="leaf">Build mode</Pill>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Pill tone="neutral">Build mode</Pill>
       </div>
     </div>
   );
@@ -23,13 +22,10 @@ function Pill({ children, tone }: { children: React.ReactNode; tone: "neutral" |
   const base: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
-    padding: "6px 10px",
+    padding: "5px 10px",
     borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 900,
-    border: "1px solid #e5e7eb",
-    background: "#fff",
-    color: "#111827",
+    fontSize: 11,
+    fontWeight: 600,
     whiteSpace: "nowrap",
   };
 
@@ -38,9 +34,9 @@ function Pill({ children, tone }: { children: React.ReactNode; tone: "neutral" |
       <span
         style={{
           ...base,
-          border: "1px solid rgba(67,164,25,0.28)",
-          background: "rgba(67,164,25,0.08)",
-          color: "#2f7a12",
+          border: "1px solid rgba(16,185,129,0.25)",
+          background: "rgba(16,185,129,0.08)",
+          color: "#10b981",
         }}
       >
         {children}
@@ -48,5 +44,16 @@ function Pill({ children, tone }: { children: React.ReactNode; tone: "neutral" |
     );
   }
 
-  return <span style={base}>{children}</span>;
+  return (
+    <span
+      style={{
+        ...base,
+        border: "1px solid #334155",
+        background: "#1e293b",
+        color: "#94a3b8",
+      }}
+    >
+      {children}
+    </span>
+  );
 }

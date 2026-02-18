@@ -10,6 +10,7 @@ export { WebhookService } from "./WebhookService";
 export { StripeService } from "./StripeService";
 export { RefundService } from "./RefundService";
 export { AuditLogService } from "./AuditLogService";
+export { BrokerService } from "./BrokerService";
 
 export {
   ServiceError,

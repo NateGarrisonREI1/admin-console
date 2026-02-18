@@ -1,23 +1,38 @@
 // src/app/admin/settings/users/page.tsx
+import { Suspense } from "react";
 import { adminListUsers } from "../_actions/users";
 import AdminUsersTable from "../_components/AdminUsersTable";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminSettingsUsersPage() {
-  const res = await adminListUsers();
+type Props = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
-  // Defensive: if something upstream changes, never crash the page
-  const rows = Array.isArray((res as any)?.rows) ? (res as any).rows : [];
+export default async function AdminSettingsUsersPage({ searchParams }: Props) {
+  const params = await searchParams;
+
+  const page = Number(params.page) || 1;
+  const roleFilter = typeof params.role === "string" ? params.role : undefined;
+  const statusFilter = typeof params.status === "string" ? params.status : undefined;
+  const sourceFilter = typeof params.source === "string" ? params.source : undefined;
+  const search = typeof params.q === "string" ? params.q : undefined;
+
+  const data = await adminListUsers({
+    page,
+    pageSize: 50,
+    roleFilter,
+    statusFilter,
+    sourceFilter,
+    search,
+  });
 
   return (
-    <div className="space-y-4">
+    <Suspense fallback={<div style={{ padding: 24, color: "#94a3b8" }}>Loading users...</div>}>
       <AdminUsersTable
-        rows={rows}
-        title="Users (All)"
-        subtitle="Invite users, assign roles, and filter by account type."
+        data={data}
         revalidatePath="/admin/settings/users"
       />
-    </div>
+    </Suspense>
   );
 }

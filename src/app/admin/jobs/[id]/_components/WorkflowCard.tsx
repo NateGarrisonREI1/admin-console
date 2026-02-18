@@ -48,9 +48,9 @@ const PROGRESS_PERCENT: Partial<Record<JobStatus, number>> = {
   closed: 100,
 };
 
-const GREEN = '#43a419';
-const GREEN_LIGHT = 'rgba(67,164,25,0.12)';
-const GREEN_BORDER = 'rgba(67,164,25,0.30)';
+const GREEN = '#10b981';
+const GREEN_LIGHT = 'rgba(16,185,129,0.12)';
+const GREEN_BORDER = 'rgba(16,185,129,0.30)';
 
 type Appt = {
   id: string;
@@ -149,12 +149,56 @@ function Pill({
     );
   }
   if (tone === 'warn')
-    return <span className={`${base} bg-amber-50 text-amber-800 border-amber-200`}>{label}</span>;
+    return (
+      <span
+        className={base}
+        style={{
+          background: 'rgba(251,191,36,0.12)',
+          borderColor: 'rgba(251,191,36,0.30)',
+          color: '#fbbf24',
+        }}
+      >
+        {label}
+      </span>
+    );
   if (tone === 'info')
-    return <span className={`${base} bg-cyan-50 text-cyan-800 border-cyan-200`}>{label}</span>;
+    return (
+      <span
+        className={base}
+        style={{
+          background: 'rgba(96,165,250,0.12)',
+          borderColor: 'rgba(96,165,250,0.30)',
+          color: '#60a5fa',
+        }}
+      >
+        {label}
+      </span>
+    );
   if (tone === 'danger')
-    return <span className={`${base} bg-red-50 text-red-800 border-red-200`}>{label}</span>;
-  return <span className={`${base} bg-slate-100 text-slate-700 border-slate-200`}>{label}</span>;
+    return (
+      <span
+        className={base}
+        style={{
+          background: 'rgba(248,113,113,0.12)',
+          borderColor: 'rgba(248,113,113,0.30)',
+          color: '#f87171',
+        }}
+      >
+        {label}
+      </span>
+    );
+  return (
+    <span
+      className={base}
+      style={{
+        background: 'rgba(100,116,139,0.15)',
+        borderColor: 'rgba(100,116,139,0.30)',
+        color: '#94a3b8',
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 const requestChip = (r: { key: string; status?: string | null }) => {
@@ -179,21 +223,26 @@ function StatusSubmitButton({
 }) {
   const base =
     'inline-flex items-center justify-center rounded-lg text-sm font-medium transition px-3 py-2 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-60';
-  const solid =
-    'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500';
-  const ghost =
-    'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 focus:ring-slate-400';
+
+  const solidStyle: React.CSSProperties = {
+    backgroundColor: '#10b981',
+    color: '#ffffff',
+  };
+  const ghostStyle: React.CSSProperties = {
+    backgroundColor: '#1e293b',
+    color: '#cbd5e1',
+    border: '1px solid #334155',
+  };
+
+  const activeRing = active ? 'ring-2 ring-emerald-400/60 ring-offset-2 ring-offset-[#0f172a]' : '';
 
   return (
     <form action={updateResponseStatus}>
       <input type="hidden" name="response_status" value={value} />
       <button
         type="submit"
-        className={[
-          base,
-          variant === 'solid' ? solid : ghost,
-          active ? 'ring-2 ring-green-400 ring-offset-2' : '',
-        ].join(' ')}
+        className={[base, activeRing].join(' ')}
+        style={variant === 'solid' ? solidStyle : ghostStyle}
       >
         {label ?? STATUS_DISPLAY[value]}
       </button>
@@ -233,7 +282,7 @@ export default function WorkflowCard({
   // lightweight guidance (one line)
   const guidance = useMemo(() => {
     if (!isScheduled && wantsInspectionOrHes) return { text: 'Schedule the visit to move forward', tone: 'warn' as const };
-    if (currentStatus === 'scheduled') return { text: 'Move to “In Progress” when the visit starts', tone: 'info' as const };
+    if (currentStatus === 'scheduled') return { text: 'Move to "In Progress" when the visit starts', tone: 'info' as const };
     if (currentStatus === 'in_progress') return { text: 'Finish fieldwork and prep deliverables', tone: 'info' as const };
     if (currentStatus === 'ready') return { text: 'Review and send deliverables', tone: 'good' as const };
     return null;
@@ -242,22 +291,25 @@ export default function WorkflowCard({
   const [moreOpen, setMoreOpen] = useState(false);
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-visible w-full max-w-full min-w-0">
-      {/* компакт header */}
-      <div className="px-5 py-4 border-b border-slate-100">
+    <div
+      className="overflow-visible w-full max-w-full min-w-0"
+      style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12 }}
+    >
+      {/* compact header */}
+      <div className="px-5 py-4" style={{ borderBottom: '1px solid #334155' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="text-sm font-semibold text-slate-900">Workflow</div>
-              <span className="text-xs text-slate-500">•</span>
+              <div className="text-sm font-semibold" style={{ color: '#f1f5f9' }}>Workflow</div>
+              <span className="text-xs" style={{ color: '#94a3b8' }}>•</span>
               <Pill label={displayStatus} tone={STATUS_TONE[currentStatus] ?? 'neutral'} />
             </div>
 
-            <div className="mt-2 text-sm text-slate-700">
-              <span className="font-medium text-slate-900">Next Visit:</span>{' '}
-              <span className={isScheduled ? '' : 'text-slate-500'}>{fmtRange(nextAppt?.start_at, nextAppt?.end_at)}</span>
+            <div className="mt-2 text-sm" style={{ color: '#cbd5e1' }}>
+              <span className="font-medium" style={{ color: '#f1f5f9' }}>Next Visit:</span>{' '}
+              <span style={{ color: isScheduled ? '#cbd5e1' : '#94a3b8' }}>{fmtRange(nextAppt?.start_at, nextAppt?.end_at)}</span>
               {isScheduled ? (
-                <span className="text-slate-500">
+                <span style={{ color: '#94a3b8' }}>
                   {' '}
                   • {kindLabel(nextAppt)} •{' '}
                   {s(nextAppt?.assignee).trim() || 'Unassigned'}
@@ -269,7 +321,7 @@ export default function WorkflowCard({
               {serviceList.length ? (
                 serviceList.map((r, i) => <div key={i}>{requestChip(r)}</div>)
               ) : (
-                <span className="text-xs text-slate-500 italic">No services requested</span>
+                <span className="text-xs italic" style={{ color: '#94a3b8' }}>No services requested</span>
               )}
             </div>
           </div>
@@ -277,7 +329,10 @@ export default function WorkflowCard({
           <div className="shrink-0 flex items-center gap-2">
             <Link
               href={`/admin/schedule?job=${job.id}&kind=inspection`}
-              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700 transition"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg text-white text-sm font-medium transition"
+              style={{ backgroundColor: '#10b981' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#059669')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#10b981')}
             >
               {isScheduled ? 'Reschedule' : 'Schedule'} →
             </Link>
@@ -287,13 +342,13 @@ export default function WorkflowCard({
 
       {/* slim stepper */}
       <div className="px-5 py-4">
-        <div className="flex items-center justify-between text-xs text-slate-500">
-          <span className="font-medium text-slate-900">Progress</span>
-          <span>{Math.min(100, Math.max(0, Math.round(progress)))}%</span>
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-medium" style={{ color: '#f1f5f9' }}>Progress</span>
+          <span style={{ color: '#94a3b8' }}>{Math.min(100, Math.max(0, Math.round(progress)))}%</span>
         </div>
 
         <div className="mt-2 relative">
-          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+          <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#334155' }}>
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, backgroundColor: GREEN }} />
           </div>
 
@@ -307,13 +362,20 @@ export default function WorkflowCard({
                   <div
                     className={[
                       'h-7 w-7 rounded-full border flex items-center justify-center text-xs font-semibold transition',
-                      isPast ? 'bg-green-600 text-white border-green-600' : 'bg-white text-slate-400 border-slate-200',
-                      isActive ? 'ring-2 ring-green-300 ring-offset-2' : '',
+                      isActive ? 'ring-2 ring-emerald-400/60 ring-offset-2 ring-offset-[#1e293b]' : '',
                     ].join(' ')}
+                    style={
+                      isPast
+                        ? { backgroundColor: '#10b981', color: '#ffffff', borderColor: '#10b981' }
+                        : { backgroundColor: 'transparent', color: '#64748b', borderColor: '#334155' }
+                    }
                   >
                     {i + 1}
                   </div>
-                  <div className={['mt-1 text-[11px] text-center', isPast ? 'text-green-700' : 'text-slate-500'].join(' ')}>
+                  <div
+                    className="mt-1 text-[11px] text-center"
+                    style={{ color: isPast ? '#10b981' : '#94a3b8' }}
+                  >
                     {STATUS_DISPLAY[st]}
                   </div>
                 </div>
@@ -325,15 +387,36 @@ export default function WorkflowCard({
         {guidance ? (
           <div className="mt-3">
             {guidance.tone === 'good' ? (
-              <div className="text-sm text-green-800 bg-green-50 border border-green-100 rounded-xl px-3 py-2">
+              <div
+                className="text-sm rounded-xl px-3 py-2"
+                style={{
+                  color: '#10b981',
+                  backgroundColor: 'rgba(16,185,129,0.10)',
+                  border: '1px solid rgba(16,185,129,0.25)',
+                }}
+              >
                 {guidance.text}
               </div>
             ) : guidance.tone === 'warn' ? (
-              <div className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+              <div
+                className="text-sm rounded-xl px-3 py-2"
+                style={{
+                  color: '#fbbf24',
+                  backgroundColor: 'rgba(251,191,36,0.10)',
+                  border: '1px solid rgba(251,191,36,0.25)',
+                }}
+              >
                 {guidance.text}
               </div>
             ) : (
-              <div className="text-sm text-cyan-800 bg-cyan-50 border border-cyan-100 rounded-xl px-3 py-2">
+              <div
+                className="text-sm rounded-xl px-3 py-2"
+                style={{
+                  color: '#60a5fa',
+                  backgroundColor: 'rgba(96,165,250,0.10)',
+                  border: '1px solid rgba(96,165,250,0.25)',
+                }}
+              >
                 {guidance.text}
               </div>
             )}
@@ -343,30 +426,45 @@ export default function WorkflowCard({
 
       {/* compact status controls */}
       {showStatusControls ? (
-        <div className="px-5 py-4 border-t border-slate-100">
+        <div className="px-5 py-4" style={{ borderTop: '1px solid #334155' }}>
           <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-slate-900">Set status</div>
+            <div className="text-sm font-semibold" style={{ color: '#f1f5f9' }}>Set status</div>
 
-            {/* “More” menu for edge statuses */}
+            {/* "More" menu for edge statuses */}
             <div className="relative z-50">
               <button
                 type="button"
                 onClick={() => setMoreOpen(v => !v)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium"
+                style={{
+                  backgroundColor: '#1e293b',
+                  color: '#cbd5e1',
+                  border: '1px solid #334155',
+                }}
               >
                 More
                 <span className={moreOpen ? 'rotate-180 transition-transform' : 'transition-transform'}>▾</span>
               </button>
 
               {moreOpen ? (
-                <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 bg-white shadow-lg p-2 z-50 max-h-[260px] overflow-auto">
+                <div
+                  className="absolute right-0 mt-2 w-56 rounded-xl p-2 z-50 max-h-[260px] overflow-auto"
+                  style={{
+                    backgroundColor: '#0f172a',
+                    border: '1px solid #334155',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                  }}
+                >
                   {(['needs_review', 'waiting_on_broker', 'blocked', 'closed'] as const).map(st => (
                     <form key={st} action={updateResponseStatus}>
                       <input type="hidden" name="response_status" value={st} />
                       <button
                         type="submit"
                         onClick={() => setMoreOpen(false)}
-                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 text-sm text-slate-700"
+                        className="w-full text-left px-3 py-2 rounded-lg text-sm transition-colors"
+                        style={{ color: '#cbd5e1' }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1e293b')}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                       >
                         {STATUS_DISPLAY[st]}
                       </button>
@@ -411,9 +509,9 @@ export default function WorkflowCard({
             />
           </div>
 
-          <div className="mt-3 text-xs text-slate-500">
+          <div className="mt-3 text-xs" style={{ color: '#94a3b8' }}>
             Deliverables:{' '}
-            <span className="text-slate-700">
+            <span style={{ color: '#cbd5e1' }}>
               {wantsSnapshot ? 'Snapshot → Deliver' : 'Snapshot: not requested'}
               {' • '}
               {wantsInspectionOrHes

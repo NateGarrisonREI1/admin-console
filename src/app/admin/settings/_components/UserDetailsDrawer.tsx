@@ -24,6 +24,18 @@ function isValidEmail(s: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || "").trim());
 }
 
+const INPUT_STYLE: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #334155",
+  background: "#1e293b",
+  color: "#f1f5f9",
+  fontSize: 13,
+  fontWeight: 600,
+  outline: "none",
+};
+
 export default function UserDetailsDrawer(props: {
   open: boolean;
   title?: string;
@@ -51,7 +63,6 @@ export default function UserDetailsDrawer(props: {
 
   React.useEffect(() => {
     if (!open) return;
-    // reset state when opening (keeps it clean if you open/close multiple times)
     setEmail(props.initial?.email ?? "");
     setRole(((props.initial?.role as AppRole) ?? "contractor") as AppRole);
 
@@ -73,7 +84,6 @@ export default function UserDetailsDrawer(props: {
   if (!open) return null;
 
   const roleTone = ROLE_STYLES[role];
-  const sendClass = props.sent ? "bg-emerald-600" : canSend ? "bg-sky-600 hover:bg-sky-700" : "bg-slate-300";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -94,17 +104,38 @@ export default function UserDetailsDrawer(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-[99990]">
+    <div style={{ position: "fixed", inset: 0, zIndex: 99990 }}>
       {/* overlay */}
-      <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/20" />
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.50)", border: "none", cursor: "default" }}
+      />
 
       {/* drawer */}
-      <div className="absolute right-0 top-0 flex h-full w-full max-w-[420px] flex-col bg-white shadow-2xl">
+      <div
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          height: "100%",
+          width: "100%",
+          maxWidth: 420,
+          display: "flex",
+          flexDirection: "column",
+          background: "#0f172a",
+          borderLeft: "1px solid #334155",
+          boxShadow: "0 30px 80px rgba(0,0,0,0.50)",
+        }}
+      >
         {/* header */}
-        <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", borderBottom: "1px solid #334155", padding: "16px 20px" }}>
           <div>
-            <div className="text-sm font-black text-slate-900">{props.title ?? "Add user"}</div>
-            <div className="text-xs font-semibold text-slate-500">
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>
+              {props.title ?? "Add user"}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b" }}>
               {props.subtitle ?? "Invite a user and assign their role."}
             </div>
           </div>
@@ -112,152 +143,173 @@ export default function UserDetailsDrawer(props: {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-extrabold text-slate-700 hover:bg-slate-50"
+            className="admin-btn-secondary"
+            style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12 }}
           >
             Close
           </button>
         </div>
 
-        <form onSubmit={onSubmit} className="flex h-full flex-1 flex-col">
+        <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", flex: 1 }}>
           {/* scrollable body */}
-          <div className="flex-1 overflow-y-auto px-5 py-4">
-            <div className="space-y-4">
-              {/* Email */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Email */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Email
+              </label>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@company.com"
+                autoComplete="email"
+                style={{ ...INPUT_STYLE, marginTop: 6 }}
+              />
+            </div>
+
+            {/* Role */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Role
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as AppRole)}
+                  className="admin-select"
+                >
+                  <option value="admin">Admin</option>
+                  <option value="broker">Broker</option>
+                  <option value="contractor">Contractor</option>
+                  <option value="homeowner">Homeowner</option>
+                  <option value="affiliate">Affiliate</option>
+                </select>
+
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    padding: "4px 10px",
+                    borderRadius: 9999,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    background: roleTone.bg,
+                    color: roleTone.tx,
+                    border: `1px solid ${roleTone.bd}`,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {role}
+                </span>
+              </div>
+            </div>
+
+            {/* Name */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
-                <label className="text-xs font-extrabold text-slate-600">Email</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  First name
+                </label>
                 <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  autoComplete="email"
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="First"
+                  autoComplete="given-name"
+                  style={{ ...INPUT_STYLE, marginTop: 6 }}
                 />
               </div>
-
-              {/* Role (dropdown) */}
               <div>
-                <label className="text-xs font-extrabold text-slate-600">Role</label>
-
-                <div className="mt-1 flex items-center gap-2">
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as AppRole)}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="broker">Broker</option>
-                    <option value="contractor">Contractor</option>
-                    <option value="homeowner">Homeowner</option>
-                    <option value="affiliate">Affiliate</option>
-                  </select>
-
-                  {/* small visual cue */}
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-black ${roleTone.bg} ${roleTone.text}`}>
-                    {role}
-                  </span>
-                </div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Last name
+                </label>
+                <input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Last"
+                  autoComplete="family-name"
+                  style={{ ...INPUT_STYLE, marginTop: 6 }}
+                />
               </div>
+            </div>
 
-              {/* Name */}
-              <div className="grid grid-cols-2 gap-3">
+            {/* Phone */}
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Phone
+              </label>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(555) 555-5555"
+                autoComplete="tel"
+                style={{ ...INPUT_STYLE, marginTop: 6 }}
+              />
+            </div>
+
+            {/* Address */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Address
+              </label>
+              <input
+                value={address1}
+                onChange={(e) => setAddress1(e.target.value)}
+                placeholder="Street address"
+                autoComplete="address-line1"
+                style={INPUT_STYLE}
+              />
+              <input
+                value={address2}
+                onChange={(e) => setAddress2(e.target.value)}
+                placeholder="Apt / suite (optional)"
+                autoComplete="address-line2"
+                style={INPUT_STYLE}
+              />
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 <div>
-                  <label className="text-xs font-extrabold text-slate-600">First name</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>City</label>
                   <input
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="First"
-                    autoComplete="given-name"
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="City"
+                    autoComplete="address-level2"
+                    style={{ ...INPUT_STYLE, marginTop: 4 }}
                   />
                 </div>
-
                 <div>
-                  <label className="text-xs font-extrabold text-slate-600">Last name</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>State</label>
                   <input
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Last"
-                    autoComplete="family-name"
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    placeholder="OR"
+                    autoComplete="address-level1"
+                    style={{ ...INPUT_STYLE, marginTop: 4 }}
                   />
                 </div>
               </div>
 
-              {/* Phone */}
               <div>
-                <label className="text-xs font-extrabold text-slate-600">Phone</label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>ZIP</label>
                 <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(555) 555-5555"
-                  autoComplete="tel"
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                  value={zip}
+                  onChange={(e) => setZip(e.target.value)}
+                  placeholder="97123"
+                  autoComplete="postal-code"
+                  style={{ ...INPUT_STYLE, marginTop: 4 }}
                 />
-              </div>
-
-              {/* Address */}
-              <div>
-                <label className="text-xs font-extrabold text-slate-600">Address</label>
-                <input
-                  value={address1}
-                  onChange={(e) => setAddress1(e.target.value)}
-                  placeholder="Street address"
-                  autoComplete="address-line1"
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                />
-                <input
-                  value={address2}
-                  onChange={(e) => setAddress2(e.target.value)}
-                  placeholder="Apt / suite (optional)"
-                  autoComplete="address-line2"
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                />
-
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-extrabold text-slate-600">City</label>
-                    <input
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="City"
-                      autoComplete="address-level2"
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-extrabold text-slate-600">State</label>
-                    <input
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
-                      placeholder="OR"
-                      autoComplete="address-level1"
-                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-2">
-                  <label className="text-xs font-extrabold text-slate-600">ZIP</label>
-                  <input
-                    value={zip}
-                    onChange={(e) => setZip(e.target.value)}
-                    placeholder="97123"
-                    autoComplete="postal-code"
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
-                  />
-                </div>
               </div>
             </div>
           </div>
 
           {/* sticky footer */}
-          <div className="border-t border-slate-100 px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
+          <div style={{ borderTop: "1px solid #334155", padding: "16px 20px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-extrabold text-slate-700 hover:bg-slate-50"
+                className="admin-btn-secondary"
+                style={{ padding: "10px 16px", borderRadius: 10, fontSize: 13 }}
               >
                 Cancel
               </button>
@@ -265,18 +317,21 @@ export default function UserDetailsDrawer(props: {
               <button
                 type="submit"
                 disabled={!canSend || props.sent}
-                className={[
-                  "rounded-2xl px-4 py-2.5 text-sm font-extrabold text-white shadow-sm transition",
-                  sendClass,
-                  props.busy ? "opacity-80" : "",
-                ].join(" ")}
+                className="admin-btn-primary"
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  opacity: (!canSend || props.sent) ? 0.5 : 1,
+                  background: props.sent ? "#059669" : undefined,
+                }}
                 title={!emailOk ? "Enter a valid email" : props.sent ? "Invite sent" : "Send invite"}
               >
-                {props.sent ? "Invite sent" : props.busy ? "Sending…" : "Send invite"}
+                {props.sent ? "Invite sent" : props.busy ? "Sending\u2026" : "Send invite"}
               </button>
             </div>
 
-            <div className="mt-2 text-[11px] font-semibold text-slate-500">
+            <div style={{ marginTop: 8, fontSize: 11, fontWeight: 600, color: "#64748b" }}>
               {props.sent ? "Invite created." : !emailOk ? "Enter a valid email to send." : "Ready to send."}
             </div>
           </div>

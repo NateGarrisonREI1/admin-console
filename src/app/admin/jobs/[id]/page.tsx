@@ -13,9 +13,6 @@ import FilesCard from "./_components/FilesCard";
 import TimelineCard from "./_components/TimelineCard";
 import NotesCard from "./_components/NotesCard";
 import WorkflowCard from "./_components/WorkflowCard";
-import UpgradeCardsCard from "./_components/UpgradeCardsCard";
-
-
 import {
   defaultChecklist,
   ensurePayloadShape,
@@ -461,14 +458,6 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
     if (data?.signedUrl) signed[String(f.id)] = data.signedUrl;
   }
 
-  /* ======================
-     LATEST SNAPSHOT FOR HES PARSE CARD
-  ====================== */
-  const { data: snapshot } = await admin
-  .from("admin_job_snapshots")
-  .select("id, generated_at, status, output_data")
-
-
   return (
     <div className="space-y-6">
       <ConsoleHeader
@@ -493,8 +482,6 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
       />
 
       <FilesCard files={files} signed={signed} />
-
-      <UpgradeCardsCard jobId={jobId} />
 
       <NotesCard adminNotes={adminNotes} saveAdminNotes={saveAdminNotes} />
       <TimelineCard events={events} addEventAction={addTimelineEvent} />
