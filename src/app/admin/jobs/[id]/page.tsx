@@ -84,7 +84,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
       .eq("id", jobId);
     if (e2) throw e2;
 
-    revalidatePath("/admin/jobs");
+    revalidatePath("/admin/schedule");
     revalidatePath(`/admin/jobs/${jobId}`);
     redirect(`/admin/jobs/${jobId}`);
   }
@@ -274,7 +274,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
       .eq("id", jobId);
     if (e2) throw e2;
 
-    revalidatePath("/admin/jobs");
+    revalidatePath("/admin/schedule");
     revalidatePath(`/admin/jobs/${jobId}`);
     redirect(`/admin/jobs/${jobId}`);
   }
@@ -312,7 +312,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
       .eq("id", jobId);
     if (e2) throw e2;
 
-    revalidatePath("/admin/jobs");
+    revalidatePath("/admin/schedule");
     revalidatePath(`/admin/jobs/${jobId}`);
     redirect(`/admin/jobs/${jobId}`);
   }
@@ -334,7 +334,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
         <div style={{ fontWeight: 950, fontSize: 18 }}>Job not found</div>
         <div style={{ marginTop: 10 }}>
           <Link
-            href="/admin/jobs"
+            href="/admin/schedule"
             className="admin-btn"
             style={{ textDecoration: "none", borderRadius: 999 }}
           >
@@ -351,7 +351,7 @@ export default async function AdminJobDetailPage({ params }: PageProps) {
         <div style={{ fontWeight: 950, fontSize: 18 }}>Broker jobs only (for now)</div>
         <div style={{ marginTop: 10 }}>
           <Link
-            href="/admin/jobs"
+            href="/admin/schedule"
             className="admin-btn"
             style={{ textDecoration: "none", borderRadius: 999 }}
           >

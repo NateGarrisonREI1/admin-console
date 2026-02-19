@@ -34,7 +34,7 @@ export default function IntakeClient() {
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Link
-            href="/admin/jobs"
+            href="/admin/schedule"
             style={{
               padding: "10px 14px",
               borderRadius: 12,
@@ -45,7 +45,7 @@ export default function IntakeClient() {
               color: "#111827",
             }}
           >
-            Go to Jobs
+            Go to Schedule
           </Link>
 
           <Link

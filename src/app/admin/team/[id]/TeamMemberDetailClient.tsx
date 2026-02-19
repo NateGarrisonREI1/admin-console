@@ -1,7 +1,7 @@
 // src/app/admin/team/[id]/TeamMemberDetailClient.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeftIcon,
@@ -10,7 +10,7 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import type { TeamMemberDetail, UnifiedScheduleEntry, MemberType } from "../actions";
-import { updateTeamMember, setTimeOff, clearTimeOff } from "../actions";
+import { updateTeamMember, setTimeOff, clearTimeOff, disableTeamMember, deleteTeamMember } from "../actions";
 
 // ─── Design tokens ──────────────────────────────────────────────────
 const CARD = "#1e293b";
@@ -41,7 +41,10 @@ function isOnTimeOff(
 }
 
 function formatDate(iso: string): string {
-  return new Date(iso + "T12:00:00").toLocaleDateString("en-US", {
+  // Handle both date-only "2026-02-17" and full ISO "2026-02-17T05:00:00.000Z"
+  const d = iso.includes("T") ? new Date(iso) : new Date(iso + "T12:00:00");
+  if (Number.isNaN(d.getTime())) return "\u2014";
+  return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -281,6 +284,32 @@ const modalBtnPrimary: React.CSSProperties = {
   cursor: "pointer",
 };
 
+// ─── Toast ──────────────────────────────────────────────────────────
+
+function Toast({ message, onDone }: { message: string; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3000);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: 24,
+      right: 24,
+      zIndex: 100,
+      padding: "12px 20px",
+      borderRadius: 10,
+      background: EMERALD,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 13,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+    }}>
+      {message}
+    </div>
+  );
+}
+
 // ─── Status color for jobs ──────────────────────────────────────────
 
 const jobStatusColors: Record<string, string> = {
@@ -298,10 +327,14 @@ function EditProfileModal({
   member,
   onClose,
   onSaved,
+  onDisable,
+  onDelete,
 }: {
   member: TeamMemberDetail["member"];
   onClose: () => void;
   onSaved: () => void;
+  onDisable: () => void;
+  onDelete: () => void;
 }) {
   const [name, setName] = useState(member.name);
   const [email, setEmail] = useState(member.email ?? "");
@@ -310,6 +343,8 @@ function EditProfileModal({
   const [selectedCerts, setSelectedCerts] = useState<Set<string>>(new Set(member.certifications));
   const [selectedAreas, setSelectedAreas] = useState<Set<string>>(new Set(member.service_areas));
   const [saving, setSaving] = useState(false);
+  const [confirmDisable, setConfirmDisable] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   function toggleCert(val: string) {
     setSelectedCerts((prev) => {
@@ -392,6 +427,86 @@ function EditProfileModal({
             {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>
+
+        {/* Danger zone */}
+        <div style={{ height: 1, background: BORDER, margin: "20px 0 16px" }} />
+
+        {!confirmDisable && !confirmDelete && (
+          <div style={{ display: "flex", gap: 10 }}>
+            {member.status === "active" && (
+              <button
+                type="button"
+                onClick={() => setConfirmDisable(true)}
+                style={{
+                  flex: 1,
+                  padding: "9px 16px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(245,158,11,0.35)",
+                  background: "rgba(245,158,11,0.08)",
+                  color: "#f59e0b",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Disable Member
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              style={{
+                flex: 1,
+                padding: "9px 16px",
+                borderRadius: 8,
+                border: "1px solid rgba(239,68,68,0.35)",
+                background: "rgba(239,68,68,0.08)",
+                color: "#f87171",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Delete Member
+            </button>
+          </div>
+        )}
+
+        {confirmDisable && (
+          <div style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.30)", background: "rgba(245,158,11,0.06)" }}>
+            <div style={{ fontSize: 13, color: TEXT_SEC, marginBottom: 10 }}>
+              Disable <strong>{member.name}</strong>? They will no longer appear as available.
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setConfirmDisable(false)} style={modalBtnCancel}>Cancel</button>
+              <button
+                type="button"
+                onClick={onDisable}
+                style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                Confirm Disable
+              </button>
+            </div>
+          </div>
+        )}
+
+        {confirmDelete && (
+          <div style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.06)" }}>
+            <div style={{ fontSize: 13, color: TEXT_SEC, marginBottom: 10 }}>
+              Are you sure you want to remove <strong>{member.name}</strong>? This will also delete their schedule history. This cannot be undone.
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button type="button" onClick={() => setConfirmDelete(false)} style={modalBtnCancel}>Cancel</button>
+              <button
+                type="button"
+                onClick={onDelete}
+                style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </ModalOverlay>
   );
@@ -552,17 +667,44 @@ export default function TeamMemberDetailClient({ data }: Props) {
   const [showEdit, setShowEdit] = useState(false);
   const [showTimeOff, setShowTimeOff] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [actionSaving, setActionSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const today = todayStr();
   const onTimeOffNow = isOnTimeOff(member.time_off, today);
 
   const typeBadge =
     member.type === "hes"
-      ? { label: "HES Assessor", bg: "rgba(56,189,248,0.15)", color: "#38bdf8" }
-      : { label: "Home Inspector", bg: "rgba(251,191,36,0.15)", color: "#fbbf24" };
+      ? { label: "HES Assessor", bg: "rgba(16,185,129,0.15)", color: "#10b981" }
+      : { label: "Home Inspector", bg: "rgba(245,158,11,0.15)", color: "#f59e0b" };
 
   function handleRefresh() {
     router.refresh();
+  }
+
+  async function handleDisable() {
+    setActionSaving(true);
+    try {
+      await disableTeamMember(member.id, member.type);
+      setToast(`${member.name} has been disabled.`);
+      handleRefresh();
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to disable team member.");
+    } finally {
+      setActionSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    setActionSaving(true);
+    try {
+      await deleteTeamMember(member.id, member.type);
+      setToast(`${member.name} has been removed.`);
+      router.push("/admin/team");
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to delete team member.");
+      setActionSaving(false);
+    }
   }
 
   // Mini week schedule — build day labels for current week
@@ -914,8 +1056,8 @@ export default function TeamMemberDetailClient({ data }: Props) {
                           style={{
                             fontSize: 10,
                             fontWeight: 600,
-                            color: j.type === "hes" ? "#38bdf8" : "#fbbf24",
-                            background: j.type === "hes" ? "rgba(56,189,248,0.1)" : "rgba(251,191,36,0.1)",
+                            color: j.type === "hes" ? "#10b981" : "#f59e0b",
+                            background: j.type === "hes" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)",
                             padding: "2px 8px",
                             borderRadius: 6,
                             whiteSpace: "nowrap",
@@ -946,6 +1088,8 @@ export default function TeamMemberDetailClient({ data }: Props) {
           member={member}
           onClose={() => setShowEdit(false)}
           onSaved={() => { setShowEdit(false); handleRefresh(); }}
+          onDisable={async () => { setShowEdit(false); await handleDisable(); }}
+          onDelete={async () => { setShowEdit(false); await handleDelete(); }}
         />
       )}
       {showTimeOff && (
@@ -956,6 +1100,7 @@ export default function TeamMemberDetailClient({ data }: Props) {
           onSaved={() => { setShowTimeOff(false); handleRefresh(); }}
         />
       )}
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
   );
 }

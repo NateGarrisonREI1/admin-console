@@ -1,8 +1,8 @@
 // src/app/admin/team/[id]/page.tsx
 export const dynamic = "force-dynamic";
 
-import { fetchTeamMemberDetail } from "../actions";
-import type { MemberType } from "../actions";
+import { fetchTeamMemberDetail } from "../data";
+import type { MemberType } from "../data";
 import TeamMemberDetailClient from "./TeamMemberDetailClient";
 
 type Props = {

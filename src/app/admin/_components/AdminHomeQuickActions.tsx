@@ -31,7 +31,7 @@ export default function AdminHomeQuickActions() {
         }}
       >
         <Action href="/admin/intake" title="Create intake" desc="Start a new job/intake flow." />
-        <Action href="/admin/jobs" title="View projects" desc="See active jobs and statuses." />
+        <Action href="/admin/schedule" title="View schedule" desc="See upcoming jobs and statuses." />
         <Action href="/admin/contractor-leads" title="Open job board" desc="Manage open & sold leads." />
         <Action href="/admin/schedule" title="Inspection scheduler" desc="Manage calendar + appointments." />
       </div>

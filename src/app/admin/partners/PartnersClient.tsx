@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import type { CSSProperties } from "react";
-import type { PartnerContractor, PartnerDispatch } from "@/types/admin-ops";
-import { addPartner, updatePartner, markDispatchPaid } from "./actions";
+import type { PartnerContractor, PartnerDispatch, PartnerType } from "@/types/admin-ops";
+import { addPartner, updatePartner, deletePartner, markDispatchPaid } from "./actions";
 import { useRouter } from "next/navigation";
 
 // ─── Style constants ────────────────────────────────────────────────────────
@@ -114,6 +114,40 @@ function dispatchStatusTone(status: string): { bg: string; bd: string; tx: strin
   }
 }
 
+// ─── Partner type helpers ──────────────────────────────────────────────
+
+const PARTNER_TYPE_CONFIG: Record<PartnerType, { label: string; color: string; bg: string; bd: string }> = {
+  contractor: { label: "Contractor", color: "#fbbf24", bg: "rgba(251,191,36,0.12)", bd: "rgba(251,191,36,0.30)" },
+  hes_assessor: { label: "HES Assessor", color: "#10b981", bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.30)" },
+  home_inspector: { label: "Inspector", color: "#f59e0b", bg: "rgba(245,158,11,0.12)", bd: "rgba(245,158,11,0.30)" },
+};
+
+const PARTNER_TYPES: PartnerType[] = ["contractor", "hes_assessor", "home_inspector"];
+
+function partnerTypeLabel(type: PartnerType): string {
+  return PARTNER_TYPE_CONFIG[type]?.label ?? "Contractor";
+}
+
+function PartnerTypeBadge({ type }: { type: PartnerType }) {
+  const cfg = PARTNER_TYPE_CONFIG[type] ?? PARTNER_TYPE_CONFIG.contractor;
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      padding: "3px 10px",
+      borderRadius: 999,
+      border: `1px solid ${cfg.bd}`,
+      background: cfg.bg,
+      color: cfg.color,
+      fontSize: 11,
+      fontWeight: 700,
+      whiteSpace: "nowrap",
+    }}>
+      {cfg.label}
+    </span>
+  );
+}
+
 function Badge({ label, tone }: { label: string; tone: { bg: string; bd: string; tx: string } }) {
   return (
     <span style={{
@@ -134,28 +168,11 @@ function Badge({ label, tone }: { label: string; tone: { bg: string; bd: string;
   );
 }
 
-function AreaChip({ area }: { area: string }) {
-  return (
-    <span style={{
-      padding: "2px 8px",
-      borderRadius: 999,
-      border: `1px solid ${BORDER}`,
-      background: "rgba(51,65,85,0.4)",
-      color: TEXT_MUTED,
-      fontSize: 11,
-      fontWeight: 600,
-      whiteSpace: "nowrap",
-    }}>
-      {area}
-    </span>
-  );
-}
-
 function StarRating({ rating }: { rating: number }) {
   const stars = Math.round(rating);
   return (
     <span style={{ color: "#fbbf24", fontSize: 13, letterSpacing: 1 }}>
-      {Array.from({ length: 5 }, (_, i) => (i < stars ? "★" : "☆")).join("")}
+      {Array.from({ length: 5 }, (_, i) => (i < stars ? "\u2605" : "\u2606")).join("")}
       <span style={{ color: TEXT_DIM, fontSize: 11, marginLeft: 4 }}>({rating.toFixed(1)})</span>
     </span>
   );
@@ -172,42 +189,105 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// ─── Service type groups ─────────────────────────────────────────────────────
+// ─── Toast ─────────────────────────────────────────────────────────────
 
-const SERVICE_TYPES = ["HVAC", "Solar", "Electrical", "Plumbing", "Insulation", "General"];
-const SERVICE_AREAS = ["Portland Metro", "Salem", "Eugene", "Bend", "Medford", "Corvallis"];
+function Toast({ message, onDone }: { message: string; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3000);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: 24,
+      right: 24,
+      zIndex: 100,
+      padding: "12px 20px",
+      borderRadius: 10,
+      background: EMERALD,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 13,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+    }}>
+      {message}
+    </div>
+  );
+}
 
-function groupByServiceType(partners: PartnerContractor[]): Record<string, PartnerContractor[]> {
-  const groups: Record<string, PartnerContractor[]> = {};
-  for (const p of partners) {
-    const types = p.service_types && p.service_types.length > 0 ? p.service_types : ["General"];
-    for (const t of types) {
-      if (!groups[t]) groups[t] = [];
-      // Avoid duplicates if partner has multiple types
-      if (!groups[t].find((x) => x.id === p.id)) groups[t].push(p);
-    }
-  }
-  return groups;
+// ─── Confirm Delete Modal ─────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  partnerName,
+  onConfirm,
+  onCancel,
+  isPending,
+}: {
+  partnerName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.60)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 0" }}>
+      <div style={{ background: BG_BASE, border: `1px solid ${BORDER}`, borderRadius: 12, width: "100%", maxWidth: 400, padding: 24, display: "flex", flexDirection: "column", gap: 16, margin: "auto" }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: TEXT_PRIMARY }}>Remove Partner</div>
+        <div style={{ fontSize: 14, color: TEXT_SECONDARY, lineHeight: 1.5 }}>
+          Are you sure you want to remove <strong>{partnerName}</strong>? This will also delete their dispatch history. This action cannot be undone.
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button type="button" onClick={onCancel} style={btnSecondary} disabled={isPending}>Cancel</button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            style={{
+              flex: 1,
+              padding: "12px 12px",
+              borderRadius: 10,
+              border: "1px solid rgba(239,68,68,0.30)",
+              background: "rgba(239,68,68,0.12)",
+              color: "#f87171",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: isPending ? "not-allowed" : "pointer",
+              opacity: isPending ? 0.5 : 1,
+            }}
+          >
+            {isPending ? "Removing\u2026" : "Remove Partner"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Add Partner Modal ───────────────────────────────────────────────────────
 
+const TRADE_OPTIONS = ["HVAC", "Water Heater", "Solar", "Electrical", "Plumbing", "General Handyman", "Insulation"];
+
 function AddPartnerModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [isPending, startTransition] = useTransition();
+  const [partnerType, setPartnerType] = useState<PartnerType>("contractor");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [company, setCompany] = useState("");
   const [license, setLicense] = useState("");
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
-  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
+  const [selectedTrades, setSelectedTrades] = useState<Set<string>>(new Set());
 
-  function toggleType(t: string) {
-    setSelectedTypes((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
+  function toggleTrade(trade: string) {
+    setSelectedTrades((prev) => {
+      const next = new Set(prev);
+      if (next.has(trade)) next.delete(trade); else next.add(trade);
+      return next;
+    });
   }
-  function toggleArea(a: string) {
-    setSelectedAreas((prev) => prev.includes(a) ? prev.filter((x) => x !== a) : [...prev, a]);
-  }
+
+  const btnLabel =
+    partnerType === "contractor" ? "Add Contractor"
+    : partnerType === "hes_assessor" ? "Add HES Assessor"
+    : "Add Inspector";
 
   function handleAdd() {
     if (!name.trim()) { alert("Partner name is required."); return; }
@@ -219,8 +299,8 @@ function AddPartnerModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
           phone: phone.trim() || undefined,
           company_name: company.trim() || undefined,
           license_number: license.trim() || undefined,
-          service_types: selectedTypes,
-          service_areas: selectedAreas,
+          partner_type: partnerType,
+          service_types: partnerType === "contractor" ? Array.from(selectedTrades) : undefined,
         });
         onAdded();
       } catch (e: any) {
@@ -233,6 +313,37 @@ function AddPartnerModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.60)", display: "flex", alignItems: "center", justifyContent: "center", overflowY: "auto", padding: "20px 0" }}>
       <div style={{ background: BG_BASE, border: `1px solid ${BORDER}`, borderRadius: 12, width: "100%", maxWidth: 500, padding: 24, display: "flex", flexDirection: "column", gap: 16, margin: "auto" }}>
         <div style={{ fontSize: 17, fontWeight: 800, color: TEXT_PRIMARY }}>Add Partner</div>
+
+        {/* Partner Type selector */}
+        <Field label="Partner Type">
+          <div style={{ display: "flex", gap: 8 }}>
+            {PARTNER_TYPES.map((pt) => {
+              const cfg = PARTNER_TYPE_CONFIG[pt];
+              const active = partnerType === pt;
+              return (
+                <button
+                  key={pt}
+                  type="button"
+                  onClick={() => setPartnerType(pt)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: `1.5px solid ${active ? cfg.color : "#475569"}`,
+                    background: active ? cfg.bg : "transparent",
+                    cursor: "pointer",
+                    textAlign: "center",
+                    transition: "all 0.12s",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700, color: active ? cfg.color : TEXT_SECONDARY }}>{cfg.label}</div>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
+        <div style={{ height: 1, background: BORDER }} />
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Field label="Name *">
@@ -256,54 +367,40 @@ function AddPartnerModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
           <input value={license} onChange={(e) => setLicense(e.target.value)} placeholder="CCB-000000" className="admin-input" style={inputStyle} />
         </Field>
 
-        <Field label="Service Types">
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {SERVICE_TYPES.map((t) => {
-              const active = selectedTypes.includes(t);
-              return (
-                <button key={t} type="button" onClick={() => toggleType(t)} style={{
-                  padding: "6px 14px",
-                  borderRadius: 999,
-                  border: `1px solid ${active ? "rgba(16,185,129,0.40)" : BORDER}`,
-                  background: active ? "rgba(16,185,129,0.12)" : BG_SURFACE,
-                  color: active ? EMERALD : TEXT_MUTED,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: "pointer",
-                }}>
-                  {t}
-                </button>
-              );
-            })}
-          </div>
-        </Field>
-
-        <Field label="Service Areas">
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {SERVICE_AREAS.map((a) => {
-              const active = selectedAreas.includes(a);
-              return (
-                <button key={a} type="button" onClick={() => toggleArea(a)} style={{
-                  padding: "6px 14px",
-                  borderRadius: 999,
-                  border: `1px solid ${active ? "rgba(99,102,241,0.40)" : BORDER}`,
-                  background: active ? "rgba(99,102,241,0.12)" : BG_SURFACE,
-                  color: active ? "#818cf8" : TEXT_MUTED,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: "pointer",
-                }}>
-                  {a}
-                </button>
-              );
-            })}
-          </div>
-        </Field>
+        {partnerType === "contractor" && (
+          <Field label="Trade / Specialty">
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {TRADE_OPTIONS.map((trade) => {
+                const active = selectedTrades.has(trade);
+                return (
+                  <button
+                    key={trade}
+                    type="button"
+                    onClick={() => toggleTrade(trade)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 999,
+                      border: `1px solid ${active ? "rgba(251,191,36,0.40)" : BORDER}`,
+                      background: active ? "rgba(251,191,36,0.12)" : BG_SURFACE,
+                      color: active ? "#fbbf24" : TEXT_MUTED,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      transition: "all 0.12s",
+                    }}
+                  >
+                    {trade}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        )}
 
         <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
           <button type="button" onClick={onClose} style={btnSecondary} disabled={isPending}>Cancel</button>
           <button type="button" onClick={handleAdd} style={{ ...btnPrimary, opacity: isPending ? 0.5 : 1 }} disabled={isPending}>
-            {isPending ? "Adding…" : "Add Partner"}
+            {isPending ? "Adding\u2026" : btnLabel}
           </button>
         </div>
       </div>
@@ -313,7 +410,15 @@ function AddPartnerModal({ onClose, onAdded }: { onClose: () => void; onAdded: (
 
 // ─── Partner Card ────────────────────────────────────────────────────────────
 
-function PartnerCard({ partner, onDisable }: { partner: PartnerContractor; onDisable: (p: PartnerContractor) => void }) {
+function PartnerCard({
+  partner,
+  onDisable,
+  onDelete,
+}: {
+  partner: PartnerContractor;
+  onDisable: (p: PartnerContractor) => void;
+  onDelete: (p: PartnerContractor) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -327,8 +432,9 @@ function PartnerCard({ partner, onDisable }: { partner: PartnerContractor; onDis
         {/* Top row */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontWeight: 800, fontSize: 15, color: TEXT_PRIMARY }}>{partner.name}</span>
+              <PartnerTypeBadge type={partner.partner_type ?? "contractor"} />
               <Badge label={partner.status} tone={statusTone(partner.status)} />
             </div>
             {partner.company_name && (
@@ -358,15 +464,16 @@ function PartnerCard({ partner, onDisable }: { partner: PartnerContractor; onDis
                 Disable
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => onDelete(partner)}
+              title="Delete partner"
+              style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "inline-flex", alignItems: "center" }}
+            >
+              {"\u2715"}
+            </button>
           </div>
         </div>
-
-        {/* Service areas */}
-        {(partner.service_areas ?? []).length > 0 && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-            {(partner.service_areas ?? []).map((a) => <AreaChip key={a} area={a} />)}
-          </div>
-        )}
 
         {/* Stats */}
         <div style={{ display: "flex", gap: 20, marginTop: 12, flexWrap: "wrap" }}>
@@ -380,7 +487,7 @@ function PartnerCard({ partner, onDisable }: { partner: PartnerContractor; onDis
           </div>
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: TEXT_PRIMARY }}>
-              {partner.avg_response_hours != null ? `${partner.avg_response_hours}h` : "—"}
+              {partner.avg_response_hours != null ? `${partner.avg_response_hours}h` : "\u2014"}
             </div>
             <div style={{ fontSize: 10, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: 0.4 }}>Avg Response</div>
           </div>
@@ -395,12 +502,12 @@ function PartnerCard({ partner, onDisable }: { partner: PartnerContractor; onDis
         <div style={{ borderTop: `1px solid ${BORDER}`, padding: "14px 16px", background: "rgba(15,23,42,0.6)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Contact</div>
-            <div style={{ fontSize: 13, color: TEXT_SECONDARY }}>{partner.email || "—"}</div>
-            <div style={{ fontSize: 13, color: TEXT_SECONDARY }}>{partner.phone || "—"}</div>
+            <div style={{ fontSize: 13, color: TEXT_SECONDARY }}>{partner.email || "\u2014"}</div>
+            <div style={{ fontSize: 13, color: TEXT_SECONDARY }}>{partner.phone || "\u2014"}</div>
           </div>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>License</div>
-            <div style={{ fontSize: 13, color: TEXT_SECONDARY }}>{partner.license_number || "—"}</div>
+            <div style={{ fontSize: 13, color: TEXT_SECONDARY }}>{partner.license_number || "\u2014"}</div>
           </div>
           {partner.notes && (
             <div style={{ gridColumn: "1 / -1" }}>
@@ -417,24 +524,28 @@ function PartnerCard({ partner, onDisable }: { partner: PartnerContractor; onDis
 // ─── Main Client Component ───────────────────────────────────────────────────
 
 type DispatchStatusFilter = "all" | "pending" | "accepted" | "in_progress" | "completed" | "cancelled";
+type PartnerTypeFilter = "all" | PartnerType;
 
 export default function PartnersClient({
   partners,
   dispatches,
+  embedded = false,
 }: {
   partners: PartnerContractor[];
   dispatches: PartnerDispatch[];
+  embedded?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [showAddPartner, setShowAddPartner] = useState(false);
   const [dispatchFilter, setDispatchFilter] = useState<DispatchStatusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<PartnerTypeFilter>("all");
+  const [deleteTarget, setDeleteTarget] = useState<PartnerContractor | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const grouped = groupByServiceType(partners);
-  const groupKeys = SERVICE_TYPES.filter((t) => grouped[t] && grouped[t].length > 0);
-  if (grouped["General"] && grouped["General"].length > 0 && !groupKeys.includes("General")) {
-    groupKeys.push("General");
-  }
+  const filteredPartners = typeFilter === "all"
+    ? partners
+    : partners.filter((p) => (p.partner_type ?? "contractor") === typeFilter);
 
   const filteredDispatches =
     dispatchFilter === "all"
@@ -450,7 +561,6 @@ export default function PartnersClient({
       .filter((d) => d.payment_status === "paid")
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
 
-    // Determine overall payment status
     const unpaid = partnerDispatches.filter((d) => d.payment_status === "unpaid" || d.payment_status === "pending").length;
     const invoiced = partnerDispatches.filter((d) => d.payment_status === "invoiced").length;
     const payStatus = unpaid > 0 ? "unpaid" : invoiced > 0 ? "invoiced" : "paid";
@@ -471,6 +581,25 @@ export default function PartnersClient({
     });
   }
 
+  function handleDelete(partner: PartnerContractor) {
+    setDeleteTarget(partner);
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    const name = deleteTarget.name;
+    startTransition(async () => {
+      try {
+        await deletePartner(deleteTarget.id);
+        setDeleteTarget(null);
+        setToast(`${name} has been removed.`);
+        router.refresh();
+      } catch (e: any) {
+        alert(e?.message ?? "Failed to delete partner.");
+      }
+    });
+  }
+
   function handleMarkPaid(dispatchId: string) {
     startTransition(async () => {
       try {
@@ -487,57 +616,100 @@ export default function PartnersClient({
     setShowAddPartner(false);
   }
 
+  // Count by type
+  const typeCounts: Record<string, number> = { all: partners.length };
+  for (const pt of PARTNER_TYPES) {
+    typeCounts[pt] = partners.filter((p) => (p.partner_type ?? "contractor") === pt).length;
+  }
+
+  const TYPE_FILTER_TABS: { key: PartnerTypeFilter; label: string }[] = [
+    { key: "all", label: "All" },
+    ...PARTNER_TYPES.map((pt) => ({ key: pt as PartnerTypeFilter, label: partnerTypeLabel(pt) })),
+  ];
+
   const DISPATCH_STATUS_TABS: DispatchStatusFilter[] = ["all", "pending", "accepted", "in_progress", "completed", "cancelled"];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: TEXT_PRIMARY, letterSpacing: -0.3 }}>Partner Contractor Network</h1>
-          <div style={{ fontSize: 13, color: TEXT_MUTED, marginTop: 4 }}>
+      {!embedded && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 800, color: TEXT_PRIMARY, letterSpacing: -0.3 }}>Partner Network</h1>
+            <div style={{ fontSize: 13, color: TEXT_MUTED, marginTop: 4 }}>
+              {partners.length} partners &bull; {partners.filter((p) => p.status === "active").length} active
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddPartner(true)}
+            className="admin-btn-primary"
+            style={{ padding: "10px 18px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.30)", background: "rgba(16,185,129,0.12)", color: EMERALD, fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+          >
+            + Add Partner
+          </button>
+        </div>
+      )}
+      {embedded && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ fontSize: 13, color: TEXT_MUTED }}>
             {partners.length} partners &bull; {partners.filter((p) => p.status === "active").length} active
           </div>
+          <button
+            type="button"
+            onClick={() => setShowAddPartner(true)}
+            style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: EMERALD, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+          >
+            + Add Partner
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAddPartner(true)}
-          className="admin-btn-primary"
-          style={{ padding: "10px 18px", borderRadius: 10, border: "1px solid rgba(16,185,129,0.30)", background: "rgba(16,185,129,0.12)", color: EMERALD, fontWeight: 700, fontSize: 14, cursor: "pointer" }}
-        >
-          + Add Partner
-        </button>
+      )}
+
+      {/* Type filter tabs */}
+      <div style={{ display: "flex", gap: 0, background: BG_SURFACE, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
+        {TYPE_FILTER_TABS.map((tab, idx, arr) => {
+          const active = typeFilter === tab.key;
+          const count = typeCounts[tab.key] ?? 0;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setTypeFilter(tab.key)}
+              style={{
+                padding: "7px 14px",
+                border: "none",
+                borderRight: idx < arr.length - 1 ? `1px solid ${BORDER}` : "none",
+                background: active ? "rgba(16,185,129,0.1)" : "transparent",
+                color: active ? EMERALD : TEXT_MUTED,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                transition: "all 0.12s",
+              }}
+            >
+              {tab.label}
+              <span style={{ marginLeft: 5, padding: "1px 6px", borderRadius: 9999, fontSize: 10, fontWeight: 700, background: active ? "rgba(16,185,129,0.15)" : "rgba(148,163,184,0.08)", color: active ? EMERALD : TEXT_DIM }}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Partners by Service Type */}
-      {partners.length === 0 ? (
+      {/* Partner Cards */}
+      {filteredPartners.length === 0 ? (
         <div style={{ padding: 40, textAlign: "center", color: TEXT_DIM, fontSize: 14, border: `1px dashed ${BORDER}`, borderRadius: 12 }}>
-          No partners yet. Add your first partner to get started.
+          No partners found. Add your first partner to get started.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {groupKeys.map((serviceType) => (
-            <div key={serviceType}>
-              {/* Group header */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: 1 }}>
-                  {serviceType} Partners
-                </div>
-                <div style={{ flex: 1, height: 1, background: BORDER }} />
-                <span style={{ fontSize: 11, color: TEXT_DIM }}>
-                  {grouped[serviceType]?.length ?? 0}
-                </span>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 12 }}>
-                {(grouped[serviceType] ?? []).map((partner) => (
-                  <PartnerCard
-                    key={partner.id}
-                    partner={partner}
-                    onDisable={handleDisable}
-                  />
-                ))}
-              </div>
-            </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 12 }}>
+          {filteredPartners.map((partner) => (
+            <PartnerCard
+              key={partner.id}
+              partner={partner}
+              onDisable={handleDisable}
+              onDelete={handleDelete}
+            />
           ))}
         </div>
       )}
@@ -597,7 +769,7 @@ export default function PartnersClient({
                 <Badge label={row.payStatus} tone={paymentTone(row.payStatus)} />
               </div>
               <div style={{ fontSize: 13, color: TEXT_SECONDARY }}>
-                {row.lastPaid ? fmtDate(row.lastPaid.updated_at) : "—"}
+                {row.lastPaid ? fmtDate(row.lastPaid.updated_at) : "\u2014"}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 {row.payStatus !== "paid" && (
@@ -605,7 +777,6 @@ export default function PartnersClient({
                     type="button"
                     disabled={isPending}
                     onClick={() => {
-                      // Mark all unpaid dispatches for this partner as paid
                       const unpaid = dispatches.filter((d) => d.partner_id === row.partner.id && d.payment_status !== "paid");
                       for (const d of unpaid) handleMarkPaid(d.id);
                     }}
@@ -618,7 +789,7 @@ export default function PartnersClient({
                   type="button"
                   onClick={() => {
                     const partnerDispatches = dispatches.filter((d) => d.partner_id === row.partner.id);
-                    alert(`${row.partner.name} — ${partnerDispatches.length} dispatches total.\n\nPaid: ${partnerDispatches.filter((d) => d.payment_status === "paid").length}\nUnpaid: ${partnerDispatches.filter((d) => d.payment_status !== "paid").length}`);
+                    alert(`${row.partner.name} \u2014 ${partnerDispatches.length} dispatches total.\n\nPaid: ${partnerDispatches.filter((d) => d.payment_status === "paid").length}\nUnpaid: ${partnerDispatches.filter((d) => d.payment_status !== "paid").length}`);
                   }}
                   style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "transparent", color: TEXT_SECONDARY, fontWeight: 700, fontSize: 12, cursor: "pointer" }}
                 >
@@ -690,8 +861,8 @@ export default function PartnersClient({
           filteredDispatches.map((dispatch) => {
             const pt = paymentTone(dispatch.payment_status);
             const dt = dispatchStatusTone(dispatch.status);
-            const leadName = dispatch.direct_lead?.customer_name ?? dispatch.direct_lead_id?.slice(0, 8) ?? "—";
-            const partnerName = dispatch.partner?.name ?? dispatch.partner_id?.slice(0, 8) ?? "—";
+            const leadName = dispatch.direct_lead?.customer_name ?? dispatch.direct_lead_id?.slice(0, 8) ?? "\u2014";
+            const partnerName = dispatch.partner?.name ?? dispatch.partner_id?.slice(0, 8) ?? "\u2014";
             return (
               <div
                 key={dispatch.id}
@@ -725,6 +896,19 @@ export default function PartnersClient({
           onAdded={handleRefresh}
         />
       )}
+
+      {/* Confirm Delete Modal */}
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          partnerName={deleteTarget.name}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+          isPending={isPending}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
   );
 }

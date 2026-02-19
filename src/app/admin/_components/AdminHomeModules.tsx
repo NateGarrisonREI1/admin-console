@@ -30,10 +30,10 @@ export default function AdminHomeModules() {
         />
 
         <Card
-          title="Projects"
-          desc="Manage jobs, snapshots, and workflow statuses."
+          title="Schedule"
+          desc="Manage upcoming assessments, inspections, and service requests."
           meta="LIVE"
-          href="/admin/jobs"
+          href="/admin/schedule"
           tone="live"
         />
 

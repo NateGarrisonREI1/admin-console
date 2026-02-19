@@ -219,7 +219,7 @@ export default function ConsoleHeader(props: {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <Link
-                  href="/admin/jobs"
+                  href="/admin/schedule"
                   className="admin-btn-secondary"
                   style={{ textDecoration: 'none', padding: '8px 16px', borderRadius: 8, fontSize: 13 }}
                 >

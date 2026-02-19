@@ -301,6 +301,12 @@ export class AdminOpsService {
     return data as HesTeamMember;
   }
 
+  async deleteHesTeamMember(id: string): Promise<void> {
+    await supabaseAdmin.from("hes_schedule").delete().eq("team_member_id", id);
+    const { error } = await supabaseAdmin.from("hes_team_members").delete().eq("id", id);
+    if (error) throw new InternalError(error.message);
+  }
+
   async getHesSchedule(startDate?: string, endDate?: string): Promise<HesScheduleEntry[]> {
     let query = supabaseAdmin
       .from("hes_schedule")
@@ -423,6 +429,12 @@ export class AdminOpsService {
       .single();
     if (error) throw new InternalError(error.message);
     return data as InspectorTeamMember;
+  }
+
+  async deleteInspectorTeamMember(id: string): Promise<void> {
+    await supabaseAdmin.from("inspector_schedule").delete().eq("team_member_id", id);
+    const { error } = await supabaseAdmin.from("inspector_team_members").delete().eq("id", id);
+    if (error) throw new InternalError(error.message);
   }
 
   async getInspectorSchedule(startDate?: string, endDate?: string): Promise<InspectorScheduleEntry[]> {
@@ -596,6 +608,7 @@ export class AdminOpsService {
     email?: string;
     phone?: string;
     company_name?: string;
+    partner_type?: string;
     service_types?: string[];
     service_areas?: string[];
     license_number?: string;
@@ -607,6 +620,7 @@ export class AdminOpsService {
         email: input.email?.trim() || null,
         phone: input.phone?.trim() || null,
         company_name: input.company_name?.trim() || null,
+        partner_type: input.partner_type ?? "contractor",
         service_types: input.service_types ?? [],
         service_areas: input.service_areas ?? [],
         license_number: input.license_number?.trim() || null,
@@ -615,6 +629,13 @@ export class AdminOpsService {
       .single();
     if (error) throw new InternalError(error.message);
     return data as PartnerContractor;
+  }
+
+  async deletePartnerContractor(id: string): Promise<void> {
+    // Delete associated dispatches first
+    await supabaseAdmin.from("partner_dispatch").delete().eq("partner_id", id);
+    const { error } = await supabaseAdmin.from("partner_contractors").delete().eq("id", id);
+    if (error) throw new InternalError(error.message);
   }
 
   async updatePartnerContractor(id: string, updates: Partial<PartnerContractor>): Promise<PartnerContractor> {

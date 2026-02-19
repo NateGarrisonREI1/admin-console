@@ -272,8 +272,8 @@ function DetailDrawer({ broker, onClose }: { broker: AdminBrokerSummary; onClose
           <Section title="Network Breakdown">
             <div style={{ display: "flex", gap: 8 }}>
               <DrawerNetworkCard count={broker.contractor_count} label="Contractors" color="#10b981" />
-              <DrawerNetworkCard count={broker.hes_assessor_count} label="HES Assessors" color="#60a5fa" />
-              <DrawerNetworkCard count={broker.inspector_count} label="Inspectors" color="#a78bfa" />
+              <DrawerNetworkCard count={broker.hes_assessor_count} label="HES Assessors" color="#10b981" />
+              <DrawerNetworkCard count={broker.inspector_count} label="Inspectors" color="#f59e0b" />
             </div>
             <DetailRow label="Total Network Size" value={String(totalNetwork)} />
           </Section>

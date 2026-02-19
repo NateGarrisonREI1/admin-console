@@ -134,7 +134,7 @@ export async function updateLeadAction(formData: FormData) {
 
   revalidatePath("/admin/contractor-leads");
   revalidatePath("/contractor/job-board");
-  revalidatePath("/admin/jobs");
+  revalidatePath("/admin/schedule");
 }
 
 export async function removeLeadAction(formData: FormData) {
@@ -167,5 +167,5 @@ export async function removeLeadAction(formData: FormData) {
 
   revalidatePath("/admin/contractor-leads");
   revalidatePath("/contractor/job-board");
-  revalidatePath("/admin/jobs");
+  revalidatePath("/admin/schedule");
 }

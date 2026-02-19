@@ -26,7 +26,7 @@ export default function AdminHomeAttention() {
     {
       title: "Jobs waiting on intake details",
       desc: "3 projects missing key fields (address / contact).",
-      href: "/admin/jobs",
+      href: "/admin/schedule",
       tone: "neutral",
     },
   ];

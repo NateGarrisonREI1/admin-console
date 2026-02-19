@@ -15,7 +15,7 @@ export default function DeleteJobInlineButton(props: {
     jobId,
     label = "Delete",
     compact = true,
-    redirectTo = "/admin/jobs",
+    redirectTo = "/admin/schedule",
     confirmText = "Delete this job? This cannot be undone.",
     className,
   } = props;

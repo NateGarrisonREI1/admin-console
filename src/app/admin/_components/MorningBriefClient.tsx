@@ -89,9 +89,9 @@ function TypeBadge({ type }: { type: "hes" | "inspection" }) {
   return (
     <span style={{
       padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700,
-      background: isHes ? "rgba(56,189,248,0.12)" : "rgba(251,191,36,0.12)",
-      color: isHes ? "#38bdf8" : "#fbbf24",
-      border: `1px solid ${isHes ? "rgba(56,189,248,0.25)" : "rgba(251,191,36,0.25)"}`,
+      background: isHes ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.12)",
+      color: isHes ? "#10b981" : "#f59e0b",
+      border: `1px solid ${isHes ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}`,
     }}>
       {isHes ? "HES" : "Inspection"}
     </span>

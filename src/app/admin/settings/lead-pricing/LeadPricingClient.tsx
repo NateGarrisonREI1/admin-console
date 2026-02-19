@@ -425,19 +425,21 @@ function AddTradeForm({ onSaved }: { onSaved: () => void }) {
 
 // ─── Main Client ────────────────────────────────────────────────────
 
-export default function LeadPricingClient({ config }: { config: LeadPricingConfig[] }) {
+export default function LeadPricingClient({ config, embedded }: { config: LeadPricingConfig[]; embedded?: boolean }) {
   const router = useRouter();
   const refresh = () => router.refresh();
 
   return (
-    <div style={{ padding: 28, maxWidth: 1100, margin: "0 auto" }}>
+    <div style={embedded ? { maxWidth: 1100 } : { padding: 28, maxWidth: 1100, margin: "0 auto" }}>
       {/* Header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>Lead Pricing</h1>
-        <p style={{ color: TEXT_DIM, fontSize: 13, margin: "4px 0 0" }}>
-          Set min/max price ranges for each trade type. Brokers and admins post leads within these guardrails.
-        </p>
-      </div>
+      {!embedded && (
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>Lead Pricing</h1>
+          <p style={{ color: TEXT_DIM, fontSize: 13, margin: "4px 0 0" }}>
+            Set min/max price ranges for each trade type. Brokers and admins post leads within these guardrails.
+          </p>
+        </div>
+      )}
 
       {/* Table Card */}
       <div

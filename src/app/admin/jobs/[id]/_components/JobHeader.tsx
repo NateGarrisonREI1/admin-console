@@ -111,7 +111,7 @@ export default function JobHeader({
       </div>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <Link href="/admin/jobs" className="admin-btn" style={{ textDecoration: "none" }}>
+        <Link href="/admin/schedule" className="admin-btn" style={{ textDecoration: "none" }}>
           Back
         </Link>
         <Link href="/admin/intake" className="admin-btn" style={{ textDecoration: "none" }}>
@@ -123,7 +123,7 @@ export default function JobHeader({
           jobId={jobId}
           label="Delete Job"
           compact={false}
-          redirectTo="/admin/jobs"
+          redirectTo="/admin/schedule"
         />
       </div>
     </div>

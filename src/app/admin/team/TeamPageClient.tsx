@@ -1,7 +1,7 @@
 // src/app/admin/team/TeamPageClient.tsx
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   EyeIcon,
@@ -11,11 +11,14 @@ import {
   MagnifyingGlassIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  TrashIcon,
 } from "@heroicons/react/20/solid";
 import type { TeamPageData, UnifiedTeamMember, UnifiedScheduleEntry, MemberType } from "./actions";
-import { addTeamMember, scheduleService, fetchScheduleWeek, fetchScheduleMonth } from "./actions";
+import { addTeamMember, scheduleService, fetchScheduleWeek, fetchScheduleMonth, deleteTeamMember } from "./actions";
 import type { ServiceCatalog, ServiceCatalogCategory } from "../_actions/services";
 import { fetchServiceCatalog } from "../_actions/services";
+import type { PartnerContractor, PartnerDispatch } from "@/types/admin-ops";
+import PartnersClient from "../partners/PartnersClient";
 
 // ─── Design tokens ──────────────────────────────────────────────────
 const CARD = "#1e293b";
@@ -27,10 +30,15 @@ const TEXT_MUTED = "#94a3b8";
 const EMERALD = "#10b981";
 const BG = "#0f172a";
 
-type FilterType = "all" | "hes" | "inspector";
+type FilterType = "all" | "hes" | "inspector" | "partners";
 type ScheduleView = "week" | "month";
 
-type Props = { data: TeamPageData };
+type Props = {
+  data: TeamPageData;
+  partners: PartnerContractor[];
+  dispatches: PartnerDispatch[];
+  initialTab?: string;
+};
 
 // ─── Cert/Area presets ──────────────────────────────────────────────
 const HES_CERTS = ["BPI", "DOE HES", "RESNET", "ENERGY STAR"];
@@ -165,6 +173,32 @@ function ActionBtn({
   );
 }
 
+// ─── Toast ──────────────────────────────────────────────────────────
+
+function ListToast({ message, onDone }: { message: string; onDone: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3000);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: 24,
+      right: 24,
+      zIndex: 100,
+      padding: "12px 20px",
+      borderRadius: 10,
+      background: EMERALD,
+      color: "#fff",
+      fontWeight: 700,
+      fontSize: 13,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+    }}>
+      {message}
+    </div>
+  );
+}
+
 // ─── Team Table ─────────────────────────────────────────────────────
 
 function TeamTable({
@@ -173,12 +207,14 @@ function TeamTable({
   onView,
   onSchedule,
   onTimeOff,
+  onDelete,
 }: {
   members: UnifiedTeamMember[];
   todayJobMap: Map<string, { count: number; assignment: string | null }>;
   onView: (m: UnifiedTeamMember) => void;
   onSchedule: () => void;
   onTimeOff: () => void;
+  onDelete: (m: UnifiedTeamMember) => void;
 }) {
   return (
     <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
@@ -230,8 +266,8 @@ function TeamTable({
                         borderRadius: 6,
                         fontSize: 11,
                         fontWeight: 700,
-                        background: member.type === "hes" ? "rgba(56,189,248,0.15)" : "rgba(251,191,36,0.15)",
-                        color: member.type === "hes" ? "#38bdf8" : "#fbbf24",
+                        background: member.type === "hes" ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
+                        color: member.type === "hes" ? "#10b981" : "#f59e0b",
                       }}
                     >
                       {member.type === "hes" ? "HES" : "Inspector"}
@@ -301,6 +337,9 @@ function TeamTable({
                       </ActionBtn>
                       <ActionBtn title="Mark time off" onClick={onTimeOff}>
                         <ClockIcon style={{ width: 14, height: 14 }} />
+                      </ActionBtn>
+                      <ActionBtn title="Delete member" onClick={() => onDelete(member)}>
+                        <TrashIcon style={{ width: 14, height: 14 }} />
                       </ActionBtn>
                     </div>
                   </td>
@@ -386,7 +425,7 @@ function ScheduleWeekView({
               <tr key={member.id} style={{ borderBottom: `1px solid rgba(51,65,85,0.5)` }}>
                 <td style={{ padding: "8px 12px", color: TEXT, fontWeight: 600, fontSize: 12, position: "sticky", left: 0, background: CARD, whiteSpace: "nowrap", zIndex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ padding: "1px 5px", borderRadius: 4, fontSize: 9, fontWeight: 700, color: member.type === "hes" ? "#38bdf8" : "#fbbf24", background: member.type === "hes" ? "rgba(56,189,248,0.1)" : "rgba(251,191,36,0.1)" }}>
+                    <span style={{ padding: "1px 5px", borderRadius: 4, fontSize: 9, fontWeight: 700, color: member.type === "hes" ? "#10b981" : "#f59e0b", background: member.type === "hes" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)" }}>
                       {member.type === "hes" ? "H" : "I"}
                     </span>
                     {member.name}
@@ -407,7 +446,7 @@ function ScheduleWeekView({
                           {jobs.map((j) => (
                             <span
                               key={j.id}
-                              style={{ padding: "2px 6px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: j.type === "hes" ? "rgba(56,189,248,0.1)" : "rgba(251,191,36,0.1)", color: j.type === "hes" ? "#38bdf8" : "#fbbf24", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                              style={{ padding: "2px 6px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: j.type === "hes" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)", color: j.type === "hes" ? "#10b981" : "#f59e0b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
                               title={`${j.customer_name} ${j.scheduled_time ?? ""}`}
                             >
                               {j.scheduled_time ? j.scheduled_time.slice(0, 5) : j.type === "hes" ? "HES" : "Insp"}
@@ -512,8 +551,8 @@ function ScheduleMonthView({
               <div style={{ fontSize: 11, fontWeight: 600, color: isToday ? EMERALD : TEXT_DIM, marginBottom: 3 }}>{day}</div>
               {counts ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {counts.hesCount > 0 && <div style={{ fontSize: 9, color: "#38bdf8", fontWeight: 600 }}>{counts.hesCount} HES</div>}
-                  {counts.inspCount > 0 && <div style={{ fontSize: 9, color: "#fbbf24", fontWeight: 600 }}>{counts.inspCount} Insp</div>}
+                  {counts.hesCount > 0 && <div style={{ fontSize: 9, color: "#10b981", fontWeight: 600 }}>{counts.hesCount} HES</div>}
+                  {counts.inspCount > 0 && <div style={{ fontSize: 9, color: "#f59e0b", fontWeight: 600 }}>{counts.inspCount} Insp</div>}
                 </div>
               ) : null}
             </div>
@@ -657,12 +696,16 @@ function TypeSelectorCard({
   description,
   selected,
   onClick,
+  accent = EMERALD,
+  accentBg = "rgba(16,185,129,0.08)",
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   selected: boolean;
   onClick: () => void;
+  accent?: string;
+  accentBg?: string;
 }) {
   return (
     <button
@@ -672,8 +715,8 @@ function TypeSelectorCard({
         flex: 1,
         padding: "14px 16px",
         borderRadius: 10,
-        border: `1.5px solid ${selected ? EMERALD : "#475569"}`,
-        background: selected ? "rgba(16,185,129,0.08)" : "transparent",
+        border: `1.5px solid ${selected ? accent : "#475569"}`,
+        background: selected ? accentBg : "transparent",
         cursor: "pointer",
         textAlign: "left",
         display: "flex",
@@ -682,7 +725,7 @@ function TypeSelectorCard({
         transition: "all 0.12s",
       }}
     >
-      <div style={{ color: selected ? EMERALD : TEXT_DIM, flexShrink: 0, marginTop: 2 }}>{icon}</div>
+      <div style={{ color: selected ? accent : TEXT_DIM, flexShrink: 0, marginTop: 2 }}>{icon}</div>
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: selected ? TEXT : TEXT_SEC }}>{title}</div>
         <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>{description}</div>
@@ -755,6 +798,8 @@ function AddTeamMemberModal({ onClose, onAdded }: { onClose: () => void; onAdded
             description="Home energy score evaluations"
             selected={memberType === "hes"}
             onClick={() => { setMemberType("hes"); setSelectedCerts(new Set()); }}
+            accent="#10b981"
+            accentBg="rgba(16,185,129,0.08)"
           />
           <TypeSelectorCard
             icon={<MagnifyingGlassIcon style={{ width: 20, height: 20 }} />}
@@ -762,6 +807,8 @@ function AddTeamMemberModal({ onClose, onAdded }: { onClose: () => void; onAdded
             description="Property condition inspections"
             selected={memberType === "inspector"}
             onClick={() => { setMemberType("inspector"); setSelectedCerts(new Set()); }}
+            accent="#f59e0b"
+            accentBg="rgba(245,158,11,0.08)"
           />
         </div>
 
@@ -965,6 +1012,8 @@ function ScheduleServiceModal({
             description="Home energy score evaluation"
             selected={serviceType === "hes"}
             onClick={() => handleTypeSwitch("hes")}
+            accent="#10b981"
+            accentBg="rgba(16,185,129,0.08)"
           />
           <TypeSelectorCard
             icon={<MagnifyingGlassIcon style={{ width: 20, height: 20 }} />}
@@ -972,6 +1021,8 @@ function ScheduleServiceModal({
             description="Property condition inspection"
             selected={serviceType === "inspector"}
             onClick={() => handleTypeSwitch("inspector")}
+            accent="#f59e0b"
+            accentBg="rgba(245,158,11,0.08)"
           />
         </div>
 
@@ -1151,9 +1202,11 @@ function ScheduleServiceModal({
 
 // ─── Main Component ─────────────────────────────────────────────────
 
-export default function TeamPageClient({ data }: Props) {
+export default function TeamPageClient({ data, partners, dispatches, initialTab }: Props) {
   const router = useRouter();
-  const [filter, setFilter] = useState<FilterType>("all");
+  const [filter, setFilter] = useState<FilterType>(
+    initialTab === "partners" ? "partners" : "all"
+  );
   const [scheduleView, setScheduleView] = useState<ScheduleView>("week");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1168,6 +1221,9 @@ export default function TeamPageClient({ data }: Props) {
   });
   const [monthData, setMonthData] = useState<{ date: string; hesCount: number; inspCount: number }[]>([]);
   const [monthLoaded, setMonthLoaded] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UnifiedTeamMember | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [listToast, setListToast] = useState<string | null>(null);
 
   const today = todayStr();
 
@@ -1219,33 +1275,55 @@ export default function TeamPageClient({ data }: Props) {
 
   function handleRefresh() { router.refresh(); }
 
+  async function handleDeleteMember() {
+    if (!deleteTarget) return;
+    const name = deleteTarget.name;
+    setDeleteLoading(true);
+    try {
+      await deleteTeamMember(deleteTarget.id, deleteTarget.type);
+      setDeleteTarget(null);
+      setListToast(`${name} has been removed.`);
+      handleRefresh();
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to delete team member.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: 0 }}>REI Team</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: 0 }}>Team</h1>
           <p style={{ fontSize: 13, color: TEXT_DIM, margin: "4px 0 0", fontWeight: 500 }}>
-            Manage your in-house HES assessors and home inspectors.
+            {filter === "partners"
+              ? "Manage your partner network."
+              : "Manage your in-house HES assessors and home inspectors."}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={openScheduleModal} style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "transparent", color: TEXT_MUTED, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-            + Schedule Service
-          </button>
-          <button type="button" onClick={() => setShowAddModal(true)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: EMERALD, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            + Add Team Member
-          </button>
-        </div>
+        {filter !== "partners" && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={openScheduleModal} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#7c3aed", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              + Schedule Service
+            </button>
+            <button type="button" onClick={() => setShowAddModal(true)} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: EMERALD, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              + Add Team Member
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Stats Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-        <KpiCard label="Total Members" value={data.stats.total} color={EMERALD} />
-        <KpiCard label="Available Today" value={data.stats.availableToday} color="#38bdf8" />
-        <KpiCard label="Scheduled Today" value={data.stats.scheduledToday} color="#fbbf24" />
-        <KpiCard label="This Week" value={data.stats.thisWeekTotal} color="#a78bfa" />
-      </div>
+      {/* Stats Row — hidden on Partners tab */}
+      {filter !== "partners" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+          <KpiCard label="Total Members" value={data.stats.total} color={EMERALD} />
+          <KpiCard label="Available Today" value={data.stats.availableToday} color="#10b981" />
+          <KpiCard label="Scheduled Today" value={data.stats.scheduledToday} color="#f59e0b" />
+          <KpiCard label="This Week" value={data.stats.thisWeekTotal} color="#a78bfa" />
+        </div>
+      )}
 
       {/* Filter Toggle */}
       <div style={{ display: "flex", gap: 0, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
@@ -1253,9 +1331,15 @@ export default function TeamPageClient({ data }: Props) {
           { key: "all" as FilterType, label: "All" },
           { key: "hes" as FilterType, label: "HES Assessors" },
           { key: "inspector" as FilterType, label: "Inspectors" },
-        ]).map((opt) => {
+          { key: "partners" as FilterType, label: "Partners" },
+        ]).map((opt, idx, arr) => {
           const active = filter === opt.key;
-          const count = opt.key === "all" ? data.members.length : data.members.filter((m) => m.type === opt.key).length;
+          const count =
+            opt.key === "all"
+              ? data.members.length
+              : opt.key === "partners"
+              ? partners.length
+              : data.members.filter((m) => m.type === opt.key).length;
           return (
             <button
               key={opt.key}
@@ -1264,7 +1348,7 @@ export default function TeamPageClient({ data }: Props) {
               style={{
                 padding: "7px 14px",
                 border: "none",
-                borderRight: opt.key !== "inspector" ? `1px solid ${BORDER}` : "none",
+                borderRight: idx < arr.length - 1 ? `1px solid ${BORDER}` : "none",
                 background: active ? "rgba(16,185,129,0.1)" : "transparent",
                 color: active ? EMERALD : TEXT_MUTED,
                 fontSize: 12,
@@ -1282,53 +1366,104 @@ export default function TeamPageClient({ data }: Props) {
         })}
       </div>
 
-      {/* Team Members Table */}
-      <TeamTable
-        members={filteredMembers}
-        todayJobMap={todayJobMap}
-        onView={(m) => router.push(`/admin/team/${m.id}?type=${m.type}`)}
-        onSchedule={openScheduleModal}
-        onTimeOff={() => setShowAddModal(false)} // placeholder — time off is per-member on detail page
-      />
+      {/* Partners Tab Content */}
+      {filter === "partners" ? (
+        <PartnersClient partners={partners} dispatches={dispatches} embedded />
+      ) : (
+        <>
+          {/* Team Members Table */}
+          <TeamTable
+            members={filteredMembers}
+            todayJobMap={todayJobMap}
+            onView={(m) => router.push(`/admin/team/${m.id}?type=${m.type}`)}
+            onSchedule={openScheduleModal}
+            onTimeOff={() => setShowAddModal(false)} // placeholder — time off is per-member on detail page
+            onDelete={(m) => setDeleteTarget(m)}
+          />
 
-      {/* Schedule Section */}
-      <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 18 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h2 style={{ fontSize: 15, fontWeight: 700, color: TEXT, margin: 0 }}>Schedule</h2>
-          <div style={{ display: "flex", gap: 0, background: BG, border: `1px solid ${BORDER}`, borderRadius: 6, overflow: "hidden" }}>
-            {(["week", "month"] as ScheduleView[]).map((v) => (
+          {/* Schedule Section */}
+          <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 18 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: TEXT, margin: 0 }}>Schedule</h2>
+              <div style={{ display: "flex", gap: 0, background: BG, border: `1px solid ${BORDER}`, borderRadius: 6, overflow: "hidden" }}>
+                {(["week", "month"] as ScheduleView[]).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => v === "month" ? switchToMonth() : setScheduleView("week")}
+                    style={{
+                      padding: "5px 12px",
+                      border: "none",
+                      borderLeft: v === "month" ? `1px solid ${BORDER}` : "none",
+                      background: scheduleView === v ? "rgba(16,185,129,0.1)" : "transparent",
+                      color: scheduleView === v ? EMERALD : TEXT_DIM,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {scheduleView === "week" ? (
+              <ScheduleWeekView schedule={weekSchedule} members={data.members} weekStart={weekStart} onPrevWeek={() => navigateWeek(-1)} onNextWeek={() => navigateWeek(1)} />
+            ) : (
+              <ScheduleMonthView monthData={monthData} year={monthYear.year} month={monthYear.month} onPrevMonth={() => navigateMonth(-1)} onNextMonth={() => navigateMonth(1)} />
+            )}
+          </div>
+
+          {/* Modals */}
+          {showAddModal && <AddTeamMemberModal onClose={() => setShowAddModal(false)} onAdded={() => { setShowAddModal(false); handleRefresh(); }} />}
+          {showScheduleModal && <ScheduleServiceModal members={data.members} catalog={catalog} onClose={() => setShowScheduleModal(false)} onScheduled={() => { setShowScheduleModal(false); handleRefresh(); }} />}
+        </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <ModalOverlay onClose={() => setDeleteTarget(null)}>
+          <div style={{ width: 400 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: TEXT, margin: "0 0 12px" }}>Remove Team Member</h3>
+            <p style={{ fontSize: 14, color: TEXT_SEC, lineHeight: 1.5, margin: "0 0 20px" }}>
+              Are you sure you want to remove <strong>{deleteTarget.name}</strong>? This will also delete their schedule history. This action cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button
-                key={v}
                 type="button"
-                onClick={() => v === "month" ? switchToMonth() : setScheduleView("week")}
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteLoading}
+                style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "#334155", color: TEXT_SEC, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteMember}
+                disabled={deleteLoading}
                 style={{
-                  padding: "5px 12px",
+                  padding: "9px 20px",
+                  borderRadius: 8,
                   border: "none",
-                  borderLeft: v === "month" ? `1px solid ${BORDER}` : "none",
-                  background: scheduleView === v ? "rgba(16,185,129,0.1)" : "transparent",
-                  color: scheduleView === v ? EMERALD : TEXT_DIM,
-                  fontSize: 12,
+                  background: "#ef4444",
+                  color: "#fff",
+                  fontSize: 13,
                   fontWeight: 700,
-                  cursor: "pointer",
-                  textTransform: "capitalize",
+                  cursor: deleteLoading ? "not-allowed" : "pointer",
+                  opacity: deleteLoading ? 0.5 : 1,
                 }}
               >
-                {v}
+                {deleteLoading ? "Removing..." : "Remove Member"}
               </button>
-            ))}
+            </div>
           </div>
-        </div>
+        </ModalOverlay>
+      )}
 
-        {scheduleView === "week" ? (
-          <ScheduleWeekView schedule={weekSchedule} members={data.members} weekStart={weekStart} onPrevWeek={() => navigateWeek(-1)} onNextWeek={() => navigateWeek(1)} />
-        ) : (
-          <ScheduleMonthView monthData={monthData} year={monthYear.year} month={monthYear.month} onPrevMonth={() => navigateMonth(-1)} onNextMonth={() => navigateMonth(1)} />
-        )}
-      </div>
-
-      {/* Modals */}
-      {showAddModal && <AddTeamMemberModal onClose={() => setShowAddModal(false)} onAdded={() => { setShowAddModal(false); handleRefresh(); }} />}
-      {showScheduleModal && <ScheduleServiceModal members={data.members} catalog={catalog} onClose={() => setShowScheduleModal(false)} onScheduled={() => { setShowScheduleModal(false); handleRefresh(); }} />}
+      {/* Toast */}
+      {listToast && <ListToast message={listToast} onDone={() => setListToast(null)} />}
     </div>
   );
 }

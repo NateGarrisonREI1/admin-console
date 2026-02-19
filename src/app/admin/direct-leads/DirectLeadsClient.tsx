@@ -116,7 +116,7 @@ function ServiceChip({ service }: { service: string }) {
   const isInspection = service.toLowerCase().includes("inspection");
   const bg = isHes ? "rgba(16,185,129,0.12)" : isInspection ? "rgba(245,158,11,0.12)" : "rgba(99,102,241,0.12)";
   const bd = isHes ? "rgba(16,185,129,0.30)" : isInspection ? "rgba(245,158,11,0.30)" : "rgba(99,102,241,0.30)";
-  const tx = isHes ? EMERALD : isInspection ? "#fbbf24" : "#818cf8";
+  const tx = isHes ? EMERALD : isInspection ? "#f59e0b" : "#818cf8";
   return (
     <span style={{
       display: "inline-flex",

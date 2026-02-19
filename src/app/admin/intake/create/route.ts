@@ -328,5 +328,5 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.redirect(new URL(`/admin/jobs/${jobId}`, req.url));
+  return NextResponse.redirect(new URL(`/admin/schedule`, req.url));
 }

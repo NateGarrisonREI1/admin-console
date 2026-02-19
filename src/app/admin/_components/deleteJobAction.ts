@@ -18,6 +18,6 @@ export async function deleteJobAction(jobId: string) {
   if (jobErr) throw jobErr;
 
   // Bust cache for jobs list
-  revalidatePath("/admin/jobs");
+  revalidatePath("/admin/schedule");
 }
 

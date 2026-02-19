@@ -132,12 +132,15 @@ export type DirectLead = {
 };
 
 // ─── Partner Contractors ─────────────────────────────────────
+export type PartnerType = "contractor" | "hes_assessor" | "home_inspector";
+
 export type PartnerContractor = {
   id: string;
   name: string;
   email: string | null;
   phone: string | null;
   company_name: string | null;
+  partner_type: PartnerType;
   service_types: string[];
   service_areas: string[];
   license_number: string | null;
