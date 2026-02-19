@@ -233,6 +233,23 @@ export type RevenueBreakdown = {
 };
 
 // ─── Broker Health ──────────────────────────────────────────
+
+/** Time-windowed inputs for the health score calculation */
+export type BrokerHealthInput = {
+  leads_posted_30d: number;
+  leads_posted_30_60d: number;
+  leads_posted_90d: number;
+  leads_closed_90d: number;
+  revenue_30d: number;
+  revenue_30_60d: number;
+  /** Epoch ms of the broker's most recent meaningful action (lead, assessment) */
+  last_activity_ms: number;
+  created_at: string;
+  contractor_count: number;
+  hes_assessor_count: number;
+  inspector_count: number;
+};
+
 export type BrokerHealthScore = {
   overall: number;
   activity: number;

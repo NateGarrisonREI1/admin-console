@@ -27,7 +27,6 @@ const BROKER_PLATFORM: LinkItem[] = [
 ];
 
 const SYSTEM: LinkItem[] = [
-  { href: "/admin/intake", label: "Admin Intake" },
   { href: "/admin/refunds", label: "Refunds" },
   { href: "/admin/auth-logs", label: "Auth Logs" },
 ];

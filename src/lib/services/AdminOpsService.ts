@@ -13,6 +13,7 @@ import type {
   AdminAlert,
   AdminBrokerSummary,
   RevenueBreakdown,
+  BrokerHealthInput,
   BrokerHealthScore,
   BrokerHealthSummary,
   BrokerHealthAudit,
@@ -700,55 +701,71 @@ export class AdminOpsService {
   // BROKER HEALTH
   // ──────────────────────────────────────────
 
-  calculateHealthScore(broker: AdminBrokerSummary): BrokerHealthScore {
-    // Activity (30%): leads posted frequency
+  calculateHealthScore(input: BrokerHealthInput): BrokerHealthScore {
+    // ── Activity (30%): rolling 30-day leads posted ──
+    // Measures current posting cadence, not lifetime volume.
+    // Decline penalty (-20) if prior 30d window had more leads.
     let activity = 0;
-    const posted = broker.leads_posted;
-    if (posted >= 30) activity = 100;
-    else if (posted >= 16) activity = 80;
-    else if (posted >= 6) activity = 60;
-    else if (posted >= 1) activity = 40;
+    const posted30 = input.leads_posted_30d;
+    if (posted30 >= 10) activity = 100;
+    else if (posted30 >= 6) activity = 80;
+    else if (posted30 >= 3) activity = 60;
+    else if (posted30 >= 1) activity = 40;
+    if (input.leads_posted_30_60d > 0 && posted30 < input.leads_posted_30_60d) {
+      activity = Math.max(0, activity - 20); // declining activity penalty
+    }
 
-    // Conversion (25%): leads closed / posted
+    // ── Conversion (25%): rolling 90-day close rate ──
+    // 90d window gives enough sample size while staying current.
+    // Score 15 when leads are posted but none closed yet (pipeline building).
     let conversion = 0;
-    if (broker.leads_posted > 0) {
-      const rate = (broker.leads_closed / broker.leads_posted) * 100;
+    if (input.leads_posted_90d > 0) {
+      const rate = (input.leads_closed_90d / input.leads_posted_90d) * 100;
       if (rate >= 50) conversion = 100;
       else if (rate >= 30) conversion = 85;
       else if (rate >= 20) conversion = 70;
       else if (rate >= 10) conversion = 50;
       else if (rate > 0) conversion = 30;
+      else conversion = 15; // posted but none closed yet
     }
 
-    // Stickiness (20%): account age + recent activity
+    // ── Stickiness (20%): recency of true last activity ──
+    // Uses the most recent of: last lead posted, last assessment filed.
+    // Tighter windows than before — 3d is the new "active" threshold.
     let stickiness = 0;
-    const lastAct = broker.last_activity ? new Date(broker.last_activity).getTime() : 0;
-    const daysSinceActivity = lastAct ? (Date.now() - lastAct) / 86400_000 : 999;
-    const accountAgeDays = (Date.now() - new Date(broker.created_at).getTime()) / 86400_000;
+    const daysSinceActivity = input.last_activity_ms > 0
+      ? (Date.now() - input.last_activity_ms) / 86400_000
+      : 999;
+    const accountAgeDays = (Date.now() - new Date(input.created_at).getTime()) / 86400_000;
+    if (daysSinceActivity <= 3 && accountAgeDays > 30) stickiness = 100;
+    else if (daysSinceActivity <= 3) stickiness = 85;
+    else if (daysSinceActivity <= 7) stickiness = 70;
+    else if (daysSinceActivity <= 14) stickiness = 50;
+    else if (daysSinceActivity <= 30) stickiness = 30;
+    else stickiness = 10;
 
-    if (daysSinceActivity <= 7 && accountAgeDays > 30) stickiness = 100;
-    else if (daysSinceActivity <= 7) stickiness = 85;
-    else if (daysSinceActivity <= 14) stickiness = 70;
-    else if (daysSinceActivity <= 30) stickiness = 50;
-    else stickiness = 20;
-
-    // Network quality (15%): total network size + diversity
+    // ── Network quality (15%): UNCHANGED — size + diversity ──
     let network_quality = 0;
-    const networkTotal = broker.contractor_count + broker.hes_assessor_count + broker.inspector_count;
-    const hasDiversity = (broker.contractor_count > 0 ? 1 : 0) + (broker.hes_assessor_count > 0 ? 1 : 0) + (broker.inspector_count > 0 ? 1 : 0);
+    const networkTotal = input.contractor_count + input.hes_assessor_count + input.inspector_count;
+    const hasDiversity = (input.contractor_count > 0 ? 1 : 0) + (input.hes_assessor_count > 0 ? 1 : 0) + (input.inspector_count > 0 ? 1 : 0);
     if (networkTotal >= 10 && hasDiversity >= 3) network_quality = 100;
     else if (networkTotal >= 6) network_quality = 80;
     else if (networkTotal >= 3) network_quality = 60;
     else if (networkTotal >= 1) network_quality = 40;
 
-    // Revenue trend (10%): revenue earned
+    // ── Revenue trend (10%): last 30d vs prior 30d ──
+    // Compares recent revenue to the previous period to detect trajectory.
+    // New accounts (< 30d) get benefit of the doubt.
     let revenue_trend = 0;
-    const rev = broker.revenue_earned;
-    if (rev >= 5000) revenue_trend = 100;
-    else if (rev >= 1000) revenue_trend = 85;
-    else if (rev >= 500) revenue_trend = 70;
-    else if (rev >= 100) revenue_trend = 50;
-    else if (rev > 0) revenue_trend = 30;
+    if (input.revenue_30d > 0 && input.revenue_30d >= input.revenue_30_60d) {
+      revenue_trend = 100; // growing or stable
+    } else if (input.revenue_30d > 0) {
+      revenue_trend = 60; // positive but declining
+    } else if (input.revenue_30_60d > 0) {
+      revenue_trend = 20; // no recent revenue but had prior
+    } else if (accountAgeDays <= 30) {
+      revenue_trend = 50; // new account, benefit of the doubt
+    }
 
     const overall = Math.round(
       activity * 0.3 + conversion * 0.25 + stickiness * 0.2 + network_quality * 0.15 + revenue_trend * 0.1
@@ -762,39 +779,112 @@ export class AdminOpsService {
 
   async getBrokersWithHealth(): Promise<BrokerHealthSummary[]> {
     const brokers = await this.getBrokers();
-    return brokers.map((b) => ({
-      ...b,
-      health_score: this.calculateHealthScore(b),
-    }));
+    if (brokers.length === 0) return [];
+
+    const brokerIds = brokers.map((b) => b.id);
+    const now = Date.now();
+    const ninetyDaysAgo = new Date(now - 90 * 86400_000).toISOString();
+
+    // Fetch 90-day leads + last assessment dates in parallel
+    const [recentLeads, lastAssessments] = await Promise.all([
+      supabaseAdmin
+        .from("broker_leads")
+        .select("broker_id, status, broker_commission, created_at")
+        .in("broker_id", brokerIds)
+        .gte("created_at", ninetyDaysAgo),
+      supabaseAdmin
+        .from("broker_assessments")
+        .select("broker_id, created_at")
+        .in("broker_id", brokerIds)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    // Bucket leads into 30d / 30-60d / 90d windows per broker
+    const thirtyDaysAgoMs = now - 30 * 86400_000;
+    const sixtyDaysAgoMs = now - 60 * 86400_000;
+
+    type WindowedStats = {
+      leads_posted_30d: number;
+      leads_posted_30_60d: number;
+      leads_posted_90d: number;
+      leads_closed_90d: number;
+      revenue_30d: number;
+      revenue_30_60d: number;
+      last_lead_at: number;
+    };
+
+    const statsMap: Record<string, WindowedStats> = {};
+    for (const l of (recentLeads.data ?? []) as { broker_id: string; status: string; broker_commission: number | null; created_at: string }[]) {
+      if (!statsMap[l.broker_id]) {
+        statsMap[l.broker_id] = { leads_posted_30d: 0, leads_posted_30_60d: 0, leads_posted_90d: 0, leads_closed_90d: 0, revenue_30d: 0, revenue_30_60d: 0, last_lead_at: 0 };
+      }
+      const s = statsMap[l.broker_id];
+      const createdMs = new Date(l.created_at).getTime();
+      s.leads_posted_90d++;
+      if (createdMs >= thirtyDaysAgoMs) {
+        s.leads_posted_30d++;
+        if (l.status === "closed") s.revenue_30d += l.broker_commission ?? 0;
+      } else if (createdMs >= sixtyDaysAgoMs) {
+        s.leads_posted_30_60d++;
+        if (l.status === "closed") s.revenue_30_60d += l.broker_commission ?? 0;
+      }
+      if (l.status === "closed") s.leads_closed_90d++;
+      if (createdMs > s.last_lead_at) s.last_lead_at = createdMs;
+    }
+
+    // Track most recent assessment per broker (ordered desc, take first per broker)
+    const lastAssessmentMap: Record<string, number> = {};
+    for (const a of (lastAssessments.data ?? []) as { broker_id: string; created_at: string }[]) {
+      if (!lastAssessmentMap[a.broker_id]) {
+        lastAssessmentMap[a.broker_id] = new Date(a.created_at).getTime();
+      }
+    }
+
+    return brokers.map((b) => {
+      const ws = statsMap[b.id] ?? { leads_posted_30d: 0, leads_posted_30_60d: 0, leads_posted_90d: 0, leads_closed_90d: 0, revenue_30d: 0, revenue_30_60d: 0, last_lead_at: 0 };
+      const lastAssessment = lastAssessmentMap[b.id] ?? 0;
+      // True last activity = most recent of last lead posted or last assessment
+      const lastActivityMs = Math.max(ws.last_lead_at, lastAssessment);
+
+      const input: BrokerHealthInput = {
+        leads_posted_30d: ws.leads_posted_30d,
+        leads_posted_30_60d: ws.leads_posted_30_60d,
+        leads_posted_90d: ws.leads_posted_90d,
+        leads_closed_90d: ws.leads_closed_90d,
+        revenue_30d: ws.revenue_30d,
+        revenue_30_60d: ws.revenue_30_60d,
+        last_activity_ms: lastActivityMs || (b.last_activity ? new Date(b.last_activity).getTime() : 0),
+        created_at: b.created_at,
+        contractor_count: b.contractor_count,
+        hes_assessor_count: b.hes_assessor_count,
+        inspector_count: b.inspector_count,
+      };
+
+      return { ...b, health_score: this.calculateHealthScore(input) };
+    });
   }
 
   async getBrokerHealthAudit(brokerId: string): Promise<BrokerHealthAudit> {
-    // Fetch broker summary
+    // Fetch broker summary (all-time stats for display)
     const allBrokers = await this.getBrokers();
     const broker = allBrokers.find((b) => b.id === brokerId);
     if (!broker) throw new InternalError("Broker not found");
 
-    const health_score = this.calculateHealthScore(broker);
+    const now = Date.now();
+    const sevenDaysAgo = new Date(now - 7 * 86400_000).toISOString();
 
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400_000).toISOString();
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
-
-    // Fetch broker leads for time-based metrics
-    const [leads30, leads7, allLeads, contractorRows] = await Promise.all([
-      supabaseAdmin
-        .from("broker_leads")
-        .select("id", { count: "exact" })
-        .eq("broker_id", brokerId)
-        .gte("created_at", thirtyDaysAgo),
-      supabaseAdmin
-        .from("broker_leads")
-        .select("id", { count: "exact" })
-        .eq("broker_id", brokerId)
-        .gte("created_at", sevenDaysAgo),
+    // Fetch all leads + last assessment + contractor rows in parallel
+    const [allLeads, lastAssessment, contractorRows] = await Promise.all([
       supabaseAdmin
         .from("broker_leads")
         .select("id, status, broker_commission, system_type, created_at, sold_at")
         .eq("broker_id", brokerId),
+      supabaseAdmin
+        .from("broker_assessments")
+        .select("created_at")
+        .eq("broker_id", brokerId)
+        .order("created_at", { ascending: false })
+        .limit(1),
       supabaseAdmin
         .from("broker_contractors")
         .select("contractor_id, provider_type")
@@ -803,7 +893,57 @@ export class AdminOpsService {
 
     const leads = (allLeads.data ?? []) as { id: string; status: string; broker_commission: number | null; system_type: string | null; created_at: string; sold_at: string | null }[];
 
-    // Avg days to close
+    // ── Build time-windowed stats from all leads ──
+    const thirtyDaysAgoMs = now - 30 * 86400_000;
+    const sixtyDaysAgoMs = now - 60 * 86400_000;
+    const ninetyDaysAgoMs = now - 90 * 86400_000;
+    const sevenDaysAgoMs = now - 7 * 86400_000;
+
+    let leads_posted_30d = 0, leads_posted_30_60d = 0, leads_posted_90d = 0, leads_closed_90d = 0;
+    let revenue_30d = 0, revenue_30_60d = 0;
+    let lastLeadMs = 0;
+    let leads_last_7_days = 0;
+
+    for (const l of leads) {
+      const createdMs = new Date(l.created_at).getTime();
+      if (createdMs > lastLeadMs) lastLeadMs = createdMs;
+      if (createdMs >= sevenDaysAgoMs) leads_last_7_days++;
+      if (createdMs >= ninetyDaysAgoMs) {
+        leads_posted_90d++;
+        if (l.status === "closed") leads_closed_90d++;
+        if (createdMs >= thirtyDaysAgoMs) {
+          leads_posted_30d++;
+          if (l.status === "closed") revenue_30d += l.broker_commission ?? 0;
+        } else if (createdMs >= sixtyDaysAgoMs) {
+          leads_posted_30_60d++;
+          if (l.status === "closed") revenue_30_60d += l.broker_commission ?? 0;
+        }
+      }
+    }
+
+    // True last activity = most recent of last lead or last assessment
+    const lastAssessmentRow = lastAssessment.data?.[0] as { created_at: string } | undefined;
+    const lastAssessmentMs = lastAssessmentRow
+      ? new Date(lastAssessmentRow.created_at).getTime()
+      : 0;
+    const lastActivityMs = Math.max(lastLeadMs, lastAssessmentMs);
+
+    const healthInput: BrokerHealthInput = {
+      leads_posted_30d,
+      leads_posted_30_60d,
+      leads_posted_90d,
+      leads_closed_90d,
+      revenue_30d,
+      revenue_30_60d,
+      last_activity_ms: lastActivityMs || (broker.last_activity ? new Date(broker.last_activity).getTime() : 0),
+      created_at: broker.created_at,
+      contractor_count: broker.contractor_count,
+      hes_assessor_count: broker.hes_assessor_count,
+      inspector_count: broker.inspector_count,
+    };
+    const health_score = this.calculateHealthScore(healthInput);
+
+    // ── Avg days to close (all-time) ──
     const closedLeads = leads.filter((l) => l.status === "closed" && l.sold_at);
     let avg_days_to_close = 0;
     if (closedLeads.length > 0) {
@@ -815,7 +955,7 @@ export class AdminOpsService {
       avg_days_to_close = Math.round(totalDays / closedLeads.length);
     }
 
-    // Revenue by system type
+    // ── Revenue by system type (all-time) ──
     const typeMap: Record<string, { count: number; closed: number; revenue: number }> = {};
     for (const l of leads) {
       const t = l.system_type || "Other";
@@ -828,7 +968,7 @@ export class AdminOpsService {
     }
     const revenue_by_type = Object.entries(typeMap).map(([type, v]) => ({ type, ...v }));
 
-    // Contractor performance
+    // ── Contractor performance ──
     const cRows = (contractorRows.data ?? []) as { contractor_id: string; provider_type: string }[];
     const contractorIds = cRows.map((c) => c.contractor_id);
     const contractors: BrokerContractorPerformance[] = [];
@@ -844,7 +984,6 @@ export class AdminOpsService {
         profileMap[p.id] = p;
       }
 
-      // Get leads per contractor (from contractor_leads sold_to_user_id)
       const { data: soldLeads } = await supabaseAdmin
         .from("contractor_leads")
         .select("sold_to_user_id, status")
@@ -872,7 +1011,7 @@ export class AdminOpsService {
       }
     }
 
-    // Build alerts
+    // ── Build alerts ──
     const alerts: { type: "success" | "warning" | "info"; message: string }[] = [];
     if (health_score.overall >= 80) {
       alerts.push({ type: "success", message: "Broker is performing well across all metrics" });
@@ -901,8 +1040,8 @@ export class AdminOpsService {
       broker,
       health_score,
       contractors,
-      leads_last_30_days: leads30.count ?? 0,
-      leads_last_7_days: leads7.count ?? 0,
+      leads_last_30_days: leads_posted_30d,
+      leads_last_7_days,
       avg_days_to_close,
       revenue_by_type,
       alerts,

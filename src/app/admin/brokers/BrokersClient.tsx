@@ -1,7 +1,8 @@
 // src/app/admin/brokers/BrokersClient.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import type { AdminBrokerSummary, BrokerHealthSummary, BrokerHealthAudit } from "@/types/admin-ops";
 import { fetchBrokerAudit } from "../contractor-leads/actions";
@@ -98,250 +99,41 @@ function StatusBadge({ inactive }: { inactive: boolean }) {
   );
 }
 
-function StatCell({ label, value }: { label: string; value: string | number }) {
+function IconButton({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", gap: 2, padding: "10px 12px", borderRadius: 10,
-      background: "rgba(15,23,42,0.5)", border: "1px solid rgba(51,65,85,0.6)",
-    }}>
-      <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 15, fontWeight: 950, color: "#f1f5f9" }}>{value}</div>
-    </div>
-  );
-}
-
-function ActionButton({ onClick, variant = "secondary", children }: {
-  onClick: () => void; variant?: "primary" | "secondary" | "ghost"; children: React.ReactNode;
-}) {
-  const styles: Record<string, CSSProperties> = {
-    primary: {
-      padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(16,185,129,0.30)",
-      background: "rgba(16,185,129,0.12)", color: "#10b981", fontWeight: 950, fontSize: 12, cursor: "pointer",
-    },
-    secondary: {
-      padding: "7px 14px", borderRadius: 9, border: "1px solid #334155",
-      background: "#1e293b", color: "#cbd5e1", fontWeight: 900, fontSize: 12, cursor: "pointer",
-    },
-    ghost: {
-      padding: "7px 14px", borderRadius: 9, border: "1px solid rgba(51,65,85,0.5)",
-      background: "transparent", color: "#94a3b8", fontWeight: 900, fontSize: 12, cursor: "pointer",
-    },
-  };
-  return <button type="button" onClick={onClick} style={styles[variant]}>{children}</button>;
-}
-
-// ─── Broker Card ──────────────────────────────────────────────
-
-function BrokerCard({ broker, healthScore, onView }: {
-  broker: AdminBrokerSummary;
-  healthScore?: { overall: number; risk_level: "low" | "medium" | "high" };
-  onView: (b: AdminBrokerSummary) => void;
-}) {
-  const inactive = isInactive(broker);
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
       style={{
-        background: "#1e293b", border: "1px solid #334155", borderRadius: 12,
-        padding: 18, display: "flex", flexDirection: "column", gap: 14,
-        transition: "transform 0.15s ease, box-shadow 0.15s ease",
-        transform: hovered ? "translateY(-2px)" : "translateY(0)",
-        boxShadow: hovered ? "0 12px 32px rgba(0,0,0,0.35)" : "0 2px 8px rgba(0,0,0,0.15)",
+        width: 32, height: 32, borderRadius: 8, border: "1px solid #334155",
+        background: "transparent", color: "#94a3b8", cursor: "pointer",
+        display: "grid", placeItems: "center", transition: "all 0.12s",
       }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(51,65,85,0.5)"; e.currentTarget.style.color = "#f1f5f9"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#94a3b8"; }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 950, color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {brokerDisplayName(broker)}
-          </div>
-          {broker.company_name ? (
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {broker.company_name}
-            </div>
-          ) : null}
-          <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Since: {fmtDate(broker.created_at)}</div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          <StatusBadge inactive={inactive} />
-          {healthScore && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 16, fontWeight: 950, color: scoreColor(healthScore.overall) }}>
-                {healthScore.overall}
-              </span>
-              <span style={{
-                padding: "2px 6px", borderRadius: 999, fontSize: 9, fontWeight: 700,
-                ...(() => {
-                  const m = { low: { bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.30)", tx: "#10b981" }, medium: { bg: "rgba(245,158,11,0.12)", bd: "rgba(245,158,11,0.30)", tx: "#fbbf24" }, high: { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.35)", tx: "#ef4444" } };
-                  const t = m[healthScore.risk_level];
-                  return { background: t.bg, border: `1px solid ${t.bd}`, color: t.tx, textTransform: "capitalize" as const };
-                })(),
-              }}>
-                {healthScore.risk_level}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        <StatCell label="Homes Assessed" value={broker.homes_assessed} />
-        <StatCell label="Leads Posted" value={broker.leads_posted} />
-        <StatCell label="Revenue Earned" value={money(broker.revenue_earned)} />
-        <StatCell label="Contractors" value={broker.contractor_count + broker.hes_assessor_count + broker.inspector_count} />
-      </div>
-
-      <div style={{
-        display: "flex", gap: 10, flexWrap: "wrap", padding: "10px 12px", borderRadius: 10,
-        background: "rgba(15,23,42,0.4)", border: "1px solid rgba(51,65,85,0.5)",
-      }}>
-        <NetworkTag count={broker.contractor_count} label="Contractors" />
-        <div style={{ width: 1, background: "#334155", alignSelf: "stretch" }} />
-        <NetworkTag count={broker.hes_assessor_count} label="HES Assessors" />
-        <div style={{ width: 1, background: "#334155", alignSelf: "stretch" }} />
-        <NetworkTag count={broker.inspector_count} label="Inspectors" />
-      </div>
-
-      <div style={{ display: "flex", gap: 8 }}>
-        <ActionButton variant="primary" onClick={() => onView(broker)}>View</ActionButton>
-        <ActionButton variant="secondary" onClick={() => {}}>Message</ActionButton>
-        <ActionButton variant="ghost" onClick={() => {}}>Export</ActionButton>
-      </div>
-    </div>
+      {children}
+    </button>
   );
 }
 
-function NetworkTag({ count, label }: { count: number; label: string }) {
+function HealthBadge({ score, riskLevel }: { score: number; riskLevel: "low" | "medium" | "high" }) {
+  const riskMap = {
+    low: { bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.30)", tx: "#10b981" },
+    medium: { bg: "rgba(245,158,11,0.12)", bd: "rgba(245,158,11,0.30)", tx: "#fbbf24" },
+    high: { bg: "rgba(239,68,68,0.12)", bd: "rgba(239,68,68,0.35)", tx: "#ef4444" },
+  };
+  const t = riskMap[riskLevel];
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, flex: 1 }}>
-      <div style={{ fontSize: 14, fontWeight: 950, color: "#f1f5f9" }}>{count}</div>
-      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textAlign: "center" }}>{label}</div>
-    </div>
-  );
-}
-
-// ─── Detail Drawer ────────────────────────────────────────────
-
-function DetailDrawer({ broker, onClose }: { broker: AdminBrokerSummary; onClose: () => void }) {
-  const inactive = isInactive(broker);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  const totalNetwork = broker.contractor_count + broker.hes_assessor_count + broker.inspector_count;
-  const conversionRate = broker.leads_posted > 0 ? ((broker.leads_closed / broker.leads_posted) * 100).toFixed(1) : "0.0";
-  const avgLeadCost = broker.leads_closed > 0 ? money(broker.revenue_earned / broker.leads_closed) : money(0);
-
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 70 }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }} />
-      <div style={{
-        position: "absolute", right: 0, top: 0, height: "100%", width: "min(540px, 100%)",
-        background: "#0f172a", borderLeft: "1px solid #334155", boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
-        display: "flex", flexDirection: "column",
-      }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #334155", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Broker Profile</div>
-            <div style={{ fontSize: 20, fontWeight: 950, color: "#f1f5f9", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{brokerDisplayName(broker)}</div>
-            {broker.company_name ? <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>{broker.company_name}</div> : null}
-            <div style={{ marginTop: 8 }}><StatusBadge inactive={inactive} /></div>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close detail panel" style={{
-            width: 32, height: 32, borderRadius: 8, border: "1px solid #334155", background: "#1e293b",
-            color: "#94a3b8", cursor: "pointer", fontWeight: 900, fontSize: 16, display: "grid", placeItems: "center", flexShrink: 0,
-          }}>
-            &times;
-          </button>
-        </div>
-
-        <div style={{ flex: 1, overflow: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: 18 }}>
-          <Section title="Profile">
-            <DetailRow label="Email" value={broker.user_email ?? "\u2014"} />
-            <DetailRow label="Member Since" value={fmtDate(broker.created_at)} />
-            <DetailRow label="Last Activity" value={fmtDate(broker.last_activity ?? broker.updated_at)} />
-            <DetailRow label="User ID" value={broker.user_id} dim />
-          </Section>
-          <Section title="Network Breakdown">
-            <div style={{ display: "flex", gap: 8 }}>
-              <DrawerNetworkCard count={broker.contractor_count} label="Contractors" color="#10b981" />
-              <DrawerNetworkCard count={broker.hes_assessor_count} label="HES Assessors" color="#10b981" />
-              <DrawerNetworkCard count={broker.inspector_count} label="Inspectors" color="#f59e0b" />
-            </div>
-            <DetailRow label="Total Network Size" value={String(totalNetwork)} />
-          </Section>
-          <Section title="Lead Activity">
-            <DetailRow label="Leads Posted" value={String(broker.leads_posted)} />
-            <DetailRow label="Leads Closed" value={String(broker.leads_closed)} />
-            <DetailRow label="Open / In Progress" value={String(Math.max(0, broker.leads_posted - broker.leads_closed))} />
-          </Section>
-          <Section title="Revenue">
-            <DetailRow label="Revenue Earned" value={money(broker.revenue_earned)} bold />
-          </Section>
-          <Section title="KPIs">
-            <DetailRow label="Conversion Rate" value={`${conversionRate}%`} />
-            <DetailRow label="Avg. Lead Cost" value={avgLeadCost} />
-            <DetailRow label="Homes Assessed" value={String(broker.homes_assessed)} />
-          </Section>
-        </div>
-
-        <div style={{ padding: "14px 20px", borderTop: "1px solid #334155", display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button type="button" onClick={onClose} style={{
-            padding: "10px 18px", borderRadius: 10, border: "1px solid #334155", background: "#1e293b",
-            color: "#cbd5e1", fontWeight: 950, cursor: "pointer", fontSize: 13,
-          }}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, overflow: "hidden" }}>
-      <div style={{
-        padding: "10px 14px", borderBottom: "1px solid rgba(51,65,85,0.6)", fontSize: 11, fontWeight: 700,
-        color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", background: "rgba(15,23,42,0.4)",
-      }}>
-        {title}
-      </div>
-      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
-    </div>
-  );
-}
-
-function DetailRow({ label, value, bold, dim }: { label: string; value: string; bold?: boolean; dim?: boolean }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, gap: 12 }}>
-      <span style={{ color: "#64748b", flexShrink: 0 }}>{label}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ fontSize: 14, fontWeight: 950, color: scoreColor(score) }}>{score}</span>
       <span style={{
-        color: dim ? "#475569" : "#f1f5f9", fontWeight: bold ? 950 : 500, textAlign: "right",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%",
-        fontFamily: dim ? "monospace" : undefined, fontSize: dim ? 11 : undefined,
+        padding: "2px 7px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+        background: t.bg, border: `1px solid ${t.bd}`, color: t.tx, textTransform: "capitalize",
       }}>
-        {value}
+        {riskLevel}
       </span>
-    </div>
-  );
-}
-
-function DrawerNetworkCard({ count, label, color }: { count: number; label: string; color: string }) {
-  return (
-    <div style={{
-      flex: 1, padding: "12px 10px", borderRadius: 10, border: "1px solid rgba(51,65,85,0.6)",
-      background: "rgba(15,23,42,0.5)", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-    }}>
-      <div style={{ fontSize: 20, fontWeight: 950, color }}>{count}</div>
-      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, textAlign: "center" }}>{label}</div>
     </div>
   );
 }
@@ -600,9 +392,9 @@ function BrokerAuditView({ audit, loading, onBack }: { audit: BrokerHealthAudit 
 // ─── Main Client Component ────────────────────────────────────
 
 export default function BrokersClient({ brokers, healthData }: Props) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<ActiveTab>("all-brokers");
   const [filter, setFilter] = useState<FilterStatus>("all");
-  const [activeDetail, setActiveDetail] = useState<AdminBrokerSummary | null>(null);
 
   // Health audit state
   const [brokerRiskFilter, setBrokerRiskFilter] = useState<BrokerRiskFilter>("all");
@@ -700,6 +492,11 @@ export default function BrokersClient({ brokers, healthData }: Props) {
             <FilterTab label="Inactive" count={inactiveBrokers.length} active={filter === "inactive"} onClick={() => setFilter("inactive")} />
           </div>
 
+          {/* Count label */}
+          <div style={{ fontSize: 13, color: "#94a3b8", fontWeight: 600 }}>
+            {filtered.length} {filtered.length === 1 ? "broker" : "brokers"}
+          </div>
+
           {filtered.length === 0 ? (
             <div style={{ borderRadius: 12, border: "1px dashed #334155", background: "rgba(30,41,59,0.4)", padding: "48px 24px", textAlign: "center" }}>
               <div style={{ fontSize: 15, color: "#64748b", fontWeight: 700 }}>
@@ -707,19 +504,80 @@ export default function BrokersClient({ brokers, healthData }: Props) {
               </div>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 16 }}>
-              {filtered.map((broker) => (
-                <BrokerCard
-                  key={broker.id}
-                  broker={broker}
-                  healthScore={healthMap.get(broker.id)}
-                  onView={(b) => setActiveDetail(b)}
-                />
-              ))}
+            <div style={{ background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.5)", borderRadius: 12, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid rgba(51,65,85,0.5)" }}>
+                    {["Name", "Status", "Health", "Assessed", "Leads", "Revenue", "Network", ""].map((h) => (
+                      <th key={h} style={{
+                        padding: "12px 16px", textAlign: "left", fontSize: 11, fontWeight: 600,
+                        color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", whiteSpace: "nowrap",
+                      }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((broker) => {
+                    const inactive = isInactive(broker);
+                    const hs = healthMap.get(broker.id);
+                    return (
+                      <tr
+                        key={broker.id}
+                        style={{ borderBottom: "1px solid rgba(51,65,85,0.5)", cursor: "pointer", transition: "background 0.12s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(51,65,85,0.3)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                        onClick={() => router.push(`/admin/brokers/${broker.id}`)}
+                      >
+                        {/* Name */}
+                        <td style={{ padding: "14px 16px" }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+                            {brokerDisplayName(broker)}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Since {fmtDate(broker.created_at)}</div>
+                        </td>
+                        {/* Status */}
+                        <td style={{ padding: "14px 16px" }}><StatusBadge inactive={inactive} /></td>
+                        {/* Health */}
+                        <td style={{ padding: "14px 16px" }}>
+                          {hs ? <HealthBadge score={hs.overall} riskLevel={hs.risk_level} /> : <span style={{ color: "#475569", fontSize: 12 }}>&mdash;</span>}
+                        </td>
+                        {/* Assessed */}
+                        <td style={{ padding: "14px 16px", fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>{broker.homes_assessed}</td>
+                        {/* Leads */}
+                        <td style={{ padding: "14px 16px", fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>{broker.leads_posted}</td>
+                        {/* Revenue */}
+                        <td style={{ padding: "14px 16px", fontSize: 13, fontWeight: 700, color: "#10b981" }}>{money(broker.revenue_earned)}</td>
+                        {/* Network */}
+                        <td style={{ padding: "14px 16px" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", whiteSpace: "nowrap" }}>
+                            {broker.contractor_count} / {broker.hes_assessor_count} / {broker.inspector_count}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#64748b", marginTop: 1 }}>Con / HES / Insp</div>
+                        </td>
+                        {/* Actions */}
+                        <td style={{ padding: "14px 16px" }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <IconButton onClick={() => router.push(`/admin/brokers/${broker.id}`)} title="View">
+                              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 4C4 4 1 10 1 10s3 6 9 6 9-6 9-6-3-6-9-6Z" stroke="currentColor" strokeWidth="1.5" /><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5" /></svg>
+                            </IconButton>
+                            <IconButton onClick={() => {}} title="Message">
+                              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 4h14a1 1 0 011 1v8a1 1 0 01-1 1H6l-3 3V5a1 1 0 011-1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
+                            </IconButton>
+                            <IconButton onClick={() => {}} title="Export">
+                              <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            </IconButton>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
 
-          {activeDetail ? <DetailDrawer broker={activeDetail} onClose={() => setActiveDetail(null)} /> : null}
         </>
       )}
 
