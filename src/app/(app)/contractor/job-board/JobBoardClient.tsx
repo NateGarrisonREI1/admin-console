@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import type { JobBoardData, JobBoardLead, LeadDetail, PurchaseResult } from "./actions";
-import { fetchLeadDetail, createLeadPaymentIntent, confirmLeadPurchase } from "./actions";
+import { fetchLeadDetail, createLeadPaymentIntent, confirmLeadPurchase, acceptFreeLead } from "./actions";
 
 // ─── Stripe ─────────────────────────────────────────────────────────
 
@@ -30,6 +30,9 @@ const SYSTEM_TYPE_COLORS: Record<string, { bg: string; text: string; label: stri
   electrical: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Electrical" },
   plumbing: { bg: "rgba(6,182,212,0.15)", text: "#06b6d4", label: "Plumbing" },
   general_handyman: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "General Handyman" },
+  hes_assessment: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "HES Assessment" },
+  home_inspection: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Home Inspection" },
+  leaf_followup: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "LEAF Follow-up" },
 };
 
 const SERVICE_TYPES = [
@@ -40,6 +43,9 @@ const SERVICE_TYPES = [
   { value: "electrical", label: "Electrical" },
   { value: "plumbing", label: "Plumbing" },
   { value: "general_handyman", label: "General Handyman" },
+  { value: "hes_assessment", label: "HES Assessment" },
+  { value: "home_inspection", label: "Home Inspection" },
+  { value: "leaf_followup", label: "LEAF Follow-up" },
 ];
 
 const SORT_OPTIONS = [
@@ -47,6 +53,13 @@ const SORT_OPTIONS = [
   { value: "price_asc", label: "Price: Low → High" },
   { value: "price_desc", label: "Price: High → Low" },
 ];
+
+// ─── Routing badge config ───────────────────────────────────────────
+
+const ROUTING_BADGES: Record<string, { bg: string; text: string; label: string }> = {
+  internal_network: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "Network" },
+  exclusive: { bg: "rgba(168,85,247,0.15)", text: "#a855f7", label: "Reserved for You" },
+};
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -87,6 +100,35 @@ function typeBadge(systemType: string) {
   );
 }
 
+function routingBadge(lead: JobBoardLead) {
+  const channel = lead.routing_channel || "open_market";
+  const cfg = ROUTING_BADGES[channel];
+  if (!cfg) return null;
+
+  // For network leads that have been released, don't show badge
+  if (channel === "internal_network" && lead.network_release_at) {
+    if (new Date(lead.network_release_at) < new Date()) return null;
+  }
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "3px 8px",
+        borderRadius: 12,
+        fontSize: 10,
+        fontWeight: 700,
+        background: cfg.bg,
+        color: cfg.text,
+        letterSpacing: "0.03em",
+      }}
+    >
+      {cfg.label}
+    </span>
+  );
+}
+
 // ─── Lead Card ──────────────────────────────────────────────────────
 
 function LeadCard({
@@ -106,6 +148,8 @@ function LeadCard({
     if (lead.baths) parts.push(`${lead.baths} bath`);
     homeDetails.push(parts.join(" / "));
   }
+
+  const isFree = lead.is_free_assignment && lead.routing_channel === "exclusive";
 
   return (
     <button
@@ -131,8 +175,9 @@ function LeadCard({
       }}
     >
       {/* Top: badge row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         {typeBadge(lead.system_type)}
+        {routingBadge(lead)}
         {lead.has_leaf && (
           <span
             style={{
@@ -176,20 +221,24 @@ function LeadCard({
       {/* Price + CTA */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Lead Price</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: TEXT }}>{money(lead.price)}</div>
+          <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>
+            {isFree ? "Assignment" : "Lead Price"}
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: isFree ? EMERALD : TEXT }}>
+            {isFree ? "Free" : money(lead.price)}
+          </div>
         </div>
         <div
           style={{
             padding: "8px 16px",
             borderRadius: 8,
-            background: "rgba(16,185,129,0.12)",
-            color: EMERALD,
+            background: isFree ? "rgba(168,85,247,0.12)" : "rgba(16,185,129,0.12)",
+            color: isFree ? "#a78bfa" : EMERALD,
             fontSize: 12,
             fontWeight: 700,
           }}
         >
-          View Details
+          {isFree ? "Accept Lead" : "View Details"}
         </div>
       </div>
     </button>
@@ -299,10 +348,12 @@ function PaymentInnerForm({
 
 function LeadDetailModal({
   leadId,
+  leadSummary,
   onClose,
   onPurchased,
 }: {
   leadId: string;
+  leadSummary?: JobBoardLead;
   onClose: () => void;
   onPurchased: () => void;
 }) {
@@ -311,7 +362,7 @@ function LeadDetailModal({
   const [error, setError] = useState("");
 
   // Purchase flow states
-  const [purchaseStep, setPurchaseStep] = useState<"idle" | "paying" | "confirming" | "success">("idle");
+  const [purchaseStep, setPurchaseStep] = useState<"idle" | "paying" | "confirming" | "accepting" | "success">("idle");
   const [clientSecret, setClientSecret] = useState("");
   const [paymentIntentId, setPaymentIntentId] = useState("");
   const [paymentError, setPaymentError] = useState("");
@@ -332,6 +383,8 @@ function LeadDetailModal({
     });
     return () => { cancelled = true; };
   }, [leadId]);
+
+  const isFreeExclusive = detail?.routing_channel === "exclusive" && detail?.is_free_assignment;
 
   async function handleStartPurchase() {
     setPaymentError("");
@@ -354,6 +407,19 @@ function LeadDetailModal({
       setPurchaseStep("success");
     } catch (e) {
       setPaymentError(e instanceof Error ? e.message : "Purchase confirmation failed");
+      setPurchaseStep("idle");
+    }
+  }
+
+  async function handleAcceptFree() {
+    setPaymentError("");
+    setPurchaseStep("accepting");
+    try {
+      const result = await acceptFreeLead(leadId);
+      setPurchaseResult(result);
+      setPurchaseStep("success");
+    } catch (e) {
+      setPaymentError(e instanceof Error ? e.message : "Failed to accept lead");
       setPurchaseStep("idle");
     }
   }
@@ -429,9 +495,23 @@ function LeadDetailModal({
 
           {detail && !loading && purchaseStep !== "success" && (
             <>
-              {/* Type + LEAF badges */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              {/* Type + routing + LEAF badges */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
                 {typeBadge(detail.system_type)}
+                {detail.routing_channel && ROUTING_BADGES[detail.routing_channel] && (
+                  <span
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 12,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      background: ROUTING_BADGES[detail.routing_channel].bg,
+                      color: ROUTING_BADGES[detail.routing_channel].text,
+                    }}
+                  >
+                    {ROUTING_BADGES[detail.routing_channel].label}
+                  </span>
+                )}
                 {hasLeaf && (
                   <span
                     style={{
@@ -586,31 +666,73 @@ function LeadDetailModal({
                     )}
                   </div>
                   <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 12, fontStyle: "italic" }}>
-                    Full LEAF report data unlocks after purchase.
+                    Full LEAF report data unlocks after {isFreeExclusive ? "accepting" : "purchase"}.
                   </div>
                 </div>
               )}
 
-              {/* Locked info notice */}
-              <div
-                style={{
-                  background: "rgba(234,179,8,0.08)",
-                  border: "1px solid rgba(234,179,8,0.2)",
-                  borderRadius: 8,
-                  padding: 12,
-                  marginBottom: 20,
-                }}
-              >
-                <div style={{ fontSize: 12, color: "#eab308", fontWeight: 600, marginBottom: 2 }}>
-                  Homeowner info locked
+              {/* Locked / revealed info notice */}
+              {isFreeExclusive && detail.homeowner_name ? (
+                <div
+                  style={{
+                    background: "rgba(168,85,247,0.08)",
+                    border: "1px solid rgba(168,85,247,0.2)",
+                    borderRadius: 8,
+                    padding: 12,
+                    marginBottom: 20,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: "#a78bfa", fontWeight: 600, marginBottom: 6 }}>
+                    Assigned to You (Free)
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {detail.homeowner_name && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Name</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{detail.homeowner_name}</div>
+                      </div>
+                    )}
+                    {detail.homeowner_phone && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Phone</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{detail.homeowner_phone}</div>
+                      </div>
+                    )}
+                    {detail.homeowner_email && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Email</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{detail.homeowner_email}</div>
+                      </div>
+                    )}
+                    {detail.address && (
+                      <div>
+                        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600 }}>Address</div>
+                        <div style={{ fontSize: 13, color: TEXT_SEC }}>{detail.address}</div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: TEXT_DIM }}>
-                  Name, phone, email, and exact address will be revealed after purchase.
-                  This is an exclusive lead — only one contractor per homeowner.
+              ) : (
+                <div
+                  style={{
+                    background: "rgba(234,179,8,0.08)",
+                    border: "1px solid rgba(234,179,8,0.2)",
+                    borderRadius: 8,
+                    padding: 12,
+                    marginBottom: 20,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: "#eab308", fontWeight: 600, marginBottom: 2 }}>
+                    Homeowner info locked
+                  </div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM }}>
+                    Name, phone, email, and exact address will be revealed after {isFreeExclusive ? "accepting this lead" : "purchase"}.
+                    This is an exclusive lead — only one contractor per homeowner.
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Price + Purchase */}
+              {/* Price + Purchase / Accept */}
               <div
                 style={{
                   background: BG,
@@ -621,8 +743,12 @@ function LeadDetailModal({
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Lead Price</div>
-                    <div style={{ fontSize: 28, fontWeight: 800, color: TEXT }}>{money(detail.price)}</div>
+                    <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>
+                      {isFreeExclusive ? "Assignment" : "Lead Price"}
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: isFreeExclusive ? EMERALD : TEXT }}>
+                      {isFreeExclusive ? "Free" : money(detail.price)}
+                    </div>
                   </div>
                   {typeCfg && (
                     <div style={{ textAlign: "right" }}>
@@ -638,7 +764,38 @@ function LeadDetailModal({
                   </div>
                 )}
 
-                {purchaseStep === "idle" && detail.status === "available" && (
+                {/* Free exclusive: Accept button */}
+                {isFreeExclusive && purchaseStep === "idle" && detail.status === "available" && (
+                  <button
+                    type="button"
+                    onClick={handleAcceptFree}
+                    style={{
+                      width: "100%",
+                      padding: "14px 24px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: "#a78bfa",
+                      color: "#fff",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#8b5cf6"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "#a78bfa"; }}
+                  >
+                    Accept Free Lead
+                  </button>
+                )}
+
+                {purchaseStep === "accepting" && (
+                  <div style={{ textAlign: "center", color: TEXT_DIM, padding: 16 }}>
+                    Accepting lead...
+                  </div>
+                )}
+
+                {/* Paid lead: Purchase button */}
+                {!isFreeExclusive && purchaseStep === "idle" && detail.status === "available" && (
                   <button
                     type="button"
                     onClick={handleStartPurchase}
@@ -685,13 +842,15 @@ function LeadDetailModal({
                 )}
 
                 <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 12, textAlign: "center" }}>
-                  Exclusive lead. Homeowner contact info and LEAF report unlock after purchase.
+                  {isFreeExclusive
+                    ? "Free assignment. Contact info will be revealed after accepting."
+                    : "Exclusive lead. Homeowner contact info and LEAF report unlock after purchase."}
                 </div>
               </div>
             </>
           )}
 
-          {/* Purchase Success */}
+          {/* Purchase / Accept Success */}
           {purchaseStep === "success" && purchaseResult && (
             <div style={{ textAlign: "center" }}>
               <div
@@ -710,7 +869,9 @@ function LeadDetailModal({
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
-              <h3 style={{ color: TEXT, fontSize: 18, fontWeight: 700, margin: "0 0 4px" }}>Lead Purchased!</h3>
+              <h3 style={{ color: TEXT, fontSize: 18, fontWeight: 700, margin: "0 0 4px" }}>
+                {isFreeExclusive ? "Lead Accepted!" : "Lead Purchased!"}
+              </h3>
               <p style={{ color: TEXT_DIM, fontSize: 13, margin: "0 0 24px" }}>
                 Here is the homeowner&apos;s contact information.
               </p>
@@ -770,22 +931,47 @@ function LeadDetailModal({
 
 // ─── Main Component ─────────────────────────────────────────────────
 
+type TabKey = "open" | "network" | "reserved";
+
 export default function JobBoardClient({ data }: { data: JobBoardData }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"network" | "open">("open");
+  const [tab, setTab] = useState<TabKey>(data.stats.reservedLeads > 0 ? "reserved" : "open");
   const [serviceFilter, setServiceFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [selectedLead, setSelectedLead] = useState<string | null>(null);
 
+  const now = useMemo(() => new Date().toISOString(), []);
+
   // Filter leads based on tab + filters
   const filteredLeads = useMemo(() => {
     let leads = data.leads;
 
     // Tab filter
-    if (tab === "network") {
-      leads = leads.filter((l) => l.broker_id && data.brokerIds.includes(l.broker_id));
+    if (tab === "reserved") {
+      leads = leads.filter(
+        (l) => l.routing_channel === "exclusive"
+      );
+    } else if (tab === "network") {
+      leads = leads.filter((l) => {
+        const channel = l.routing_channel || "open_market";
+        if (channel !== "internal_network") return false;
+        // Only show if still within network window
+        if (l.network_release_at && l.network_release_at < now) return false;
+        return true;
+      });
+    } else {
+      // Open Market tab: open_market leads + released network leads
+      leads = leads.filter((l) => {
+        const channel = l.routing_channel || "open_market";
+        if (channel === "exclusive") return false;
+        if (channel === "internal_network") {
+          // Only show here if released to open market
+          return l.network_release_at != null && l.network_release_at < now;
+        }
+        return true; // open_market or legacy (null routing_channel)
+      });
     }
 
     // Service type filter
@@ -809,7 +995,12 @@ export default function JobBoardClient({ data }: { data: JobBoardData }) {
     // newest is default from server
 
     return leads;
-  }, [data.leads, data.brokerIds, tab, serviceFilter, sortBy, priceMin, priceMax]);
+  }, [data.leads, now, tab, serviceFilter, sortBy, priceMin, priceMax]);
+
+  const selectedLeadData = useMemo(
+    () => (selectedLead ? data.leads.find((l) => l.id === selectedLead) : undefined),
+    [selectedLead, data.leads]
+  );
 
   const handlePurchased = useCallback(() => {
     router.push("/contractor/leads");
@@ -826,6 +1017,12 @@ export default function JobBoardClient({ data }: { data: JobBoardData }) {
     width: 100,
   };
 
+  const tabs: { key: TabKey; label: string; count: number; color: string }[] = [
+    { key: "open", label: "Open Market", count: data.stats.openMarketLeads, color: "#f59e0b" },
+    { key: "network", label: "My Network", count: data.stats.networkLeads, color: "#3b82f6" },
+    { key: "reserved", label: "Reserved for You", count: data.stats.reservedLeads, color: "#a78bfa" },
+  ];
+
   return (
     <div style={{ padding: 28 }}>
       {/* Header */}
@@ -837,11 +1034,12 @@ export default function JobBoardClient({ data }: { data: JobBoardData }) {
       </div>
 
       {/* Stats Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
           { label: "Available Leads", value: data.stats.totalAvailable, color: EMERALD },
-          { label: "Network Leads", value: data.stats.networkLeads, color: "#3b82f6" },
           { label: "Open Market", value: data.stats.openMarketLeads, color: "#f59e0b" },
+          { label: "Network Leads", value: data.stats.networkLeads, color: "#3b82f6" },
+          { label: "Reserved for You", value: data.stats.reservedLeads, color: "#a78bfa" },
         ].map((s) => (
           <div
             key={s.label}
@@ -860,27 +1058,44 @@ export default function JobBoardClient({ data }: { data: JobBoardData }) {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
-        {(["network", "open"] as const).map((t) => {
-          const active = tab === t;
-          const label = t === "network" ? "My Network" : "Open Market";
+        {tabs.map((t) => {
+          const active = tab === t.key;
           return (
             <button
-              key={t}
+              key={t.key}
               type="button"
-              onClick={() => setTab(t)}
+              onClick={() => setTab(t.key)}
               style={{
                 padding: "8px 20px",
                 borderRadius: 8,
-                border: `1px solid ${active ? EMERALD : BORDER}`,
-                background: active ? "rgba(16,185,129,0.12)" : "transparent",
-                color: active ? EMERALD : TEXT_MUTED,
+                border: `1px solid ${active ? t.color : BORDER}`,
+                background: active ? `${t.color}1f` : "transparent",
+                color: active ? t.color : TEXT_MUTED,
                 fontSize: 13,
                 fontWeight: 700,
                 cursor: "pointer",
                 transition: "all 0.15s",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
               }}
             >
-              {label}
+              {t.label}
+              {t.count > 0 && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    background: active ? t.color : BORDER,
+                    color: active ? "#fff" : TEXT_MUTED,
+                    padding: "2px 7px",
+                    borderRadius: 10,
+                    lineHeight: "14px",
+                  }}
+                >
+                  {t.count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -998,13 +1213,17 @@ export default function JobBoardClient({ data }: { data: JobBoardData }) {
           }}
         >
           <div style={{ fontSize: 14, color: TEXT_DIM, fontWeight: 600 }}>
-            {tab === "network"
-              ? "No leads from your broker network yet."
+            {tab === "reserved"
+              ? "No leads reserved for you right now."
+              : tab === "network"
+              ? "No leads from your network yet."
               : "No leads match your filters."}
           </div>
           <div style={{ fontSize: 12, color: TEXT_MUTED, marginTop: 4 }}>
-            {tab === "network"
-              ? "Connect with brokers to see network-exclusive leads."
+            {tab === "reserved"
+              ? "When an admin assigns a lead to you, it will appear here."
+              : tab === "network"
+              ? "Network-exclusive leads will appear here when available."
               : "Try adjusting your filters or check back later."}
           </div>
         </div>
@@ -1014,6 +1233,7 @@ export default function JobBoardClient({ data }: { data: JobBoardData }) {
       {selectedLead && (
         <LeadDetailModal
           leadId={selectedLead}
+          leadSummary={selectedLeadData}
           onClose={() => setSelectedLead(null)}
           onPurchased={handlePurchased}
         />

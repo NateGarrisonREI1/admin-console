@@ -4,22 +4,15 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  EyeIcon,
-  CalendarDaysIcon,
-  ClockIcon,
   ClipboardDocumentCheckIcon,
   MagnifyingGlassIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  TrashIcon,
 } from "@heroicons/react/20/solid";
 import type { TeamPageData, UnifiedTeamMember, UnifiedScheduleEntry, MemberType } from "./actions";
-import { addTeamMember, scheduleService, fetchScheduleWeek, fetchScheduleMonth, deleteTeamMember } from "./actions";
+import { addTeamMember, scheduleService, fetchScheduleWeek, fetchScheduleMonth } from "./actions";
 import type { ServiceCatalog, ServiceCatalogCategory } from "../_actions/services";
 import { fetchServiceCatalog } from "../_actions/services";
-import type { PartnerContractor, PartnerDispatch } from "@/types/admin-ops";
-import PartnersClient from "../partners/PartnersClient";
-
 // ─── Design tokens ──────────────────────────────────────────────────
 const CARD = "#1e293b";
 const BORDER = "#334155";
@@ -30,13 +23,11 @@ const TEXT_MUTED = "#94a3b8";
 const EMERALD = "#10b981";
 const BG = "#0f172a";
 
-type FilterType = "all" | "hes" | "inspector" | "partners";
+type FilterType = "all" | "hes" | "inspector";
 type ScheduleView = "week" | "month";
 
 type Props = {
   data: TeamPageData;
-  partners: PartnerContractor[];
-  dispatches: PartnerDispatch[];
   initialTab?: string;
 };
 
@@ -130,49 +121,6 @@ function PillToggle({
   );
 }
 
-// ─── Icon Action Button ─────────────────────────────────────────────
-
-function ActionBtn({
-  title,
-  onClick,
-  children,
-}: {
-  title: string;
-  onClick: (e: React.MouseEvent) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      style={{
-        width: 30,
-        height: 30,
-        borderRadius: 6,
-        border: `1px solid ${BORDER}`,
-        background: "transparent",
-        color: TEXT_MUTED,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        transition: "all 0.12s",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = "rgba(148,163,184,0.08)";
-        e.currentTarget.style.color = TEXT;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = "transparent";
-        e.currentTarget.style.color = TEXT_MUTED;
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
 // ─── Toast ──────────────────────────────────────────────────────────
 
 function ListToast({ message, onDone }: { message: string; onDone: () => void }) {
@@ -205,16 +153,10 @@ function TeamTable({
   members,
   todayJobMap,
   onView,
-  onSchedule,
-  onTimeOff,
-  onDelete,
 }: {
   members: UnifiedTeamMember[];
   todayJobMap: Map<string, { count: number; assignment: string | null }>;
   onView: (m: UnifiedTeamMember) => void;
-  onSchedule: () => void;
-  onTimeOff: () => void;
-  onDelete: (m: UnifiedTeamMember) => void;
 }) {
   return (
     <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
@@ -225,7 +167,7 @@ function TeamTable({
 
       {/* Table */}
       <div style={{ overflowX: "auto" }}>
-        <table className="admin-table" style={{ minWidth: 900 }}>
+        <table className="admin-table" style={{ minWidth: 800 }}>
           <thead>
             <tr>
               <th>Name</th>
@@ -234,7 +176,6 @@ function TeamTable({
               <th>Today&apos;s Schedule</th>
               <th>Status</th>
               <th>Rating</th>
-              <th style={{ textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -325,30 +266,12 @@ function TeamTable({
                       {member.avg_rating > 0 ? member.avg_rating.toFixed(1) : "—"}
                     </span>
                   </td>
-
-                  {/* Actions */}
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 4 }}>
-                      <ActionBtn title="View detail" onClick={() => onView(member)}>
-                        <EyeIcon style={{ width: 14, height: 14 }} />
-                      </ActionBtn>
-                      <ActionBtn title="Schedule service" onClick={onSchedule}>
-                        <CalendarDaysIcon style={{ width: 14, height: 14 }} />
-                      </ActionBtn>
-                      <ActionBtn title="Mark time off" onClick={onTimeOff}>
-                        <ClockIcon style={{ width: 14, height: 14 }} />
-                      </ActionBtn>
-                      <ActionBtn title="Delete member" onClick={() => onDelete(member)}>
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </ActionBtn>
-                    </div>
-                  </td>
                 </tr>
               );
             })}
             {members.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: "center", padding: 32, color: TEXT_DIM, fontSize: 13 }}>
+                <td colSpan={6} style={{ textAlign: "center", padding: 32, color: TEXT_DIM, fontSize: 13 }}>
                   No team members found.
                 </td>
               </tr>
@@ -1202,11 +1125,9 @@ function ScheduleServiceModal({
 
 // ─── Main Component ─────────────────────────────────────────────────
 
-export default function TeamPageClient({ data, partners, dispatches, initialTab }: Props) {
+export default function TeamPageClient({ data, initialTab }: Props) {
   const router = useRouter();
-  const [filter, setFilter] = useState<FilterType>(
-    initialTab === "partners" ? "partners" : "all"
-  );
+  const [filter, setFilter] = useState<FilterType>("all");
   const [scheduleView, setScheduleView] = useState<ScheduleView>("week");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1221,8 +1142,6 @@ export default function TeamPageClient({ data, partners, dispatches, initialTab 
   });
   const [monthData, setMonthData] = useState<{ date: string; hesCount: number; inspCount: number }[]>([]);
   const [monthLoaded, setMonthLoaded] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<UnifiedTeamMember | null>(null);
-  const [deleteLoading, setDeleteLoading] = useState(false);
   const [listToast, setListToast] = useState<string | null>(null);
 
   const today = todayStr();
@@ -1275,22 +1194,6 @@ export default function TeamPageClient({ data, partners, dispatches, initialTab 
 
   function handleRefresh() { router.refresh(); }
 
-  async function handleDeleteMember() {
-    if (!deleteTarget) return;
-    const name = deleteTarget.name;
-    setDeleteLoading(true);
-    try {
-      await deleteTeamMember(deleteTarget.id, deleteTarget.type);
-      setDeleteTarget(null);
-      setListToast(`${name} has been removed.`);
-      handleRefresh();
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to delete team member.");
-    } finally {
-      setDeleteLoading(false);
-    }
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Header */}
@@ -1298,12 +1201,10 @@ export default function TeamPageClient({ data, partners, dispatches, initialTab 
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: 0 }}>Team</h1>
           <p style={{ fontSize: 13, color: TEXT_DIM, margin: "4px 0 0", fontWeight: 500 }}>
-            {filter === "partners"
-              ? "Manage your partner network."
-              : "Manage your in-house HES assessors and home inspectors."}
+            Manage your in-house HES assessors and home inspectors.
           </p>
         </div>
-        {filter !== "partners" && (
+        {(
           <div style={{ display: "flex", gap: 8 }}>
             <button type="button" onClick={openScheduleModal} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: "#7c3aed", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
               + Schedule Service
@@ -1315,8 +1216,8 @@ export default function TeamPageClient({ data, partners, dispatches, initialTab 
         )}
       </div>
 
-      {/* Stats Row — hidden on Partners tab */}
-      {filter !== "partners" && (
+      {/* Stats Row */}
+      {(
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           <KpiCard label="Total Members" value={data.stats.total} color={EMERALD} />
           <KpiCard label="Available Today" value={data.stats.availableToday} color="#10b981" />
@@ -1331,14 +1232,11 @@ export default function TeamPageClient({ data, partners, dispatches, initialTab 
           { key: "all" as FilterType, label: "All" },
           { key: "hes" as FilterType, label: "HES Assessors" },
           { key: "inspector" as FilterType, label: "Inspectors" },
-          { key: "partners" as FilterType, label: "Partners" },
         ]).map((opt, idx, arr) => {
           const active = filter === opt.key;
           const count =
             opt.key === "all"
               ? data.members.length
-              : opt.key === "partners"
-              ? partners.length
               : data.members.filter((m) => m.type === opt.key).length;
           return (
             <button
@@ -1366,19 +1264,13 @@ export default function TeamPageClient({ data, partners, dispatches, initialTab 
         })}
       </div>
 
-      {/* Partners Tab Content */}
-      {filter === "partners" ? (
-        <PartnersClient partners={partners} dispatches={dispatches} embedded />
-      ) : (
+      {(
         <>
           {/* Team Members Table */}
           <TeamTable
             members={filteredMembers}
             todayJobMap={todayJobMap}
             onView={(m) => router.push(`/admin/team/${m.id}?type=${m.type}`)}
-            onSchedule={openScheduleModal}
-            onTimeOff={() => setShowAddModal(false)} // placeholder — time off is per-member on detail page
-            onDelete={(m) => setDeleteTarget(m)}
           />
 
           {/* Schedule Section */}
@@ -1420,46 +1312,6 @@ export default function TeamPageClient({ data, partners, dispatches, initialTab 
           {showAddModal && <AddTeamMemberModal onClose={() => setShowAddModal(false)} onAdded={() => { setShowAddModal(false); handleRefresh(); }} />}
           {showScheduleModal && <ScheduleServiceModal members={data.members} catalog={catalog} onClose={() => setShowScheduleModal(false)} onScheduled={() => { setShowScheduleModal(false); handleRefresh(); }} />}
         </>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {deleteTarget && (
-        <ModalOverlay onClose={() => setDeleteTarget(null)}>
-          <div style={{ width: 400 }}>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: TEXT, margin: "0 0 12px" }}>Remove Team Member</h3>
-            <p style={{ fontSize: 14, color: TEXT_SEC, lineHeight: 1.5, margin: "0 0 20px" }}>
-              Are you sure you want to remove <strong>{deleteTarget.name}</strong>? This will also delete their schedule history. This action cannot be undone.
-            </p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                type="button"
-                onClick={() => setDeleteTarget(null)}
-                disabled={deleteLoading}
-                style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "#334155", color: TEXT_SEC, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteMember}
-                disabled={deleteLoading}
-                style={{
-                  padding: "9px 20px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "#ef4444",
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: deleteLoading ? "not-allowed" : "pointer",
-                  opacity: deleteLoading ? 0.5 : 1,
-                }}
-              >
-                {deleteLoading ? "Removing..." : "Remove Member"}
-              </button>
-            </div>
-          </div>
-        </ModalOverlay>
       )}
 
       {/* Toast */}

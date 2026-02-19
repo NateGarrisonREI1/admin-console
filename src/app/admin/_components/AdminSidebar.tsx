@@ -21,6 +21,10 @@ const OPS: LinkItem[] = [
   { href: "/admin/schedule", label: "Schedule" },
 ];
 
+const NETWORK: LinkItem[] = [
+  { href: "/admin/network", label: "My Network" },
+];
+
 const BROKER_PLATFORM: LinkItem[] = [
   { href: "/admin/broker-platform", label: "Broker Dashboard" },
   { href: "/admin/brokers", label: "Brokers" },
@@ -248,6 +252,12 @@ export default function AdminSidebar() {
         <SectionLabel>In-House Ops</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {OPS.map((l) => <NavLink key={l.href} {...l} />)}
+        </nav>
+
+        <Divider />
+        <SectionLabel>Network</SectionLabel>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {NETWORK.map((l) => <NavLink key={l.href} {...l} />)}
         </nav>
 
         <Divider />

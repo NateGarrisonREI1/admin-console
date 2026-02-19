@@ -374,6 +374,14 @@ export class AdminOpsService {
     return data as HesScheduleEntry;
   }
 
+  async deleteHesSchedule(id: string): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from("hes_schedule")
+      .delete()
+      .eq("id", id);
+    if (error) throw new InternalError(error.message);
+  }
+
   async setHesTimeOff(id: string, periods: TimeOffPeriod[]): Promise<void> {
     const { error } = await supabaseAdmin
       .from("hes_team_members")
@@ -504,6 +512,14 @@ export class AdminOpsService {
       .single();
     if (error) throw new InternalError(error.message);
     return data as InspectorScheduleEntry;
+  }
+
+  async deleteInspectorSchedule(id: string): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from("inspector_schedule")
+      .delete()
+      .eq("id", id);
+    if (error) throw new InternalError(error.message);
   }
 
   // ──────────────────────────────────────────

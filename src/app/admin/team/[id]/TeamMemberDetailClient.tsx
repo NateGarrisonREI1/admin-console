@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeftIcon,
   PencilSquareIcon,
-  ClockIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import type { TeamMemberDetail, UnifiedScheduleEntry, MemberType } from "../actions";
 import { updateTeamMember, setTimeOff, clearTimeOff, disableTeamMember, deleteTeamMember } from "../actions";
+import SidePanel from "@/components/ui/SidePanel";
 
 // ─── Design tokens ──────────────────────────────────────────────────
 const CARD = "#1e293b";
@@ -41,7 +41,6 @@ function isOnTimeOff(
 }
 
 function formatDate(iso: string): string {
-  // Handle both date-only "2026-02-17" and full ISO "2026-02-17T05:00:00.000Z"
   const d = iso.includes("T") ? new Date(iso) : new Date(iso + "T12:00:00");
   if (Number.isNaN(d.getTime())) return "\u2014";
   return d.toLocaleDateString("en-US", {
@@ -147,9 +146,11 @@ function PillToggle({
               border: "none",
               cursor: "pointer",
               transition: "all 0.12s",
-              background: active ? EMERALD : "#334155",
+              background: active ? EMERALD : "rgba(51,65,85,0.5)",
               color: active ? "#fff" : TEXT_SEC,
             }}
+            onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "#475569"; }}
+            onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = active ? EMERALD : "rgba(51,65,85,0.5)"; }}
           >
             {opt}
           </button>
@@ -158,131 +159,6 @@ function PillToggle({
     </div>
   );
 }
-
-// ─── Modal Primitives ───────────────────────────────────────────────
-
-function ModalOverlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.60)",
-        backdropFilter: "blur(4px)",
-        WebkitBackdropFilter: "blur(4px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
-        padding: 20,
-      }}
-    >
-      <div style={{
-        background: "#1e293b",
-        border: `1px solid ${BORDER}`,
-        borderRadius: 16,
-        padding: 28,
-        maxHeight: "85vh",
-        overflowY: "auto",
-        boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
-      }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function ModalField({ label, value, onChange, type = "text", placeholder }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  placeholder?: string;
-}) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="admin-input"
-        style={{ fontSize: 13, padding: "9px 12px" }}
-      />
-    </div>
-  );
-}
-
-function ModalSelect({ label, value, onChange, children }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        {label}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="admin-input"
-        style={{ fontSize: 13, padding: "9px 12px" }}
-      >
-        {children}
-      </select>
-    </div>
-  );
-}
-
-function ModalTextarea({ label, value, onChange, rows = 3 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-}) {
-  return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-        {label}
-      </label>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        rows={rows}
-        className="admin-input"
-        style={{ fontSize: 13, padding: "9px 12px", resize: "vertical" }}
-      />
-    </div>
-  );
-}
-
-const modalBtnCancel: React.CSSProperties = {
-  padding: "9px 20px",
-  borderRadius: 8,
-  border: "none",
-  background: "#334155",
-  color: TEXT_SEC,
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const modalBtnPrimary: React.CSSProperties = {
-  padding: "9px 20px",
-  borderRadius: 8,
-  border: "none",
-  background: EMERALD,
-  color: "#fff",
-  fontSize: 13,
-  fontWeight: 700,
-  cursor: "pointer",
-};
 
 // ─── Toast ──────────────────────────────────────────────────────────
 
@@ -321,20 +197,54 @@ const jobStatusColors: Record<string, string> = {
   no_show: "#ef4444",
 };
 
-// ─── Edit Profile Modal ─────────────────────────────────────────────
+// ─── Modal Overlay (for delete confirmation) ────────────────────────
 
-function EditProfileModal({
+function ModalOverlay({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.60)",
+        backdropFilter: "blur(4px)",
+        WebkitBackdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+        padding: 20,
+      }}
+    >
+      <div style={{
+        background: "#1e293b",
+        border: `1px solid ${BORDER}`,
+        borderRadius: 16,
+        padding: 28,
+        maxHeight: "85vh",
+        overflowY: "auto",
+        boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit Side Panel Content ────────────────────────────────────────
+
+function EditPanelContent({
   member,
-  onClose,
   onSaved,
+  onClose,
   onDisable,
-  onDelete,
+  onDeleteRequest,
 }: {
   member: TeamMemberDetail["member"];
-  onClose: () => void;
   onSaved: () => void;
+  onClose: () => void;
   onDisable: () => void;
-  onDelete: () => void;
+  onDeleteRequest: () => void;
 }) {
   const [name, setName] = useState(member.name);
   const [email, setEmail] = useState(member.email ?? "");
@@ -343,14 +253,17 @@ function EditProfileModal({
   const [selectedCerts, setSelectedCerts] = useState<Set<string>>(new Set(member.certifications));
   const [selectedAreas, setSelectedAreas] = useState<Set<string>>(new Set(member.service_areas));
   const [saving, setSaving] = useState(false);
-  const [confirmDisable, setConfirmDisable] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Time off state
+  const [toStart, setToStart] = useState("");
+  const [toEnd, setToEnd] = useState("");
+  const [toReason, setToReason] = useState("");
+  const [addingTimeOff, setAddingTimeOff] = useState(false);
 
   function toggleCert(val: string) {
     setSelectedCerts((prev) => {
       const next = new Set(prev);
-      if (next.has(val)) next.delete(val);
-      else next.add(val);
+      if (next.has(val)) next.delete(val); else next.add(val);
       return next;
     });
   }
@@ -358,8 +271,7 @@ function EditProfileModal({
   function toggleArea(val: string) {
     setSelectedAreas((prev) => {
       const next = new Set(prev);
-      if (next.has(val)) next.delete(val);
-      else next.add(val);
+      if (next.has(val)) next.delete(val); else next.add(val);
       return next;
     });
   }
@@ -381,198 +293,323 @@ function EditProfileModal({
     }
   }
 
-  const certOptions = member.type === "hes" ? HES_CERTS : INSP_CERTS;
-
-  return (
-    <ModalOverlay onClose={onClose}>
-      <div style={{ width: 500 }}>
-        <h3 style={{ fontSize: 17, fontWeight: 700, color: TEXT, margin: "0 0 18px" }}>Edit Profile</h3>
-
-        <ModalField label="Full Name" value={name} onChange={setName} placeholder="e.g. John Smith" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <ModalField label="Email" value={email} onChange={setEmail} placeholder="john@example.com" />
-          <ModalField label="Phone" value={phone} onChange={setPhone} placeholder="(503) 555-0100" />
-        </div>
-
-        <ModalSelect label="Status" value={status} onChange={setStatus}>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="on_leave">On Leave</option>
-        </ModalSelect>
-
-        {/* Certifications pills */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Certifications
-          </label>
-          <PillToggle options={certOptions} selected={selectedCerts} onToggle={toggleCert} />
-        </div>
-
-        {/* Service Areas pills */}
-        <div style={{ marginBottom: 18 }}>
-          <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Service Areas
-          </label>
-          <PillToggle options={SERVICE_AREAS} selected={selectedAreas} onToggle={toggleArea} />
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-          <button type="button" onClick={onClose} style={modalBtnCancel}>Cancel</button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            style={{ ...modalBtnPrimary, opacity: saving ? 0.5 : 1, cursor: saving ? "not-allowed" : "pointer" }}
-          >
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
-        </div>
-
-        {/* Danger zone */}
-        <div style={{ height: 1, background: BORDER, margin: "20px 0 16px" }} />
-
-        {!confirmDisable && !confirmDelete && (
-          <div style={{ display: "flex", gap: 10 }}>
-            {member.status === "active" && (
-              <button
-                type="button"
-                onClick={() => setConfirmDisable(true)}
-                style={{
-                  flex: 1,
-                  padding: "9px 16px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(245,158,11,0.35)",
-                  background: "rgba(245,158,11,0.08)",
-                  color: "#f59e0b",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                Disable Member
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(true)}
-              style={{
-                flex: 1,
-                padding: "9px 16px",
-                borderRadius: 8,
-                border: "1px solid rgba(239,68,68,0.35)",
-                background: "rgba(239,68,68,0.08)",
-                color: "#f87171",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Delete Member
-            </button>
-          </div>
-        )}
-
-        {confirmDisable && (
-          <div style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid rgba(245,158,11,0.30)", background: "rgba(245,158,11,0.06)" }}>
-            <div style={{ fontSize: 13, color: TEXT_SEC, marginBottom: 10 }}>
-              Disable <strong>{member.name}</strong>? They will no longer appear as available.
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setConfirmDisable(false)} style={modalBtnCancel}>Cancel</button>
-              <button
-                type="button"
-                onClick={onDisable}
-                style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: "#f59e0b", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-              >
-                Confirm Disable
-              </button>
-            </div>
-          </div>
-        )}
-
-        {confirmDelete && (
-          <div style={{ padding: "12px 14px", borderRadius: 10, border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.06)" }}>
-            <div style={{ fontSize: 13, color: TEXT_SEC, marginBottom: 10 }}>
-              Are you sure you want to remove <strong>{member.name}</strong>? This will also delete their schedule history. This cannot be undone.
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button type="button" onClick={() => setConfirmDelete(false)} style={modalBtnCancel}>Cancel</button>
-              <button
-                type="button"
-                onClick={onDelete}
-                style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: "#ef4444", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-              >
-                Confirm Delete
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </ModalOverlay>
-  );
-}
-
-// ─── Time Off Modal ─────────────────────────────────────────────────
-
-function TimeOffModal({
-  memberId,
-  memberType,
-  onClose,
-  onSaved,
-}: {
-  memberId: string;
-  memberType: MemberType;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  async function handleSave() {
-    if (!start || !end) return;
-    setSaving(true);
+  async function handleAddTimeOff() {
+    if (!toStart || !toEnd) return;
+    setAddingTimeOff(true);
     try {
-      await setTimeOff(memberId, memberType, start, end, reason.trim() || undefined);
+      await setTimeOff(member.id, member.type, toStart, toEnd, toReason.trim() || undefined);
+      setToStart("");
+      setToEnd("");
+      setToReason("");
       onSaved();
     } finally {
-      setSaving(false);
+      setAddingTimeOff(false);
     }
   }
 
-  const canSubmit = !!start && !!end && !saving;
+  async function handleRemoveTimeOff(index: number) {
+    await clearTimeOff(member.id, member.type, index);
+    onSaved();
+  }
+
+  const certOptions = member.type === "hes" ? HES_CERTS : INSP_CERTS;
+  const sectionHeader: React.CSSProperties = {
+    fontSize: 11,
+    color: TEXT_DIM,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: 10,
+  };
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "8px 12px",
+    fontSize: 13,
+    borderRadius: 8,
+    border: `1px solid ${BORDER}`,
+    background: "#1e293b",
+    color: TEXT,
+    outline: "none",
+    transition: "border-color 0.15s",
+  };
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: 11,
+    color: TEXT_MUTED,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    marginBottom: 5,
+  };
 
   return (
-    <ModalOverlay onClose={onClose}>
-      <div style={{ width: 420 }}>
-        <h3 style={{ fontSize: 17, fontWeight: 700, color: TEXT, margin: "0 0 18px" }}>Mark Time Off</h3>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 0 20px" }}>
+        {/* Profile Section */}
+        <div style={sectionHeader}>Profile</div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <ModalField label="Start Date *" value={start} onChange={setStart} type="date" />
-          <ModalField label="End Date *" value={end} onChange={setEnd} type="date" />
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Full Name</label>
+          <input
+            type="text" value={name} onChange={(e) => setName(e.target.value)}
+            style={inputStyle}
+            onFocus={(e) => { e.currentTarget.style.borderColor = EMERALD; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER; }}
+          />
         </div>
 
-        <ModalTextarea label="Reason (optional)" value={reason} onChange={setReason} rows={2} />
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Email</label>
+          <input
+            type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            style={inputStyle}
+            onFocus={(e) => { e.currentTarget.style.borderColor = EMERALD; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER; }}
+          />
+        </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-          <button type="button" onClick={onClose} style={modalBtnCancel}>Cancel</button>
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle}>Phone</label>
+          <input
+            type="text" value={phone} onChange={(e) => setPhone(e.target.value)}
+            style={inputStyle}
+            onFocus={(e) => { e.currentTarget.style.borderColor = EMERALD; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER; }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={labelStyle}>Status</label>
+          <select
+            value={status} onChange={(e) => setStatus(e.target.value)}
+            style={{ ...inputStyle, cursor: "pointer" }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = EMERALD; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = BORDER; }}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="on_leave">On Leave</option>
+          </select>
+        </div>
+
+        {/* Certifications Section */}
+        <div style={{ ...sectionHeader, marginTop: 24 }}>Certifications</div>
+        <div style={{ marginBottom: 20 }}>
+          <PillToggle options={certOptions} selected={selectedCerts} onToggle={toggleCert} />
+        </div>
+
+        {/* Service Areas Section */}
+        <div style={sectionHeader}>Service Areas</div>
+        <div style={{ marginBottom: 20 }}>
+          <PillToggle options={SERVICE_AREAS} selected={selectedAreas} onToggle={toggleArea} />
+        </div>
+
+        {/* Time Off Section */}
+        <div style={sectionHeader}>Time Off</div>
+
+        {/* Existing time off entries */}
+        {member.time_off.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            {member.time_off.map((period, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "8px 10px",
+                  background: "rgba(239,68,68,0.06)",
+                  border: "1px solid rgba(239,68,68,0.15)",
+                  borderRadius: 8,
+                  marginBottom: 6,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 12, color: TEXT, fontWeight: 600 }}>
+                    {formatDateShort(period.start)} — {formatDateShort(period.end)}
+                  </div>
+                  {period.reason && (
+                    <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>{period.reason}</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  title="Remove time off"
+                  onClick={() => handleRemoveTimeOff(i)}
+                  style={{
+                    width: 24, height: 24, borderRadius: 6,
+                    background: "none", border: "none", color: "#ef4444",
+                    cursor: "pointer", display: "flex", alignItems: "center",
+                    justifyContent: "center", flexShrink: 0,
+                  }}
+                >
+                  <XMarkIcon style={{ width: 14, height: 14 }} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {member.time_off.length === 0 && (
+          <div style={{ fontSize: 12, color: TEXT_DIM, marginBottom: 12 }}>No scheduled time off.</div>
+        )}
+
+        {/* Add time off form */}
+        <div style={{
+          padding: 12, borderRadius: 8,
+          border: `1px solid ${BORDER}`, background: "rgba(15,23,42,0.5)",
+          marginBottom: 20,
+        }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+            <div>
+              <label style={{ ...labelStyle, fontSize: 10 }}>Start Date</label>
+              <input
+                type="date" value={toStart} onChange={(e) => setToStart(e.target.value)}
+                style={{ ...inputStyle, fontSize: 12, padding: "6px 10px" }}
+              />
+            </div>
+            <div>
+              <label style={{ ...labelStyle, fontSize: 10 }}>End Date</label>
+              <input
+                type="date" value={toEnd} onChange={(e) => setToEnd(e.target.value)}
+                style={{ ...inputStyle, fontSize: 12, padding: "6px 10px" }}
+              />
+            </div>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ ...labelStyle, fontSize: 10 }}>Reason (optional)</label>
+            <input
+              type="text" value={toReason} onChange={(e) => setToReason(e.target.value)}
+              placeholder="e.g. Vacation"
+              style={{ ...inputStyle, fontSize: 12, padding: "6px 10px" }}
+            />
+          </div>
           <button
             type="button"
-            onClick={handleSave}
-            disabled={!canSubmit}
+            onClick={handleAddTimeOff}
+            disabled={!toStart || !toEnd || addingTimeOff}
             style={{
-              ...modalBtnPrimary,
-              background: "#ef4444",
-              opacity: canSubmit ? 1 : 0.5,
-              cursor: canSubmit ? "pointer" : "not-allowed",
+              width: "100%",
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: `1px solid rgba(16,185,129,0.4)`,
+              background: "transparent",
+              color: EMERALD,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: !toStart || !toEnd || addingTimeOff ? "not-allowed" : "pointer",
+              opacity: !toStart || !toEnd || addingTimeOff ? 0.5 : 1,
+              transition: "all 0.12s",
             }}
+            onMouseEnter={(e) => { if (toStart && toEnd && !addingTimeOff) e.currentTarget.style.background = "rgba(16,185,129,0.08)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
           >
-            {saving ? "Saving..." : "Mark Time Off"}
+            {addingTimeOff ? "Adding..." : "Add Time Off"}
+          </button>
+        </div>
+
+        {/* Danger Zone */}
+        <div style={{ marginTop: 32, borderTop: `1px solid rgba(51,65,85,0.5)`, paddingTop: 24 }}>
+          <div style={{ ...sectionHeader, color: "#f87171" }}>Danger Zone</div>
+
+          <button
+            type="button"
+            onClick={onDisable}
+            style={{
+              width: "100%",
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: member.status === "active"
+                ? "1px solid rgba(202,138,4,0.4)"
+                : `1px solid rgba(16,185,129,0.4)`,
+              background: "transparent",
+              color: member.status === "active" ? "#eab308" : EMERALD,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              marginBottom: 8,
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = member.status === "active"
+                ? "rgba(202,138,4,0.08)"
+                : "rgba(16,185,129,0.08)";
+            }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            {member.status === "active" ? "Disable Member" : "Enable Member"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onDeleteRequest}
+            style={{
+              width: "100%",
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1px solid rgba(239,68,68,0.4)",
+              background: "transparent",
+              color: "#f87171",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all 0.12s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            Delete Member
           </button>
         </div>
       </div>
-    </ModalOverlay>
+
+      {/* Pinned footer */}
+      <div style={{
+        borderTop: `1px solid rgba(51,65,85,0.5)`,
+        padding: "16px 0 0",
+        display: "flex",
+        gap: 10,
+        flexShrink: 0,
+      }}>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            flex: 1,
+            padding: "10px 16px",
+            borderRadius: 8,
+            border: `1px solid ${BORDER}`,
+            background: "transparent",
+            color: TEXT_SEC,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          style={{
+            flex: 2,
+            padding: "10px 16px",
+            borderRadius: 8,
+            border: "none",
+            background: EMERALD,
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: saving ? "not-allowed" : "pointer",
+            opacity: saving ? 0.5 : 1,
+          }}
+        >
+          {saving ? "Saving..." : "Save Changes"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -624,7 +661,7 @@ function JobsTable({ entries, emptyMessage }: { entries: UnifiedScheduleEntry[];
                 </td>
                 <td>
                   <span style={{ fontSize: 12, color: TEXT_DIM }}>
-                    {[entry.address, entry.city].filter(Boolean).join(", ") || "—"}
+                    {[entry.address, entry.city].filter(Boolean).join(", ") || "\u2014"}
                   </span>
                 </td>
                 <td>
@@ -644,7 +681,7 @@ function JobsTable({ entries, emptyMessage }: { entries: UnifiedScheduleEntry[];
                 </td>
                 <td style={{ textAlign: "right" }}>
                   <span style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 600 }}>
-                    {entry.invoice_amount != null ? fmtCurrency(entry.invoice_amount) : "—"}
+                    {entry.invoice_amount != null ? fmtCurrency(entry.invoice_amount) : "\u2014"}
                   </span>
                 </td>
               </tr>
@@ -665,10 +702,11 @@ export default function TeamMemberDetailClient({ data }: Props) {
   const { member, kpis, upcomingJobs, jobHistory, weekSchedule } = data;
 
   const [showEdit, setShowEdit] = useState(false);
-  const [showTimeOff, setShowTimeOff] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [actionSaving, setActionSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const today = todayStr();
   const onTimeOffNow = isOnTimeOff(member.time_off, today);
@@ -685,25 +723,31 @@ export default function TeamMemberDetailClient({ data }: Props) {
   async function handleDisable() {
     setActionSaving(true);
     try {
-      await disableTeamMember(member.id, member.type);
-      setToast(`${member.name} has been disabled.`);
+      if (member.status === "active") {
+        await disableTeamMember(member.id, member.type);
+        setToast(`${member.name} has been disabled.`);
+      } else {
+        await updateTeamMember(member.id, member.type, { status: "active" });
+        setToast(`${member.name} has been enabled.`);
+      }
+      setShowEdit(false);
       handleRefresh();
     } catch (e: any) {
-      alert(e?.message ?? "Failed to disable team member.");
+      alert(e?.message ?? "Failed to update team member.");
     } finally {
       setActionSaving(false);
     }
   }
 
   async function handleDelete() {
-    setActionSaving(true);
+    setDeleteLoading(true);
     try {
       await deleteTeamMember(member.id, member.type);
       setToast(`${member.name} has been removed.`);
       router.push("/admin/team");
     } catch (e: any) {
       alert(e?.message ?? "Failed to delete team member.");
-      setActionSaving(false);
+      setDeleteLoading(false);
     }
   }
 
@@ -798,7 +842,7 @@ export default function TeamMemberDetailClient({ data }: Props) {
             <StatusBadge status={member.status} />
           </div>
           <div style={{ fontSize: 12, color: TEXT_DIM, marginTop: 3 }}>
-            {member.email ?? "No email"}{member.phone && ` · ${member.phone}`}
+            {member.email ?? "No email"}{member.phone && ` \u00B7 ${member.phone}`}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -825,29 +869,6 @@ export default function TeamMemberDetailClient({ data }: Props) {
             <PencilSquareIcon style={{ width: 13, height: 13 }} />
             Edit
           </button>
-          <button
-            type="button"
-            onClick={() => setShowTimeOff(true)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "7px 14px",
-              borderRadius: 8,
-              border: `1px solid ${BORDER}`,
-              background: "#334155",
-              color: TEXT_SEC,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "all 0.12s",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#475569"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#334155"; }}
-          >
-            <ClockIcon style={{ width: 13, height: 13 }} />
-            Mark Time Off
-          </button>
         </div>
       </div>
 
@@ -861,12 +882,12 @@ export default function TeamMemberDetailClient({ data }: Props) {
               Profile
             </h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <ProfileField label="Email" value={member.email ?? "—"} />
-              <ProfileField label="Phone" value={member.phone ?? "—"} />
+              <ProfileField label="Email" value={member.email ?? "\u2014"} />
+              <ProfileField label="Phone" value={member.phone ?? "\u2014"} />
               <ProfileField label="Certifications" value={member.certifications.join(", ") || "None"} />
               <ProfileField label="Service Areas" value={member.service_areas.join(", ") || "None"} />
               {member.type === "inspector" && (
-                <ProfileField label="License" value={member.license_number ?? "—"} />
+                <ProfileField label="License" value={member.license_number ?? "\u2014"} />
               )}
               <ProfileField label="Member Since" value={formatDate(member.created_at)} />
             </div>
@@ -877,7 +898,7 @@ export default function TeamMemberDetailClient({ data }: Props) {
             <KpiCard label="Jobs Completed" value={kpis.jobsCompleted} color={EMERALD} />
             <KpiCard label="This Month" value={kpis.thisMonth} color="#38bdf8" />
             <KpiCard label="Revenue Generated" value={fmtCurrency(kpis.revenueGenerated)} color="#a78bfa" />
-            <KpiCard label="Avg Rating" value={kpis.avgRating > 0 ? kpis.avgRating.toFixed(1) : "—"} color="#fbbf24" />
+            <KpiCard label="Avg Rating" value={kpis.avgRating > 0 ? kpis.avgRating.toFixed(1) : "\u2014"} color="#fbbf24" />
           </div>
 
           {/* Upcoming Jobs */}
@@ -976,29 +997,6 @@ export default function TeamMemberDetailClient({ data }: Props) {
                         <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>{period.reason}</div>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      title="Remove time off"
-                      onClick={async () => {
-                        await clearTimeOff(member.id, member.type, i);
-                        handleRefresh();
-                      }}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: 6,
-                        background: "none",
-                        border: "none",
-                        color: "#ef4444",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <XMarkIcon style={{ width: 14, height: 14 }} />
-                    </button>
                   </div>
                 ))}
               </div>
@@ -1073,7 +1071,7 @@ export default function TeamMemberDetailClient({ data }: Props) {
                       ))}
                     </div>
                   ) : (
-                    <span style={{ fontSize: 10, color: "#475569" }}>—</span>
+                    <span style={{ fontSize: 10, color: "#475569" }}>{"\u2014"}</span>
                   )}
                 </div>
               );
@@ -1082,24 +1080,70 @@ export default function TeamMemberDetailClient({ data }: Props) {
         </div>
       </div>
 
-      {/* Modals */}
-      {showEdit && (
-        <EditProfileModal
+      {/* Edit Side Panel */}
+      <SidePanel
+        isOpen={showEdit}
+        onClose={() => setShowEdit(false)}
+        title="Edit Team Member"
+        width="w-1/3"
+      >
+        <EditPanelContent
           member={member}
+          onSaved={() => {
+            setShowEdit(false);
+            setToast("Changes saved.");
+            handleRefresh();
+          }}
           onClose={() => setShowEdit(false)}
-          onSaved={() => { setShowEdit(false); handleRefresh(); }}
-          onDisable={async () => { setShowEdit(false); await handleDisable(); }}
-          onDelete={async () => { setShowEdit(false); await handleDelete(); }}
+          onDisable={handleDisable}
+          onDeleteRequest={() => {
+            setShowEdit(false);
+            setShowDeleteConfirm(true);
+          }}
         />
+      </SidePanel>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <ModalOverlay onClose={() => setShowDeleteConfirm(false)}>
+          <div style={{ width: 400 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: "#f87171", margin: "0 0 12px" }}>Delete Team Member</h3>
+            <p style={{ fontSize: 14, color: TEXT_SEC, lineHeight: 1.5, margin: "0 0 6px" }}>
+              Are you sure you want to remove <strong>{member.name}</strong>? This will also delete their schedule history.
+            </p>
+            <p style={{ fontSize: 13, color: "#f87171", margin: "0 0 20px", fontWeight: 600 }}>
+              This action cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteLoading}
+                style={{
+                  padding: "9px 20px", borderRadius: 8, border: "none",
+                  background: "#334155", color: TEXT_SEC, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleteLoading}
+                style={{
+                  padding: "9px 20px", borderRadius: 8, border: "none",
+                  background: "#ef4444", color: "#fff", fontSize: 13, fontWeight: 700,
+                  cursor: deleteLoading ? "not-allowed" : "pointer",
+                  opacity: deleteLoading ? 0.5 : 1,
+                }}
+              >
+                {deleteLoading ? "Deleting..." : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        </ModalOverlay>
       )}
-      {showTimeOff && (
-        <TimeOffModal
-          memberId={member.id}
-          memberType={member.type}
-          onClose={() => setShowTimeOff(false)}
-          onSaved={() => { setShowTimeOff(false); handleRefresh(); }}
-        />
-      )}
+
       {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
   );

@@ -78,7 +78,7 @@ export async function rescheduleJob(
   const svc = new AdminOpsService();
   const payload: Record<string, unknown> = {
     scheduled_date: updates.scheduled_date,
-    status: "scheduled",
+    status: "rescheduled",
   };
   if (updates.scheduled_time !== undefined) payload.scheduled_time = updates.scheduled_time;
   if (updates.team_member_id !== undefined) payload.team_member_id = updates.team_member_id || null;
@@ -87,6 +87,32 @@ export async function rescheduleJob(
     await svc.updateHesSchedule(id, payload);
   } else {
     await svc.updateInspectorSchedule(id, payload);
+  }
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/team");
+}
+
+// ─── Archive a job ──────────────────────────────────────────────────
+
+export async function archiveScheduleJob(id: string, type: MemberType) {
+  const svc = new AdminOpsService();
+  if (type === "hes") {
+    await svc.updateHesSchedule(id, { status: "archived" });
+  } else {
+    await svc.updateInspectorSchedule(id, { status: "archived" });
+  }
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/team");
+}
+
+// ─── Delete a job (hard delete) ─────────────────────────────────────
+
+export async function deleteScheduleJob(id: string, type: MemberType) {
+  const svc = new AdminOpsService();
+  if (type === "hes") {
+    await svc.deleteHesSchedule(id);
+  } else {
+    await svc.deleteInspectorSchedule(id);
   }
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");

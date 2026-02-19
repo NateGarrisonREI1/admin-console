@@ -36,6 +36,9 @@ export type MarketplaceLead = {
   broker_name: string | null;
   buyer_id: string | null;
   buyer_name: string | null;
+  routing_channel: string | null;
+  exclusive_contractor_id: string | null;
+  is_free_assignment: boolean;
 };
 
 export type MarketplaceStats = {
@@ -162,6 +165,9 @@ export async function fetchMarketplaceData(): Promise<MarketplaceData> {
     buyer_name: l.purchased_by_contractor_id
       ? (nameMap.get(l.purchased_by_contractor_id as string) ?? null)
       : null,
+    routing_channel: (l.routing_channel as string) ?? null,
+    exclusive_contractor_id: (l.exclusive_contractor_id as string) ?? null,
+    is_free_assignment: !!(l.is_free_assignment),
   }));
 
   // Stats
@@ -318,9 +324,31 @@ export type PostLeadInput = {
   homeowner_email: string;
   homeowner_phone: string;
   best_contact_time: string;
-  routing: "marketplace" | "assign";
-  assign_to_contractor_id: string | null;
+  // Routing — Phase 8A
+  routing_channel: "open_market" | "internal_network" | "exclusive";
+  exclusive_contractor_id: string | null;
+  is_free_assignment: boolean;
+  network_release_hours: number | null; // 24 | 48 | 72 | null (never)
+  // Legacy compat
+  routing?: "marketplace" | "assign";
+  assign_to_contractor_id?: string | null;
 };
+
+export async function fetchNetworkContractors(): Promise<{ id: string; name: string; company_name: string | null }[]> {
+  await requireAdmin();
+  const { data } = await supabaseAdmin
+    .from("rei_contractor_network")
+    .select("id, contractor_id, name, company_name")
+    .eq("status", "active")
+    .order("company_name", { ascending: true });
+
+  if (!data) return [];
+  return (data as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    company_name: (r.company_name as string) ?? null,
+  }));
+}
 
 export async function fetchContractors(): Promise<{ id: string; name: string }[]> {
   await requireAdmin();
@@ -352,21 +380,26 @@ export async function adminPostLead(
     if (!input.title.trim()) return { success: false, error: "Title is required." };
     if (!input.homeowner_name.trim()) return { success: false, error: "Homeowner name is required." };
     if (!input.system_type) return { success: false, error: "Service type is required." };
-    if (input.routing === "marketplace" && (!input.price || input.price <= 0)) {
-      return { success: false, error: "Price must be greater than 0." };
-    }
-    if (input.routing === "assign" && !input.assign_to_contractor_id) {
-      return { success: false, error: "Please select a contractor." };
-    }
 
-    const isAssign = input.routing === "assign" && input.assign_to_contractor_id;
+    const channel = input.routing_channel || "open_market";
+
+    // Validate based on routing channel
+    if (channel === "open_market" && (!input.price || input.price <= 0)) {
+      return { success: false, error: "Price must be greater than 0 for open market leads." };
+    }
+    if (channel === "internal_network" && !input.is_free_assignment && (!input.price || input.price <= 0)) {
+      return { success: false, error: "Price must be greater than 0 for network leads." };
+    }
+    if (channel === "exclusive" && !input.exclusive_contractor_id) {
+      return { success: false, error: "Please select a contractor for exclusive assignment." };
+    }
 
     const leadRow: Record<string, unknown> = {
       title: input.title.trim(),
       description: input.description.trim() || null,
       system_type: input.system_type,
-      price: input.price || 0,
-      is_exclusive: true,
+      price: (channel === "exclusive" && input.is_free_assignment) ? 0 : (input.price || 0),
+      is_exclusive: channel === "exclusive",
       home_type: input.home_type || null,
       home_year_built: input.home_year_built,
       home_sqft: input.home_sqft,
@@ -384,13 +417,29 @@ export async function adminPostLead(
       has_leaf: false,
       leaf_report_data: null,
       broker_id: adminId,
+      // Phase 8A routing fields
+      routing_channel: channel,
+      source: "admin_post",
+      is_free_assignment: channel === "exclusive" ? input.is_free_assignment : false,
     };
 
-    if (isAssign) {
-      leadRow.status = "assigned";
-      leadRow.purchased_by_contractor_id = input.assign_to_contractor_id;
-      leadRow.purchased_date = new Date().toISOString();
+    // Channel-specific logic
+    if (channel === "exclusive" && input.exclusive_contractor_id) {
+      leadRow.exclusive_contractor_id = input.exclusive_contractor_id;
+      leadRow.status = "available";
+      leadRow.purchased_by_contractor_id = input.exclusive_contractor_id;
+      if (input.is_free_assignment) {
+        leadRow.price = 0;
+        leadRow.is_free_assignment = true;
+      }
+    } else if (channel === "internal_network") {
+      leadRow.status = "available";
+      leadRow.expiration_date = new Date(Date.now() + 30 * 86400000).toISOString();
+      if (input.network_release_hours != null) {
+        leadRow.network_release_at = new Date(Date.now() + input.network_release_hours * 60 * 60 * 1000).toISOString();
+      }
     } else {
+      // open_market
       leadRow.status = "available";
       leadRow.expiration_date = new Date(Date.now() + 30 * 86400000).toISOString();
     }
@@ -403,11 +452,11 @@ export async function adminPostLead(
 
     if (error) return { success: false, error: error.message };
 
-    // If assigning to contractor, also create contractor_lead_status row
-    if (isAssign && inserted) {
+    // If exclusive assignment, also create contractor_lead_status row
+    if (channel === "exclusive" && input.exclusive_contractor_id && inserted) {
       await supabaseAdmin.from("contractor_lead_status").insert({
         system_lead_id: inserted.id,
-        contractor_id: input.assign_to_contractor_id,
+        contractor_id: input.exclusive_contractor_id,
         status: "assigned",
       });
     }

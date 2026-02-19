@@ -1,7 +1,7 @@
 // src/app/admin/schedule/SchedulePageClient.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback, Fragment } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import type { SchedulePageData, ScheduleJob, MemberType } from "./data";
 import {
@@ -9,9 +9,13 @@ import {
   cancelScheduleJob,
   updateScheduleJobStatus,
   rescheduleJob,
+  archiveScheduleJob,
+  deleteScheduleJob,
 } from "./actions";
 import type { ServiceCatalog } from "../_actions/services";
 import { fetchServiceCatalog } from "../_actions/services";
+import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, type OptionColor } from "@/components/ui/FilterableHeader";
+const PANEL_WIDTH = 420;
 
 // ─── Design tokens ──────────────────────────────────────────────────
 const CARD = "#1e293b";
@@ -92,16 +96,53 @@ const PILL_COLORS = {
   in_progress: { bg: "#d97706", hover: "#b45309", text: "#fff" },
   completed:   { bg: "#059669", hover: "#047857", text: "#fff" },
   cancelled:   { bg: "#dc2626", hover: "#b91c1c", text: "#fff" },
+  archived:    { bg: "#475569", hover: "#374151", text: "#fff" },
 } as const;
 
 // ─── Display badge config (table rows — not clickable) ──────────────
 
 const STATUS_DISPLAY: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  pending:     { bg: "rgba(124,58,237,0.12)", color: "#a78bfa", border: "rgba(124,58,237,0.3)", label: "Pending" },
-  scheduled:   { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Scheduled" },
-  in_progress: { bg: "rgba(217,119,6,0.15)", color: "#fbbf24", border: "rgba(217,119,6,0.35)", label: "In Progress" },
-  completed:   { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Completed" },
-  cancelled:   { bg: "rgba(100,116,139,0.12)", color: "#94a3b8", border: "rgba(100,116,139,0.3)", label: "Cancelled" },
+  pending:      { bg: "rgba(124,58,237,0.12)", color: "#a78bfa", border: "rgba(124,58,237,0.3)", label: "Pending" },
+  scheduled:    { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Scheduled" },
+  rescheduled:  { bg: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "rgba(37,99,235,0.35)", label: "Rescheduled" },
+  in_progress:  { bg: "rgba(217,119,6,0.15)", color: "#fbbf24", border: "rgba(217,119,6,0.35)", label: "In Progress" },
+  completed:    { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Completed" },
+  cancelled:    { bg: "rgba(100,116,139,0.12)", color: "#94a3b8", border: "rgba(100,116,139,0.3)", label: "Cancelled" },
+  archived:     { bg: "rgba(71,85,105,0.15)", color: "#94a3b8", border: "rgba(71,85,105,0.3)", label: "Archived" },
+};
+
+// ─── Status transition map ──────────────────────────────────────────
+
+type TransitionDef = { status: string; label: string; colorKey: keyof typeof PILL_COLORS; action?: "cancel" | "reschedule" | "archive" };
+
+const STATUS_TRANSITIONS: Record<string, TransitionDef[]> = {
+  pending: [
+    { status: "scheduled", label: "Schedule", colorKey: "schedule" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  scheduled: [
+    { status: "rescheduled", label: "Re-Schedule", colorKey: "reschedule", action: "reschedule" },
+    { status: "in_progress", label: "In Progress", colorKey: "in_progress" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  rescheduled: [
+    { status: "rescheduled", label: "Re-Schedule", colorKey: "reschedule", action: "reschedule" },
+    { status: "in_progress", label: "In Progress", colorKey: "in_progress" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  in_progress: [
+    { status: "completed", label: "Completed", colorKey: "completed" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  completed: [
+    { status: "rescheduled", label: "Re-Schedule", colorKey: "reschedule", action: "reschedule" },
+    { status: "archived", label: "Archive", colorKey: "archived", action: "archive" },
+  ],
+  cancelled: [
+    { status: "rescheduled", label: "Re-Schedule", colorKey: "reschedule", action: "reschedule" },
+    { status: "archived", label: "Archive", colorKey: "archived", action: "archive" },
+  ],
+  archived: [],
 };
 
 const JOB_TYPE_BADGE: Record<string, { bg: string; color: string; border: string; label: string }> = {
@@ -110,9 +151,40 @@ const JOB_TYPE_BADGE: Record<string, { bg: string; color: string; border: string
   leaf_followup: { bg: "rgba(99,102,241,0.12)", color: "#818cf8", border: "rgba(99,102,241,0.3)", label: "LEAF" },
 };
 
-type JobTypeFilter = "all" | "hes" | "inspector" | "leaf_followup";
-type StatusFilter = "all" | "pending" | "scheduled" | "in_progress" | "completed" | "cancelled";
-type DateRange = "today" | "this_week" | "this_month" | "custom";
+// Filter option lists (for column headers)
+const TYPE_OPTIONS = [
+  { value: "hes", label: "HES Assessment" },
+  { value: "inspector", label: "Home Inspection" },
+  { value: "leaf_followup", label: "LEAF Follow-up" },
+];
+
+const STATUS_OPTIONS = [
+  { value: "pending", label: "Pending" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "rescheduled", label: "Rescheduled" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "archived", label: "Archived" },
+];
+
+const TIME_SEGMENT_OPTIONS = [
+  { value: "morning", label: "Morning (6am – 12pm)" },
+  { value: "afternoon", label: "Afternoon (12pm – 6pm)" },
+  { value: "evening", label: "Evening (6pm – 12am)" },
+];
+
+const TIME_SEGMENT_COLORS: Record<string, OptionColor> = {
+  morning:   { bg: "rgba(251,191,36,0.15)", text: "#fbbf24", border: "rgba(251,191,36,0.3)", activeBg: "#f59e0b", activeText: "#fff" },
+  afternoon: { bg: "rgba(59,130,246,0.15)", text: "#60a5fa", border: "rgba(59,130,246,0.3)", activeBg: "#3b82f6", activeText: "#fff" },
+  evening:   { bg: "rgba(139,92,246,0.15)", text: "#a78bfa", border: "rgba(139,92,246,0.3)", activeBg: "#7c3aed", activeText: "#fff" },
+};
+
+const TYPE_OPTION_COLORS: Record<string, OptionColor> = {
+  hes:           { bg: "rgba(16,185,129,0.2)", text: "#34d399", border: "rgba(16,185,129,0.3)", activeBg: "#10b981", activeText: "#fff" },
+  inspector:     { bg: "rgba(249,115,22,0.2)", text: "#fb923c", border: "rgba(249,115,22,0.3)", activeBg: "#f97316", activeText: "#fff" },
+  leaf_followup: { bg: "rgba(59,130,246,0.2)", text: "#60a5fa", border: "rgba(59,130,246,0.3)", activeBg: "#3b82f6", activeText: "#fff" },
+};
 
 // ─── Clickable Status Pill ──────────────────────────────────────────
 
@@ -529,20 +601,22 @@ function ScheduleServiceModal({
   );
 }
 
-// ─── Expanded Job Detail Card ───────────────────────────────────────
+// ─── Job Detail Panel Content ────────────────────────────────────────
 
-function ExpandedJobCard({
+function JobDetailContent({
   job,
   onStatusUpdated,
   onCancelRequest,
   onRescheduleRequest,
-  onCollapse,
+  onArchiveRequest,
+  onDeleteRequest,
 }: {
   job: ScheduleJob;
   onStatusUpdated: (msg: string) => void;
   onCancelRequest: (job: ScheduleJob) => void;
   onRescheduleRequest: (job: ScheduleJob) => void;
-  onCollapse: () => void;
+  onArchiveRequest: (job: ScheduleJob) => void;
+  onDeleteRequest: (job: ScheduleJob) => void;
 }) {
   const [notes, setNotes] = useState(job.special_notes ?? "");
   const [busy, setBusy] = useState(false);
@@ -550,6 +624,8 @@ function ExpandedJobCard({
   const addr = fullAddress(job);
   const mapUrl = makeMapEmbed(job.address, job.city, job.state, job.zip);
   const directionsUrl = makeMapHref(job.address, job.city, job.state, job.zip);
+  const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
+  const statusBadge = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
 
   async function handlePillAction(newStatus: string, label: string) {
     if (busy) return;
@@ -564,168 +640,143 @@ function ExpandedJobCard({
     }
   }
 
-  // Determine which action pills to show based on current status
   function renderActionPills() {
+    const transitions = STATUS_TRANSITIONS[job.status] ?? [];
     const pills: React.ReactNode[] = [];
 
-    switch (job.status) {
-      case "pending":
-        pills.push(
-          <StatusPill key="schedule" label="Schedule" colorKey="schedule" disabled={busy}
-            onClick={() => handlePillAction("scheduled", "Scheduled")} />,
-          <StatusPill key="cancel" label="Cancel" colorKey="cancelled" disabled={busy}
-            onClick={() => onCancelRequest(job)} />,
-        );
-        break;
-      case "scheduled":
-        pills.push(
-          <StatusPill key="reschedule" label="Re-Schedule" colorKey="reschedule" disabled={busy}
-            onClick={() => onRescheduleRequest(job)} />,
-          <StatusPill key="in_progress" label="In Progress" colorKey="in_progress" disabled={busy}
-            onClick={() => handlePillAction("in_progress", "In Progress")} />,
-          <StatusPill key="cancel" label="Cancel" colorKey="cancelled" disabled={busy}
-            onClick={() => onCancelRequest(job)} />,
-        );
-        break;
-      case "in_progress":
-        pills.push(
-          <StatusPill key="completed" label="Completed" colorKey="completed" disabled={busy}
-            onClick={() => handlePillAction("completed", "Completed")} />,
-          <StatusPill key="cancel" label="Cancel" colorKey="cancelled" disabled={busy}
-            onClick={() => onCancelRequest(job)} />,
-        );
-        break;
-      case "completed":
-        pills.push(
-          <StatusPill key="reschedule" label="Re-Schedule" colorKey="reschedule" disabled={busy}
-            onClick={() => onRescheduleRequest(job)} />,
-        );
-        break;
-      case "cancelled":
-        pills.push(
-          <StatusPill key="reschedule" label="Re-Schedule" colorKey="reschedule" disabled={busy}
-            onClick={() => onRescheduleRequest(job)} />,
-        );
-        break;
+    for (const t of transitions) {
+      if (t.action === "cancel") {
+        pills.push(<StatusPill key="cancel" label={t.label} colorKey={t.colorKey} disabled={busy} onClick={() => onCancelRequest(job)} />);
+      } else if (t.action === "reschedule") {
+        pills.push(<StatusPill key="reschedule" label={t.label} colorKey={t.colorKey} disabled={busy} onClick={() => onRescheduleRequest(job)} />);
+      } else if (t.action === "archive") {
+        pills.push(<StatusPill key="archive" label={t.label} colorKey={t.colorKey} disabled={busy} onClick={() => onArchiveRequest(job)} />);
+      } else {
+        pills.push(<StatusPill key={t.status} label={t.label} colorKey={t.colorKey} disabled={busy} onClick={() => handlePillAction(t.status, t.label)} />);
+      }
+    }
+
+    if (job.status === "archived") {
+      pills.push(
+        <button key="delete" type="button" onClick={() => onDeleteRequest(job)} disabled={busy}
+          style={{
+            padding: "6px 16px", borderRadius: 9999, fontSize: 13, fontWeight: 600,
+            cursor: busy ? "not-allowed" : "pointer", border: "1px solid rgba(239,68,68,0.4)",
+            background: "transparent", color: "#f87171", opacity: busy ? 0.5 : 1,
+            transition: "all 0.12s", whiteSpace: "nowrap",
+          }}
+          onMouseEnter={(e) => { if (!busy) e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+        >Delete Permanently</button>,
+      );
     }
 
     return pills;
   }
 
   return (
-    <tr>
-      <td colSpan={9} style={{ padding: 0 }}>
-        <div
-          style={{ background: "#162032", borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, padding: 20 }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div style={{ display: "flex", gap: 20 }}>
-            {/* Left side — 2/3 */}
-            <div style={{ flex: 2, minWidth: 0 }}>
-              <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
-                Job Details
-              </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Header badges + customer name */}
+      <div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <DisplayBadge config={typeBadge} />
+          <DisplayBadge config={statusBadge} />
+        </div>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: 0 }}>{job.customer_name}</h3>
+        <p style={{ fontSize: 13, color: TEXT_SEC, margin: "4px 0 0" }}>{typeLabel(job.type)}</p>
+      </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Customer</div>
-                  <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{job.customer_name}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Phone</div>
-                  {job.customer_phone ? (
-                    <a href={`tel:${job.customer_phone}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>{job.customer_phone}</a>
-                  ) : <div style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</div>}
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Email</div>
-                  {job.customer_email ? (
-                    <a href={`mailto:${job.customer_email}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>{job.customer_email}</a>
-                  ) : <div style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</div>}
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Address</div>
-                  <div style={{ fontSize: 13, color: TEXT_SEC }}>{addr || "\u2014"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Service Type</div>
-                  <div style={{ fontSize: 13, color: TEXT_SEC }}>{typeLabel(job.type)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Assigned To</div>
-                  <div style={{ fontSize: 13, color: job.team_member_name ? TEXT_SEC : TEXT_DIM }}>{job.team_member_name || "Unassigned"}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Scheduled</div>
-                  <div style={{ fontSize: 13, color: TEXT_SEC }}>{formatDate(job.scheduled_date)} at {formatTime(job.scheduled_time)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Amount</div>
-                  <div style={{ fontSize: 13, color: job.invoice_amount ? TEXT : TEXT_DIM, fontWeight: 600 }}>
-                    {job.invoice_amount ? `$${job.invoice_amount}` : "\u2014"}
-                  </div>
-                </div>
-              </div>
+      <div style={{ height: 1, background: BORDER }} />
 
-              {/* Notes */}
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 5 }}>Notes</div>
-                <textarea
-                  value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
-                  className="admin-input" style={{ fontSize: 13, padding: "9px 12px", resize: "vertical", width: "100%" }}
-                  placeholder="Add notes..."
-                />
-              </div>
-
-              {/* Current status display */}
-              <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase" }}>Current Status</div>
-                <DisplayBadge config={STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending} />
-              </div>
-
-              {/* Action pills */}
-              <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                {renderActionPills()}
-                <button
-                  type="button" onClick={onCollapse}
-                  style={{
-                    padding: "6px 16px", borderRadius: 9999, fontSize: 13, fontWeight: 600,
-                    cursor: "pointer", background: "transparent", color: TEXT_MUTED,
-                    border: `1px solid ${BORDER}`, marginLeft: 4,
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-
-            {/* Right side — 1/3: Map */}
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
-                Location
-              </div>
-              {addr ? (
-                <>
-                  <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: "hidden", height: 300, background: "#0f172a" }}>
-                    <iframe src={mapUrl} width="100%" height="100%" style={{ border: 0 }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" title="Job location" />
-                  </div>
-                  <a href={directionsUrl} target="_blank" rel="noreferrer" style={{
-                    display: "block", marginTop: 10, padding: "8px 14px", borderRadius: 8,
-                    background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)",
-                    color: "#60a5fa", fontSize: 12, fontWeight: 700, textDecoration: "none", textAlign: "center",
-                  }}>Get Directions</a>
-                </>
-              ) : (
-                <div style={{
-                  borderRadius: 10, border: `1px solid ${BORDER}`, height: 300, background: "#0f172a",
-                  display: "flex", alignItems: "center", justifyContent: "center", color: TEXT_DIM, fontSize: 13,
-                }}>No address provided</div>
-              )}
+      {/* Job Details */}
+      <div>
+        <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+          Job Details
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Phone</div>
+            {job.customer_phone ? (
+              <a href={`tel:${job.customer_phone}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>{job.customer_phone}</a>
+            ) : <div style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</div>}
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Email</div>
+            {job.customer_email ? (
+              <a href={`mailto:${job.customer_email}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>{job.customer_email}</a>
+            ) : <div style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</div>}
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Address</div>
+            <div style={{ fontSize: 13, color: TEXT_SEC }}>{addr || "\u2014"}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Assigned To</div>
+            <div style={{ fontSize: 13, color: job.team_member_name ? TEXT_SEC : TEXT_DIM }}>{job.team_member_name || "Unassigned"}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Scheduled</div>
+            <div style={{ fontSize: 13, color: TEXT_SEC }}>{formatDate(job.scheduled_date)} at {formatTime(job.scheduled_time)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Amount</div>
+            <div style={{ fontSize: 13, color: job.invoice_amount ? TEXT : TEXT_DIM, fontWeight: 600 }}>
+              {job.invoice_amount ? `$${job.invoice_amount}` : "\u2014"}
             </div>
           </div>
         </div>
-      </td>
-    </tr>
+      </div>
+
+      <div style={{ height: 1, background: BORDER }} />
+
+      {/* Location / Map */}
+      <div>
+        <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+          Location
+        </div>
+        {addr ? (
+          <>
+            <div style={{ borderRadius: 10, border: `1px solid ${BORDER}`, overflow: "hidden", height: 220, background: "#0f172a" }}>
+              <iframe src={mapUrl} width="100%" height="100%" style={{ border: 0 }} loading="lazy" referrerPolicy="no-referrer-when-downgrade" title="Job location" />
+            </div>
+            <a href={directionsUrl} target="_blank" rel="noreferrer" style={{
+              display: "block", marginTop: 10, padding: "8px 14px", borderRadius: 8,
+              background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)",
+              color: "#60a5fa", fontSize: 12, fontWeight: 700, textDecoration: "none", textAlign: "center",
+            }}>Get Directions</a>
+          </>
+        ) : (
+          <div style={{
+            borderRadius: 10, border: `1px solid ${BORDER}`, height: 120, background: "#0f172a",
+            display: "flex", alignItems: "center", justifyContent: "center", color: TEXT_DIM, fontSize: 13,
+          }}>No address provided</div>
+        )}
+      </div>
+
+      <div style={{ height: 1, background: BORDER }} />
+
+      {/* Notes */}
+      <div>
+        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 5 }}>Notes</div>
+        <textarea
+          value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+          className="admin-input" style={{ fontSize: 13, padding: "9px 12px", resize: "vertical", width: "100%" }}
+          placeholder="Add notes..."
+        />
+      </div>
+
+      <div style={{ height: 1, background: BORDER }} />
+
+      {/* Actions */}
+      <div>
+        <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+          Actions
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {renderActionPills()}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -740,11 +791,25 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   const { monthStart, monthEnd } = useMemo(() => getMonthBounds(), []);
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [jobTypeFilter, setJobTypeFilter] = useState<JobTypeFilter>("all");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [assignedToFilter, setAssignedToFilter] = useState("all");
-  const [dateRange, setDateRange] = useState<DateRange>("this_week");
-  const [searchQuery, setSearchQuery] = useState("");
+
+  // Column filter state
+  const [dateFilter, setDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({ preset: "this_week" });
+  const [timeFilter, setTimeFilter] = useState<string[]>([]);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [phoneSearch, setPhoneSearch] = useState("");
+  const [addressSearch, setAddressSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [assignedFilter, setAssignedFilter] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [amountRange, setAmountRange] = useState<{ min?: string; max?: string }>({});
+  const [globalSearch, setGlobalSearch] = useState("");
+
+  // Sort state
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>(null);
+
+  // Column popover state (only one open at a time)
+  const [openColumn, setOpenColumn] = useState<string | null>(null);
 
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [catalog, setCatalog] = useState<ServiceCatalog>([]);
@@ -753,7 +818,8 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   const [toast, setToast] = useState<string | null>(null);
   const clearToast = useCallback(() => setToast(null), []);
 
-  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const selectedJob = useMemo(() => selectedJobId ? data.jobs.find((j) => j.id === selectedJobId) ?? null : null, [selectedJobId, data.jobs]);
 
   // Cancel confirm
   const [cancelTarget, setCancelTarget] = useState<ScheduleJob | null>(null);
@@ -761,6 +827,14 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
 
   // Reschedule modal
   const [rescheduleTarget, setRescheduleTarget] = useState<ScheduleJob | null>(null);
+
+  // Archive confirm
+  const [archiveTarget, setArchiveTarget] = useState<ScheduleJob | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState<ScheduleJob | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   async function openScheduleModal() {
     if (!catalogLoaded) {
@@ -773,23 +847,134 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
 
   function handleRefresh() { router.refresh(); }
 
+  // Derive member options from data
+  const memberOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const m of data.members) seen.set(m.id, m.name);
+    return [...seen.entries()].map(([id, name]) => ({ value: id, label: name }));
+  }, [data.members]);
+
+  function handleSort(col: string) {
+    return (dir: SortDir) => {
+      if (dir === null) { setSortColumn(null); setSortDir(null); }
+      else { setSortColumn(col); setSortDir(dir); }
+    };
+  }
+
   const filteredJobs = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return data.jobs.filter((job) => {
-      if (jobTypeFilter !== "all" && job.type !== jobTypeFilter) return false;
-      if (statusFilter !== "all" && job.status !== statusFilter) return false;
-      if (assignedToFilter !== "all" && (job.team_member_id ?? "") !== assignedToFilter) return false;
-      if (dateRange === "today" && job.scheduled_date !== today) return false;
-      if (dateRange === "this_week" && (job.scheduled_date < monday || job.scheduled_date > sunday)) return false;
-      if (dateRange === "this_month" && (job.scheduled_date < monthStart || job.scheduled_date > monthEnd)) return false;
-      if (query) {
+    const gq = globalSearch.trim().toLowerCase();
+    let jobs = data.jobs.filter((job) => {
+      // Date filter
+      if (dateFilter.preset === "today" && job.scheduled_date !== today) return false;
+      if (dateFilter.preset === "this_week" && (job.scheduled_date < monday || job.scheduled_date > sunday)) return false;
+      if (dateFilter.preset === "this_month" && (job.scheduled_date < monthStart || job.scheduled_date > monthEnd)) return false;
+      if (dateFilter.from && job.scheduled_date < dateFilter.from) return false;
+      if (dateFilter.to && job.scheduled_date > dateFilter.to) return false;
+
+      // Time segment filter
+      if (timeFilter.length > 0) {
+        if (!job.scheduled_time) return false;
+        const hour = parseInt(job.scheduled_time.split(":")[0], 10);
+        const seg = hour >= 6 && hour < 12 ? "morning" : hour >= 12 && hour < 18 ? "afternoon" : "evening";
+        if (!timeFilter.includes(seg)) return false;
+      }
+
+      // Multi-select filters
+      if (typeFilter.length > 0 && !typeFilter.includes(job.type)) return false;
+      if (assignedFilter.length > 0 && !assignedFilter.includes(job.team_member_id ?? "")) return false;
+      if (statusFilter.length > 0 && !statusFilter.includes(job.status)) return false;
+
+      // Search filters
+      if (customerSearch.trim()) {
+        if (!(job.customer_name ?? "").toLowerCase().includes(customerSearch.trim().toLowerCase())) return false;
+      }
+      if (phoneSearch.trim()) {
+        if (!(job.customer_phone ?? "").toLowerCase().includes(phoneSearch.trim().toLowerCase())) return false;
+      }
+      if (addressSearch.trim()) {
+        const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(", ").toLowerCase();
+        if (!addr.includes(addressSearch.trim().toLowerCase())) return false;
+      }
+
+      // Amount range
+      if (amountRange.min && (job.invoice_amount ?? 0) < parseFloat(amountRange.min)) return false;
+      if (amountRange.max && (job.invoice_amount ?? 0) > parseFloat(amountRange.max)) return false;
+
+      // Global search
+      if (gq) {
         const hay = [job.customer_name, job.customer_phone, job.customer_email, job.address, job.city, job.zip, job.team_member_name]
           .filter(Boolean).join(" ").toLowerCase();
-        if (!hay.includes(query)) return false;
+        if (!hay.includes(gq)) return false;
       }
       return true;
     });
-  }, [data.jobs, jobTypeFilter, statusFilter, assignedToFilter, dateRange, searchQuery, today, monday, sunday, monthStart, monthEnd]);
+
+    // Sort
+    if (sortColumn && sortDir) {
+      jobs = [...jobs].sort((a, b) => {
+        let cmp = 0;
+        switch (sortColumn) {
+          case "date": cmp = a.scheduled_date.localeCompare(b.scheduled_date); break;
+          case "customer": cmp = (a.customer_name ?? "").localeCompare(b.customer_name ?? ""); break;
+          case "amount": cmp = (a.invoice_amount ?? 0) - (b.invoice_amount ?? 0); break;
+          default: break;
+        }
+        return sortDir === "desc" ? -cmp : cmp;
+      });
+    }
+
+    return jobs;
+  }, [data.jobs, dateFilter, timeFilter, typeFilter, assignedFilter, statusFilter, customerSearch, phoneSearch, addressSearch, amountRange, globalSearch, sortColumn, sortDir, today, monday, sunday, monthStart, monthEnd]);
+
+  // Build active filter chips
+  const activeFilters = useMemo(() => {
+    const chips: ActiveFilter[] = [];
+    if (dateFilter.preset) {
+      const labels: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month" };
+      chips.push({ key: "date", label: "Date", value: labels[dateFilter.preset] ?? dateFilter.preset, onClear: () => setDateFilter({}) });
+    } else if (dateFilter.from || dateFilter.to) {
+      chips.push({ key: "date", label: "Date", value: `${dateFilter.from ?? "…"} → ${dateFilter.to ?? "…"}`, onClear: () => setDateFilter({}) });
+    }
+    if (timeFilter.length > 0) {
+      const labels = timeFilter.map((v) => TIME_SEGMENT_OPTIONS.find((o) => o.value === v)?.label?.split(" (")[0] ?? v).join(", ");
+      chips.push({ key: "time", label: "Time", value: labels, onClear: () => setTimeFilter([]) });
+    }
+    if (customerSearch.trim()) chips.push({ key: "customer", label: "Customer", value: customerSearch, onClear: () => setCustomerSearch("") });
+    if (phoneSearch.trim()) chips.push({ key: "phone", label: "Phone", value: phoneSearch, onClear: () => setPhoneSearch("") });
+    if (addressSearch.trim()) chips.push({ key: "address", label: "Address", value: addressSearch, onClear: () => setAddressSearch("") });
+    if (typeFilter.length > 0) {
+      const labels = typeFilter.map((v) => TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "type", label: "Type", value: labels, onClear: () => setTypeFilter([]) });
+    }
+    if (assignedFilter.length > 0) {
+      const labels = assignedFilter.map((v) => memberOptions.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "assigned", label: "Assigned", value: labels, onClear: () => setAssignedFilter([]) });
+    }
+    if (statusFilter.length > 0) {
+      const labels = statusFilter.map((v) => STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "status", label: "Status", value: labels, onClear: () => setStatusFilter([]) });
+    }
+    if (amountRange.min || amountRange.max) {
+      chips.push({ key: "amount", label: "Amount", value: `$${amountRange.min ?? "0"} – $${amountRange.max ?? "∞"}`, onClear: () => setAmountRange({}) });
+    }
+    if (globalSearch.trim()) chips.push({ key: "search", label: "Search", value: globalSearch, onClear: () => setGlobalSearch("") });
+    return chips;
+  }, [dateFilter, timeFilter, customerSearch, phoneSearch, addressSearch, typeFilter, assignedFilter, statusFilter, amountRange, globalSearch, memberOptions]);
+
+  function clearAllFilters() {
+    setDateFilter({});
+    setTimeFilter([]);
+    setCustomerSearch("");
+    setPhoneSearch("");
+    setAddressSearch("");
+    setTypeFilter([]);
+    setAssignedFilter([]);
+    setStatusFilter([]);
+    setAmountRange({});
+    setGlobalSearch("");
+    setSortColumn(null);
+    setSortDir(null);
+  }
 
   async function handleCancel() {
     if (!cancelTarget || cancelLoading) return;
@@ -797,7 +982,6 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
     try {
       await cancelScheduleJob(cancelTarget.id, cancelTarget.type);
       setCancelTarget(null);
-      setExpandedJobId(null);
       setToast("Job cancelled.");
       handleRefresh();
     } catch (err: any) {
@@ -807,19 +991,53 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
     }
   }
 
+  async function handleArchive() {
+    if (!archiveTarget || archiveLoading) return;
+    setArchiveLoading(true);
+    try {
+      await archiveScheduleJob(archiveTarget.id, archiveTarget.type);
+      setArchiveTarget(null);
+      setToast("Job archived.");
+      handleRefresh();
+    } catch (err: any) {
+      alert(err?.message ?? "Failed to archive job.");
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget || deleteLoading) return;
+    setDeleteLoading(true);
+    try {
+      await deleteScheduleJob(deleteTarget.id, deleteTarget.type);
+      setDeleteTarget(null);
+      setSelectedJobId(null);
+      setToast("Job deleted permanently.");
+      handleRefresh();
+    } catch (err: any) {
+      alert(err?.message ?? "Failed to delete job.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   function handleRowClick(jobId: string) {
-    setExpandedJobId((prev) => (prev === jobId ? null : jobId));
+    setSelectedJobId((prev) => (prev === jobId ? null : jobId));
   }
 
   function isOverdue(job: ScheduleJob): boolean {
-    if (job.status === "completed" || job.status === "cancelled") return false;
+    if (job.status === "completed" || job.status === "cancelled" || job.status === "archived") return false;
     return job.scheduled_date < today;
   }
 
   const COL_COUNT = 9;
+  const panelOpen = selectedJob !== null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <>
+    <style>{`@keyframes schedPanelFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, marginRight: panelOpen ? PANEL_WIDTH : 0, transition: "margin-right 300ms ease" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
@@ -844,82 +1062,105 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
 
       {/* View Toggle + Search */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 0, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
-          {(["list", "calendar"] as ViewMode[]).map((v, idx, arr) => (
-            <button key={v} type="button" onClick={() => setViewMode(v)} style={{
-              padding: "7px 16px", border: "none",
-              borderRight: idx < arr.length - 1 ? `1px solid ${BORDER}` : "none",
-              background: viewMode === v ? "rgba(124,58,237,0.1)" : "transparent",
-              color: viewMode === v ? "#a78bfa" : TEXT_MUTED,
-              fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.12s", textTransform: "capitalize",
-            }}>{v}</button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", gap: 0, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
+            {(["list", "calendar"] as ViewMode[]).map((v, idx, arr) => (
+              <button key={v} type="button" onClick={() => setViewMode(v)} style={{
+                padding: "7px 16px", border: "none",
+                borderRight: idx < arr.length - 1 ? `1px solid ${BORDER}` : "none",
+                background: viewMode === v ? "rgba(124,58,237,0.1)" : "transparent",
+                color: viewMode === v ? "#a78bfa" : TEXT_MUTED,
+                fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.12s", textTransform: "capitalize",
+              }}>{v}</button>
+            ))}
+          </div>
+          <span style={{ fontSize: 12, color: TEXT_DIM }}>
+            Showing <span style={{ fontWeight: 700, color: TEXT_SEC }}>{filteredJobs.length}</span> jobs
+          </span>
         </div>
-        <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+        <input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)}
           placeholder="Search customer, address, team member..."
           className="admin-input" style={{ maxWidth: 340, fontSize: 13, padding: "7px 12px" }} />
       </div>
 
-      {/* Filter Bar */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 14px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase" }}>Type:</span>
-          <select value={jobTypeFilter} onChange={(e) => setJobTypeFilter(e.target.value as JobTypeFilter)} className="admin-input" style={{ fontSize: 12, padding: "5px 8px", width: "auto", minWidth: 140 }}>
-            <option value="all">All</option><option value="hes">HES Assessment</option><option value="inspector">Home Inspection</option><option value="leaf_followup">LEAF Follow-up</option>
-          </select>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase" }}>Status:</span>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="admin-input" style={{ fontSize: 12, padding: "5px 8px", width: "auto", minWidth: 130 }}>
-            <option value="all">All</option><option value="pending">Pending</option><option value="scheduled">Scheduled</option><option value="in_progress">In Progress</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
-          </select>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase" }}>Assigned:</span>
-          <select value={assignedToFilter} onChange={(e) => setAssignedToFilter(e.target.value)} className="admin-input" style={{ fontSize: 12, padding: "5px 8px", width: "auto", minWidth: 150 }}>
-            <option value="all">All</option>
-            {data.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase" }}>Date:</span>
-          <select value={dateRange} onChange={(e) => setDateRange(e.target.value as DateRange)} className="admin-input" style={{ fontSize: 12, padding: "5px 8px", width: "auto", minWidth: 120 }}>
-            <option value="today">Today</option><option value="this_week">This Week</option><option value="this_month">This Month</option><option value="custom">All Time</option>
-          </select>
-        </div>
-        <span style={{ fontSize: 12, color: TEXT_DIM, marginLeft: "auto" }}>
-          Showing <span style={{ fontWeight: 700, color: TEXT_SEC }}>{filteredJobs.length}</span> jobs
-        </span>
-      </div>
+      {/* Active Filter Chips */}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearAllFilters} />
 
       {/* Content */}
       {viewMode === "list" ? (
         <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
-            <table className="admin-table" style={{ minWidth: 1100 }}>
+            <table className="admin-table" style={{ minWidth: 1100, tableLayout: "fixed" }}>
               <thead>
                 <tr>
-                  <th style={{ width: 120 }}>Date</th>
-                  <th style={{ width: 80 }}>Time</th>
-                  <th style={{ width: 150 }}>Customer</th>
-                  <th style={{ width: 120 }}>Phone</th>
-                  <th>Address</th>
-                  <th style={{ width: 110 }}>Type</th>
-                  <th style={{ width: 120 }}>Assigned To</th>
-                  <th style={{ width: 100 }}>Status</th>
-                  <th style={{ width: 80, textAlign: "right" }}>Amount</th>
+                  <FilterableHeader
+                    label="Date" filterType="date-range" width={120}
+                    filterValue={dateFilter} onFilterChange={(v) => setDateFilter(v as { preset?: string; from?: string; to?: string })}
+                    sortable sortDir={sortColumn === "date" ? sortDir : null} onSortChange={handleSort("date")}
+                    isOpen={openColumn === "date"} onOpen={() => setOpenColumn("date")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Time" filterType="multi-select" width={80}
+                    options={TIME_SEGMENT_OPTIONS}
+                    optionColors={TIME_SEGMENT_COLORS}
+                    filterValue={timeFilter} onFilterChange={(v) => setTimeFilter(v as string[])}
+                    isOpen={openColumn === "time"} onOpen={() => setOpenColumn("time")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Customer" filterType="search" width={150}
+                    filterValue={customerSearch} onFilterChange={(v) => setCustomerSearch(v as string)}
+                    sortable sortDir={sortColumn === "customer" ? sortDir : null} onSortChange={handleSort("customer")}
+                    isOpen={openColumn === "customer"} onOpen={() => setOpenColumn("customer")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Phone" filterType="search" width={120}
+                    filterValue={phoneSearch} onFilterChange={(v) => setPhoneSearch(v as string)}
+                    isOpen={openColumn === "phone"} onOpen={() => setOpenColumn("phone")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Address" filterType="search"
+                    filterValue={addressSearch} onFilterChange={(v) => setAddressSearch(v as string)}
+                    isOpen={openColumn === "address"} onOpen={() => setOpenColumn("address")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Type" filterType="multi-select" width={110}
+                    options={TYPE_OPTIONS}
+                    optionColors={TYPE_OPTION_COLORS}
+                    filterValue={typeFilter} onFilterChange={(v) => setTypeFilter(v as string[])}
+                    isOpen={openColumn === "type"} onOpen={() => setOpenColumn("type")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Assigned To" filterType="multi-select" width={120}
+                    options={memberOptions}
+                    filterValue={assignedFilter} onFilterChange={(v) => setAssignedFilter(v as string[])}
+                    isOpen={openColumn === "assigned"} onOpen={() => setOpenColumn("assigned")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Status" filterType="multi-select" width={100}
+                    options={STATUS_OPTIONS}
+                    filterValue={statusFilter} onFilterChange={(v) => setStatusFilter(v as string[])}
+                    isOpen={openColumn === "status"} onOpen={() => setOpenColumn("status")} onClose={() => setOpenColumn(null)}
+                  />
+                  <FilterableHeader
+                    label="Amount" filterType="range" width={80} align="right"
+                    filterValue={amountRange} onFilterChange={(v) => setAmountRange(v as { min?: string; max?: string })}
+                    sortable sortDir={sortColumn === "amount" ? sortDir : null} onSortChange={handleSort("amount")}
+                    isOpen={openColumn === "amount"} onOpen={() => setOpenColumn("amount")} onClose={() => setOpenColumn(null)}
+                  />
                 </tr>
               </thead>
               <tbody>
                 {filteredJobs.map((job) => {
                   const overdue = isOverdue(job);
                   const todayRow = job.scheduled_date === today;
-                  const isMuted = job.status === "completed" || job.status === "cancelled";
-                  const isExpanded = expandedJobId === job.id;
+                  const isMuted = job.status === "completed" || job.status === "cancelled" || job.status === "archived";
+                  const isSelected = selectedJobId === job.id;
                   const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
                   const statusBadge = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
 
-                  const leftBorder = overdue
+                  const leftBorder = isSelected
+                    ? "3px solid rgba(16,185,129,0.6)"
+                    : overdue
                     ? "3px solid rgba(239,68,68,0.6)"
                     : todayRow && !isMuted
                     ? "3px solid rgba(16,185,129,0.6)"
@@ -930,17 +1171,17 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
                   const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(", ");
 
                   return (
-                    <Fragment key={job.id}>
-                      <tr
-                        onClick={() => handleRowClick(job.id)}
-                        style={{
-                          cursor: "pointer", borderLeft: leftBorder,
-                          background: isExpanded ? "rgba(124,58,237,0.06)" : undefined,
-                          transition: "background 0.1s ease",
-                        }}
-                        onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = "rgba(148,163,184,0.05)"; }}
-                        onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = ""; }}
-                      >
+                    <tr
+                      key={job.id}
+                      onClick={() => handleRowClick(job.id)}
+                      style={{
+                        cursor: "pointer", borderLeft: leftBorder,
+                        background: isSelected ? "rgba(16,185,129,0.08)" : undefined,
+                        transition: "background 0.1s ease",
+                      }}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(148,163,184,0.05)"; }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = ""; }}
+                    >
                         {/* Date */}
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -990,18 +1231,7 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
                             {job.invoice_amount ? `$${job.invoice_amount}` : "\u2014"}
                           </span>
                         </td>
-                      </tr>
-
-                      {isExpanded && (
-                        <ExpandedJobCard
-                          job={job}
-                          onStatusUpdated={(msg) => { setToast(msg); handleRefresh(); }}
-                          onCancelRequest={(j) => setCancelTarget(j)}
-                          onRescheduleRequest={(j) => setRescheduleTarget(j)}
-                          onCollapse={() => setExpandedJobId(null)}
-                        />
-                      )}
-                    </Fragment>
+                    </tr>
                   );
                 })}
 
@@ -1068,8 +1298,101 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
         </ModalOverlay>
       )}
 
+      {/* Archive Confirmation Modal */}
+      {archiveTarget && (
+        <ModalOverlay onClose={() => setArchiveTarget(null)}>
+          <div style={{ width: 400 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: TEXT, margin: "0 0 12px" }}>Archive Job</h3>
+            <p style={{ fontSize: 14, color: TEXT_SEC, lineHeight: 1.5, margin: "0 0 20px" }}>
+              Archive the {archiveTarget.type === "hes" ? "HES Assessment" : "Home Inspection"} for{" "}
+              <strong>{archiveTarget.customer_name}</strong>? Archived jobs are hidden from the default view but can still be found with filters.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button type="button" onClick={() => setArchiveTarget(null)} disabled={archiveLoading} style={modalBtnCancel}>Keep</button>
+              <button type="button" onClick={handleArchive} disabled={archiveLoading} style={{
+                padding: "9px 20px", borderRadius: 8, border: "none", background: "#475569",
+                color: "#fff", fontSize: 13, fontWeight: 700,
+                cursor: archiveLoading ? "not-allowed" : "pointer", opacity: archiveLoading ? 0.5 : 1,
+              }}>{archiveLoading ? "Archiving..." : "Archive Job"}</button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <ModalOverlay onClose={() => setDeleteTarget(null)}>
+          <div style={{ width: 400 }}>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: "#f87171", margin: "0 0 12px" }}>Delete Job Permanently</h3>
+            <p style={{ fontSize: 14, color: TEXT_SEC, lineHeight: 1.5, margin: "0 0 6px" }}>
+              This will permanently delete the {deleteTarget.type === "hes" ? "HES Assessment" : "Home Inspection"} for{" "}
+              <strong>{deleteTarget.customer_name}</strong>.
+            </p>
+            <p style={{ fontSize: 13, color: "#f87171", margin: "0 0 20px", fontWeight: 600 }}>
+              This action cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button type="button" onClick={() => setDeleteTarget(null)} disabled={deleteLoading} style={modalBtnCancel}>Cancel</button>
+              <button type="button" onClick={handleDelete} disabled={deleteLoading} style={{
+                padding: "9px 20px", borderRadius: 8, border: "none", background: "#ef4444",
+                color: "#fff", fontSize: 13, fontWeight: 700,
+                cursor: deleteLoading ? "not-allowed" : "pointer", opacity: deleteLoading ? 0.5 : 1,
+              }}>{deleteLoading ? "Deleting..." : "Delete Permanently"}</button>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
+
       {/* Toast */}
       {toast && <Toast message={toast} onDone={clearToast} />}
     </div>
+
+    {/* Inline side panel — no backdrop, no portal */}
+    <div style={{
+      position: "fixed", right: 0, top: 0, height: "100%",
+      width: PANEL_WIDTH, zIndex: 40,
+      background: "#0f172a", borderLeft: `1px solid ${BORDER}`,
+      boxShadow: panelOpen ? "-4px 0 24px rgba(0,0,0,0.3)" : "none",
+      transform: panelOpen ? "translateX(0)" : "translateX(100%)",
+      transition: "transform 300ms ease, box-shadow 300ms ease",
+      display: "flex", flexDirection: "column",
+    }}>
+      {/* Panel header */}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "20px 24px", borderBottom: "1px solid rgba(51,65,85,0.5)", flexShrink: 0,
+      }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: TEXT, margin: 0 }}>Job Details</h2>
+        <button
+          type="button"
+          onClick={() => setSelectedJobId(null)}
+          style={{
+            background: "none", border: "none", padding: 4,
+            color: TEXT_MUTED, fontSize: 18, cursor: "pointer",
+            lineHeight: 1, transition: "color 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = TEXT; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_MUTED; }}
+        >
+          {"\u2715"}
+        </button>
+      </div>
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        {selectedJob && (
+          <div key={selectedJob.id} style={{ animation: "schedPanelFadeIn 200ms ease" }}>
+            <JobDetailContent
+              job={selectedJob}
+              onStatusUpdated={(msg) => { setToast(msg); handleRefresh(); }}
+              onCancelRequest={(j) => setCancelTarget(j)}
+              onRescheduleRequest={(j) => setRescheduleTarget(j)}
+              onArchiveRequest={(j) => setArchiveTarget(j)}
+              onDeleteRequest={(j) => setDeleteTarget(j)}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+    </>
   );
 }

@@ -3,7 +3,9 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { fetchLeadPricingConfig } from "../_actions/lead-pricing";
+import { listMigrationFiles } from "../_actions/migrations";
 import LeadPricingClient from "./lead-pricing/LeadPricingClient";
+import MigrationsClient from "./migrations/MigrationsClient";
 
 type Props = {
   searchParams: Promise<{ tab?: string }>;
@@ -15,6 +17,10 @@ export default async function SettingsPage({ searchParams }: Props) {
 
   const leadPricingConfig = tab === "lead-pricing"
     ? await fetchLeadPricingConfig()
+    : [];
+
+  const migrationFiles = tab === "database"
+    ? await listMigrationFiles()
     : [];
 
   return (
@@ -33,6 +39,7 @@ export default async function SettingsPage({ searchParams }: Props) {
       <div style={{ display: "flex", gap: 4, background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: 4 }}>
         <TabLink href="/admin/settings?tab=users" active={tab === "users"}>Users</TabLink>
         <TabLink href="/admin/settings?tab=lead-pricing" active={tab === "lead-pricing"}>Lead Pricing</TabLink>
+        <TabLink href="/admin/settings?tab=database" active={tab === "database"}>Database</TabLink>
       </div>
 
       {/* Tab Content */}
@@ -61,6 +68,10 @@ export default async function SettingsPage({ searchParams }: Props) {
 
       {tab === "lead-pricing" && (
         <LeadPricingClient config={leadPricingConfig} embedded />
+      )}
+
+      {tab === "database" && (
+        <MigrationsClient files={migrationFiles} />
       )}
     </div>
   );

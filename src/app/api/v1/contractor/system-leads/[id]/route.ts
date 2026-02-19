@@ -1,5 +1,5 @@
 // GET /api/v1/contractor/system-leads/[id] — Lead detail
-// POST /api/v1/contractor/system-leads/[id]/purchase — Purchase lead
+// POST /api/v1/contractor/system-leads/[id] — Purchase or accept lead
 
 import { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
@@ -23,8 +23,19 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
   if (error || !data) return json(notFound("System lead not found"));
 
-  // If not purchased by this contractor, hide contact info
-  if (data.purchased_by_contractor_id !== auth.userId) {
+  // Exclusive leads: only visible to assigned contractor
+  if (data.routing_channel === "exclusive" && data.exclusive_contractor_id !== auth.userId) {
+    return json(notFound("System lead not found"));
+  }
+
+  // If not purchased by this contractor (and not a free exclusive for them), hide contact info
+  const isPurchasedByMe = data.purchased_by_contractor_id === auth.userId;
+  const isFreeExclusiveForMe =
+    data.routing_channel === "exclusive" &&
+    data.is_free_assignment &&
+    data.exclusive_contractor_id === auth.userId;
+
+  if (!isPurchasedByMe && !isFreeExclusiveForMe) {
     data.homeowner_name = null;
     data.homeowner_phone = null;
     data.homeowner_email = null;
@@ -58,7 +69,12 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     return json(badRequest("This lead has expired"));
   }
 
-  // Process purchase (Stripe integration placeholder)
+  // Exclusive leads: only the assigned contractor can purchase/accept
+  if (lead.routing_channel === "exclusive" && lead.exclusive_contractor_id !== auth.userId) {
+    return json(badRequest("This lead is not assigned to you"));
+  }
+
+  // Process purchase
   const { data, error } = await supabaseAdmin
     .from("system_leads")
     .update({
@@ -72,21 +88,37 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
 
   if (error) return json(serverError(error.message));
 
-  // Create lead status tracking row
-  await supabaseAdmin.from("contractor_lead_status").insert({
-    contractor_id: auth.userId,
-    system_lead_id: id,
-    status: "new",
-  });
+  // Create/update lead status tracking row
+  const { data: existing } = await supabaseAdmin
+    .from("contractor_lead_status")
+    .select("id")
+    .eq("contractor_id", auth.userId)
+    .eq("system_lead_id", id)
+    .maybeSingle();
 
-  // Record payment
-  await supabaseAdmin.from("payments").insert({
-    contractor_id: auth.userId,
-    system_lead_id: id,
-    amount: lead.price,
-    system_type: lead.system_type,
-    status: "completed", // Placeholder until Stripe
-  });
+  if (existing) {
+    await supabaseAdmin
+      .from("contractor_lead_status")
+      .update({ status: "new" })
+      .eq("id", existing.id);
+  } else {
+    await supabaseAdmin.from("contractor_lead_status").insert({
+      contractor_id: auth.userId,
+      system_lead_id: id,
+      status: "new",
+    });
+  }
+
+  // Record payment (skip for free assignments)
+  if (!lead.is_free_assignment) {
+    await supabaseAdmin.from("payments").insert({
+      contractor_id: auth.userId,
+      system_lead_id: id,
+      amount: lead.price,
+      system_type: lead.system_type,
+      status: "completed",
+    });
+  }
 
   return json(ok(data));
 }

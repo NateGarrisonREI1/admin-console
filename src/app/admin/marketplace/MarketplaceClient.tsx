@@ -3,6 +3,8 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import SidePanel from "@/components/ui/SidePanel";
+import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, type OptionColor } from "@/components/ui/FilterableHeader";
 import type { MarketplaceData, MarketplaceLead, PostLeadInput } from "../_actions/marketplace";
 import {
   adminUpdateLead,
@@ -11,6 +13,7 @@ import {
   adminDeleteLead,
   adminPostLead,
   fetchContractors,
+  fetchNetworkContractors,
 } from "../_actions/marketplace";
 
 // ─── Design tokens ──────────────────────────────────────────────────
@@ -24,22 +27,28 @@ const TEXT_MUTED = "#94a3b8";
 const EMERALD = "#10b981";
 
 const SYSTEM_TYPE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  hvac: { bg: "rgba(249,115,22,0.15)", text: "#f97316", label: "HVAC" },
-  water_heater: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "Water Heater" },
+  hvac: { bg: "rgba(239,68,68,0.15)", text: "#ef4444", label: "HVAC" },
   solar: { bg: "rgba(234,179,8,0.15)", text: "#eab308", label: "Solar" },
-  electrical: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Electrical" },
-  plumbing: { bg: "rgba(6,182,212,0.15)", text: "#06b6d4", label: "Plumbing" },
-  general_handyman: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "General Handyman" },
+  water_heater: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "Water Heater" },
+  electrical: { bg: "rgba(168,85,247,0.15)", text: "#a855f7", label: "Electrical" },
+  plumbing: { bg: "rgba(236,72,153,0.15)", text: "#ec4899", label: "Plumbing" },
+  general_handyman: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "Handyman" },
+  hes_assessment: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "HES Assessment" },
+  home_inspection: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Home Inspection" },
+  leaf_followup: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "LEAF Follow-up" },
 };
 
 const SERVICE_TYPES = [
   { value: "all", label: "All Types" },
   { value: "hvac", label: "HVAC" },
-  { value: "water_heater", label: "Water Heater" },
   { value: "solar", label: "Solar" },
+  { value: "water_heater", label: "Water Heater" },
   { value: "electrical", label: "Electrical" },
   { value: "plumbing", label: "Plumbing" },
   { value: "general_handyman", label: "Handyman" },
+  { value: "hes_assessment", label: "HES Assessment" },
+  { value: "home_inspection", label: "Home Inspection" },
+  { value: "leaf_followup", label: "LEAF Follow-up" },
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -50,8 +59,47 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   archived: { label: "Archived", color: TEXT_DIM, bg: "rgba(100,116,139,0.1)" },
 };
 
-type SortKey = "newest" | "price_asc" | "price_desc" | "recently_sold";
 const PAGE_SIZE = 25;
+
+// ─── Filter option lists ─────────────────────────────────────────────
+const TYPE_OPTIONS = SERVICE_TYPES.filter((s) => s.value !== "all");
+
+const STATUS_OPTIONS = [
+  { value: "available", label: "Available" },
+  { value: "purchased", label: "Sold" },
+  { value: "assigned", label: "Assigned" },
+  { value: "expired", label: "Expired" },
+  { value: "archived", label: "Archived" },
+];
+
+const LEAF_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
+
+const ROUTING_OPTIONS = [
+  { value: "open_market", label: "Open Market" },
+  { value: "internal_network", label: "Network" },
+  { value: "exclusive", label: "Exclusive" },
+];
+
+const ROUTING_BADGE_CONFIG: Record<string, { bg: string; text: string; label: string }> = {
+  open_market: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Open Market" },
+  internal_network: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "Network" },
+  exclusive: { bg: "rgba(168,85,247,0.15)", text: "#a855f7", label: "Exclusive" },
+};
+
+const MARKETPLACE_TYPE_COLORS: Record<string, OptionColor> = {
+  hvac:              { bg: "rgba(239,68,68,0.2)", text: "#f87171", border: "rgba(239,68,68,0.3)", activeBg: "#ef4444", activeText: "#fff" },
+  solar:             { bg: "rgba(234,179,8,0.2)", text: "#fbbf24", border: "rgba(234,179,8,0.3)", activeBg: "#eab308", activeText: "#fff" },
+  water_heater:      { bg: "rgba(59,130,246,0.2)", text: "#60a5fa", border: "rgba(59,130,246,0.3)", activeBg: "#3b82f6", activeText: "#fff" },
+  electrical:        { bg: "rgba(168,85,247,0.2)", text: "#c084fc", border: "rgba(168,85,247,0.3)", activeBg: "#a855f7", activeText: "#fff" },
+  plumbing:          { bg: "rgba(236,72,153,0.2)", text: "#f472b6", border: "rgba(236,72,153,0.3)", activeBg: "#ec4899", activeText: "#fff" },
+  general_handyman:  { bg: "rgba(100,116,139,0.2)", text: "#94a3b8", border: "rgba(100,116,139,0.3)", activeBg: "#64748b", activeText: "#fff" },
+  hes_assessment:    { bg: "rgba(16,185,129,0.2)", text: "#34d399", border: "rgba(16,185,129,0.3)", activeBg: "#10b981", activeText: "#fff" },
+  home_inspection:   { bg: "rgba(245,158,11,0.2)", text: "#fbbf24", border: "rgba(245,158,11,0.3)", activeBg: "#f59e0b", activeText: "#fff" },
+  leaf_followup:     { bg: "rgba(59,130,246,0.2)", text: "#60a5fa", border: "rgba(59,130,246,0.3)", activeBg: "#3b82f6", activeText: "#fff" },
+};
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -68,19 +116,39 @@ function fmtDate(iso: string | null): string {
 
 export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
   const router = useRouter();
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [areaFilter, setAreaFilter] = useState("all");
-  const [brokerFilter, setBrokerFilter] = useState("all");
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortKey>("newest");
+
+  // Column filter state
+  const [leadSearch, setLeadSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [areaFilter, setAreaFilter] = useState<string[]>([]);
+  const [priceRange, setPriceRange] = useState<{ min?: string; max?: string }>({});
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [leafFilter, setLeafFilter] = useState<string[]>([]);
+  const [routingFilter, setRoutingFilter] = useState<string[]>([]);
+  const [postedByFilter, setPostedByFilter] = useState<string[]>([]);
+  const [buyerFilter, setBuyerFilter] = useState<string[]>([]);
+  const [createdDateFilter, setCreatedDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({});
+  const [soldDateFilter, setSoldDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({});
+  const [globalSearch, setGlobalSearch] = useState("");
+
+  // Sort state
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>(null);
+
+  // Column popover state (only one open at a time)
+  const [openColumn, setOpenColumn] = useState<string | null>(null);
+
   const [page, setPage] = useState(1);
 
+  // Side panel
+  const [selectedLead, setSelectedLead] = useState<MarketplaceLead | null>(null);
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
+
   // Modals
-  const [detailLead, setDetailLead] = useState<MarketplaceLead | null>(null);
   const [editLead, setEditLead] = useState<MarketplaceLead | null>(null);
   const [postModalOpen, setPostModalOpen] = useState(false);
   const [revenueOpen, setRevenueOpen] = useState(true);
+  const [leadsOpen, setLeadsOpen] = useState(true);
 
   // Toast
   const [toast, setToast] = useState<{ msg: string; error: boolean } | null>(null);
@@ -89,38 +157,172 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
     setTimeout(() => setToast(null), 3000);
   }
 
+  function openPanel(lead: MarketplaceLead) {
+    setSelectedLead(lead);
+    setSidePanelOpen(true);
+  }
+
+  function closePanel() {
+    setSidePanelOpen(false);
+    setTimeout(() => setSelectedLead(null), 300);
+  }
+
+  // Derived option lists
+  const areaOptions = useMemo(() => data.areas.map((a) => ({ value: a, label: a })), [data.areas]);
+  const brokerOptions = useMemo(() => data.brokers.map((b) => ({ value: b.id, label: b.name })), [data.brokers]);
+  const buyerOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const l of data.leads) {
+      if (l.buyer_id && l.buyer_name) seen.set(l.buyer_id, l.buyer_name);
+    }
+    return [...seen.entries()].map(([id, name]) => ({ value: id, label: name }));
+  }, [data.leads]);
+
+  function handleSort(col: string) {
+    return (dir: SortDir) => {
+      if (dir === null) { setSortColumn(null); setSortDir(null); }
+      else { setSortColumn(col); setSortDir(dir); }
+    };
+  }
+
+  function matchDateFilter(iso: string | null, filter: { preset?: string; from?: string; to?: string }): boolean {
+    if (!filter.preset && !filter.from && !filter.to) return true;
+    if (!iso) return false;
+    const d = iso.slice(0, 10);
+    if (filter.preset === "today") {
+      return d === new Date().toISOString().slice(0, 10);
+    }
+    if (filter.preset === "this_week") {
+      const now = new Date();
+      const day = now.getDay();
+      const mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      return d >= mon.toISOString().slice(0, 10) && d <= sun.toISOString().slice(0, 10);
+    }
+    if (filter.preset === "this_month") {
+      const now = new Date();
+      const ms = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const me = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+      return d >= ms && d <= me;
+    }
+    if (filter.from && d < filter.from) return false;
+    if (filter.to && d > filter.to) return false;
+    return true;
+  }
+
   const filtered = useMemo(() => {
-    let leads = data.leads;
-    if (statusFilter !== "all") leads = leads.filter((l) => l.status === statusFilter);
-    if (typeFilter !== "all") leads = leads.filter((l) => l.system_type === typeFilter);
-    if (areaFilter !== "all") leads = leads.filter((l) => l.area === areaFilter);
-    if (brokerFilter !== "all") leads = leads.filter((l) => l.broker_id === brokerFilter);
-    if (search.trim()) {
-      const q = search.toLowerCase().trim();
-      leads = leads.filter(
-        (l) =>
-          (l.title ?? "").toLowerCase().includes(q) ||
-          (l.city ?? "").toLowerCase().includes(q) ||
-          l.zip.includes(q) ||
-          (l.homeowner_name ?? "").toLowerCase().includes(q),
-      );
+    const gq = globalSearch.trim().toLowerCase();
+    let leads = data.leads.filter((l) => {
+      // Lead search
+      if (leadSearch.trim()) {
+        const q = leadSearch.trim().toLowerCase();
+        const hay = [l.title, l.city, l.zip, l.homeowner_name].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      // Multi-select filters
+      if (typeFilter.length > 0 && !typeFilter.includes(l.system_type)) return false;
+      if (areaFilter.length > 0 && !areaFilter.includes(l.area ?? "")) return false;
+      if (statusFilter.length > 0 && !statusFilter.includes(l.status)) return false;
+      if (leafFilter.length > 0) {
+        const val = l.has_leaf ? "yes" : "no";
+        if (!leafFilter.includes(val)) return false;
+      }
+      if (routingFilter.length > 0 && !routingFilter.includes(l.routing_channel ?? "open_market")) return false;
+      if (postedByFilter.length > 0 && !postedByFilter.includes(l.broker_id ?? "")) return false;
+      if (buyerFilter.length > 0 && !buyerFilter.includes(l.buyer_id ?? "")) return false;
+      // Price range
+      if (priceRange.min && l.price < parseFloat(priceRange.min)) return false;
+      if (priceRange.max && l.price > parseFloat(priceRange.max)) return false;
+      // Date filters
+      if (!matchDateFilter(l.created_at, createdDateFilter)) return false;
+      if (!matchDateFilter(l.purchased_date, soldDateFilter)) return false;
+      // Global search
+      if (gq) {
+        const hay = [l.title, l.homeowner_name, l.city, l.zip, l.broker_name, l.buyer_name].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(gq)) return false;
+      }
+      return true;
+    });
+
+    // Sort
+    if (sortColumn && sortDir) {
+      leads = [...leads].sort((a, b) => {
+        let cmp = 0;
+        switch (sortColumn) {
+          case "price": cmp = a.price - b.price; break;
+          case "created": cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); break;
+          case "sold": {
+            const at = a.purchased_date ? new Date(a.purchased_date).getTime() : 0;
+            const bt = b.purchased_date ? new Date(b.purchased_date).getTime() : 0;
+            cmp = at - bt; break;
+          }
+          default: break;
+        }
+        return sortDir === "desc" ? -cmp : cmp;
+      });
+    } else {
+      // Default sort: newest first
+      leads = [...leads].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
-    const sorted = [...leads];
-    switch (sort) {
-      case "price_asc": sorted.sort((a, b) => a.price - b.price); break;
-      case "price_desc": sorted.sort((a, b) => b.price - a.price); break;
-      case "recently_sold":
-        sorted.sort((a, b) => {
-          if (!a.purchased_date && !b.purchased_date) return 0;
-          if (!a.purchased_date) return 1;
-          if (!b.purchased_date) return -1;
-          return new Date(b.purchased_date).getTime() - new Date(a.purchased_date).getTime();
-        });
-        break;
-      default: sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return leads;
+  }, [data.leads, leadSearch, typeFilter, areaFilter, statusFilter, leafFilter, routingFilter, postedByFilter, buyerFilter, priceRange, createdDateFilter, soldDateFilter, globalSearch, sortColumn, sortDir]);
+
+  // Active filter chips
+  const activeFilters = useMemo(() => {
+    const chips: ActiveFilter[] = [];
+    if (leadSearch.trim()) chips.push({ key: "lead", label: "Lead", value: leadSearch, onClear: () => setLeadSearch("") });
+    if (typeFilter.length > 0) {
+      const labels = typeFilter.map((v) => TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "type", label: "Type", value: labels, onClear: () => setTypeFilter([]) });
     }
-    return sorted;
-  }, [data.leads, statusFilter, typeFilter, areaFilter, brokerFilter, search, sort]);
+    if (areaFilter.length > 0) {
+      chips.push({ key: "area", label: "Area", value: areaFilter.join(", "), onClear: () => setAreaFilter([]) });
+    }
+    if (priceRange.min || priceRange.max) {
+      chips.push({ key: "price", label: "Price", value: `$${priceRange.min ?? "0"} – $${priceRange.max ?? "∞"}`, onClear: () => setPriceRange({}) });
+    }
+    if (statusFilter.length > 0) {
+      const labels = statusFilter.map((v) => STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "status", label: "Status", value: labels, onClear: () => setStatusFilter([]) });
+    }
+    if (leafFilter.length > 0) {
+      chips.push({ key: "leaf", label: "LEAF", value: leafFilter.map((v) => v === "yes" ? "Yes" : "No").join(", "), onClear: () => setLeafFilter([]) });
+    }
+    if (routingFilter.length > 0) {
+      const labels = routingFilter.map((v) => ROUTING_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "routing", label: "Routing", value: labels, onClear: () => setRoutingFilter([]) });
+    }
+    if (postedByFilter.length > 0) {
+      const labels = postedByFilter.map((v) => brokerOptions.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "postedBy", label: "Posted By", value: labels, onClear: () => setPostedByFilter([]) });
+    }
+    if (buyerFilter.length > 0) {
+      const labels = buyerFilter.map((v) => buyerOptions.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "buyer", label: "Buyer", value: labels, onClear: () => setBuyerFilter([]) });
+    }
+    if (createdDateFilter.preset) {
+      const presetLabels: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month" };
+      chips.push({ key: "created", label: "Created", value: presetLabels[createdDateFilter.preset] ?? createdDateFilter.preset, onClear: () => setCreatedDateFilter({}) });
+    } else if (createdDateFilter.from || createdDateFilter.to) {
+      chips.push({ key: "created", label: "Created", value: `${createdDateFilter.from ?? "…"} → ${createdDateFilter.to ?? "…"}`, onClear: () => setCreatedDateFilter({}) });
+    }
+    if (soldDateFilter.preset) {
+      const presetLabels: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month" };
+      chips.push({ key: "sold", label: "Sold", value: presetLabels[soldDateFilter.preset] ?? soldDateFilter.preset, onClear: () => setSoldDateFilter({}) });
+    } else if (soldDateFilter.from || soldDateFilter.to) {
+      chips.push({ key: "sold", label: "Sold", value: `${soldDateFilter.from ?? "…"} → ${soldDateFilter.to ?? "…"}`, onClear: () => setSoldDateFilter({}) });
+    }
+    if (globalSearch.trim()) chips.push({ key: "search", label: "Search", value: globalSearch, onClear: () => setGlobalSearch("") });
+    return chips;
+  }, [leadSearch, typeFilter, areaFilter, priceRange, statusFilter, leafFilter, routingFilter, postedByFilter, buyerFilter, createdDateFilter, soldDateFilter, globalSearch, brokerOptions, buyerOptions]);
+
+  function clearAllFilters() {
+    setLeadSearch(""); setTypeFilter([]); setAreaFilter([]);
+    setPriceRange({}); setStatusFilter([]); setLeafFilter([]);
+    setRoutingFilter([]); setPostedByFilter([]); setBuyerFilter([]);
+    setCreatedDateFilter({}); setSoldDateFilter({});
+    setGlobalSearch(""); setSortColumn(null); setSortDir(null);
+  }
 
   // Reset page when filters change
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -166,28 +368,23 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
     { label: "REI Revenue", value: money(stats.reiRevenue), color: EMERALD },
   ];
 
-  const selectStyle: React.CSSProperties = {
-    padding: "7px 10px", borderRadius: 8, border: `1px solid ${BORDER}`,
-    background: CARD, color: TEXT_SEC, fontSize: 12, fontWeight: 600, outline: "none", cursor: "pointer",
-  };
-
   // Action handlers
   async function handleExpire(id: string) {
     if (!window.confirm("Mark this lead as expired?")) return;
     const res = await adminExpireLead(id);
-    if (res.success) { showToast("Lead expired."); router.refresh(); }
+    if (res.success) { showToast("Lead expired."); closePanel(); router.refresh(); }
     else showToast(res.error || "Failed.", true);
   }
   async function handleReactivate(id: string) {
     if (!window.confirm("Reactivate this lead? It will be set to Available with a 30-day expiration.")) return;
     const res = await adminReactivateLead(id);
-    if (res.success) { showToast("Lead reactivated."); router.refresh(); }
+    if (res.success) { showToast("Lead reactivated."); closePanel(); router.refresh(); }
     else showToast(res.error || "Failed.", true);
   }
   async function handleDelete(id: string) {
     if (!window.confirm("Delete this lead? This cannot be undone for seed data.")) return;
     const res = await adminDeleteLead(id);
-    if (res.success) { showToast("Lead deleted."); router.refresh(); }
+    if (res.success) { showToast("Lead deleted."); closePanel(); router.refresh(); }
     else showToast(res.error || "Failed.", true);
   }
 
@@ -362,98 +559,156 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
         )}
       </div>
 
-      {/* Filters */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 16 }}>
-        <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }} style={selectStyle}>
-          <option value="all">All Statuses</option>
-          <option value="available">Available</option>
-          <option value="purchased">Sold</option>
-          <option value="expired">Expired</option>
-        </select>
-        <div style={{ display: "flex", gap: 4 }}>
-          {SERVICE_TYPES.map((st) => {
-            const active = typeFilter === st.value;
-            return (
-              <button key={st.value} type="button" onClick={() => { setTypeFilter(st.value); setPage(1); }}
-                style={{
-                  padding: "6px 12px", borderRadius: 14,
-                  border: `1px solid ${active ? EMERALD : BORDER}`,
-                  background: active ? "rgba(16,185,129,0.12)" : "transparent",
-                  color: active ? EMERALD : TEXT_MUTED,
-                  fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
-                }}>
-                {st.label}
-              </button>
-            );
-          })}
-        </div>
-        <select value={areaFilter} onChange={(e) => { setAreaFilter(e.target.value); setPage(1); }} style={selectStyle}>
-          <option value="all">All Areas</option>
-          {data.areas.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <select value={brokerFilter} onChange={(e) => { setBrokerFilter(e.target.value); setPage(1); }} style={selectStyle}>
-          <option value="all">All Brokers</option>
-          {data.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} style={selectStyle}>
-          <option value="newest">Newest</option>
-          <option value="price_asc">Price Low→High</option>
-          <option value="price_desc">Price High→Low</option>
-          <option value="recently_sold">Recently Sold</option>
-        </select>
-        <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          placeholder="Search title, city, zip, name…"
-          style={{ ...selectStyle, minWidth: 200, cursor: "text" }} />
-        <div style={{ fontSize: 12, color: TEXT_DIM, fontWeight: 600, marginLeft: "auto" }}>
-          {filtered.length} lead{filtered.length !== 1 ? "s" : ""}
-        </div>
+      {/* Leads Section (collapsible) */}
+      <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, marginBottom: 20, overflow: "hidden" }}>
+        <button type="button" onClick={() => setLeadsOpen(!leadsOpen)}
+          style={{
+            width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer",
+          }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Leads</span>
+          <span style={{ fontSize: 12, color: TEXT_DIM, transition: "transform 0.15s", transform: leadsOpen ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+        </button>
+        {leadsOpen && (
+          <div style={{ padding: "0 18px 18px" }}>
+            {/* Search + Count */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 12, color: TEXT_DIM }}>
+                Showing <span style={{ fontWeight: 700, color: TEXT_SEC }}>{filtered.length}</span> lead{filtered.length !== 1 ? "s" : ""}
+              </span>
+              <input type="text" value={globalSearch} onChange={(e) => { setGlobalSearch(e.target.value); setPage(1); }}
+                placeholder="Search title, city, zip, name…"
+                className="admin-input"
+                style={{ maxWidth: 300, fontSize: 13, padding: "7px 12px" }} />
+            </div>
+
+            {/* Active Filter Chips */}
+            <div style={{ marginBottom: activeFilters.length > 0 ? 12 : 0 }}>
+              <ActiveFilterBar filters={activeFilters} onClearAll={clearAllFilters} />
+            </div>
+
+            {/* Table */}
+            <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
+              <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                <thead>
+                  <tr>
+                    <FilterableHeader
+                      label="Lead" filterType="search"
+                      filterValue={leadSearch} onFilterChange={(v) => { setLeadSearch(v as string); setPage(1); }}
+                      isOpen={openColumn === "lead"} onOpen={() => setOpenColumn("lead")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Type" filterType="multi-select" width={110}
+                      options={TYPE_OPTIONS}
+                      optionColors={MARKETPLACE_TYPE_COLORS}
+                      filterValue={typeFilter} onFilterChange={(v) => { setTypeFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "type"} onOpen={() => setOpenColumn("type")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Area" filterType="multi-select" width={100}
+                      options={areaOptions}
+                      filterValue={areaFilter} onFilterChange={(v) => { setAreaFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "area"} onOpen={() => setOpenColumn("area")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Price" filterType="range" width={90}
+                      filterValue={priceRange} onFilterChange={(v) => { setPriceRange(v as { min?: string; max?: string }); setPage(1); }}
+                      sortable sortDir={sortColumn === "price" ? sortDir : null} onSortChange={handleSort("price")}
+                      isOpen={openColumn === "price"} onOpen={() => setOpenColumn("price")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Status" filterType="multi-select" width={90}
+                      options={STATUS_OPTIONS}
+                      filterValue={statusFilter} onFilterChange={(v) => { setStatusFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "status"} onOpen={() => setOpenColumn("status")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="LEAF" filterType="multi-select" width={60}
+                      options={LEAF_OPTIONS}
+                      filterValue={leafFilter} onFilterChange={(v) => { setLeafFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "leaf"} onOpen={() => setOpenColumn("leaf")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Routing" filterType="multi-select" width={90}
+                      options={ROUTING_OPTIONS}
+                      filterValue={routingFilter} onFilterChange={(v) => { setRoutingFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "routing"} onOpen={() => setOpenColumn("routing")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Posted By" filterType="multi-select" width={100}
+                      options={brokerOptions}
+                      filterValue={postedByFilter} onFilterChange={(v) => { setPostedByFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "postedBy"} onOpen={() => setOpenColumn("postedBy")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Buyer" filterType="multi-select" width={100}
+                      options={buyerOptions}
+                      filterValue={buyerFilter} onFilterChange={(v) => { setBuyerFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "buyer"} onOpen={() => setOpenColumn("buyer")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Created" filterType="date-range" width={100}
+                      filterValue={createdDateFilter} onFilterChange={(v) => { setCreatedDateFilter(v as { preset?: string; from?: string; to?: string }); setPage(1); }}
+                      sortable sortDir={sortColumn === "created" ? sortDir : null} onSortChange={handleSort("created")}
+                      isOpen={openColumn === "created"} onOpen={() => setOpenColumn("created")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Sold" filterType="date-range" width={100}
+                      filterValue={soldDateFilter} onFilterChange={(v) => { setSoldDateFilter(v as { preset?: string; from?: string; to?: string }); setPage(1); }}
+                      sortable sortDir={sortColumn === "sold" ? sortDir : null} onSortChange={handleSort("sold")}
+                      isOpen={openColumn === "sold"} onOpen={() => setOpenColumn("sold")} onClose={() => setOpenColumn(null)}
+                    />
+                    <th style={{ width: 40 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.length === 0 ? (
+                    <tr><td colSpan={12} style={{ padding: 48, textAlign: "center" }}>
+                      <div style={{ fontSize: 14, color: TEXT_DIM, fontWeight: 600 }}>No leads match your filters</div>
+                    </td></tr>
+                  ) : paged.map((lead) => (
+                    <LeadRow key={lead.id} lead={lead}
+                      onRowClick={() => openPanel(lead)}
+                      onExpire={() => handleExpire(lead.id)}
+                      onReactivate={() => handleReactivate(lead.id)}
+                      onDelete={() => handleDelete(lead.id)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 16 }}>
+                <PagBtn disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>← Prev</PagBtn>
+                <span style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 600 }}>
+                  Page {safePage} of {totalPages}
+                </span>
+                <PagBtn disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Next →</PagBtn>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Table */}
-      <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
-        <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr>
-              {["Lead", "Type", "Area", "Price", "Status", "LEAF", "Posted By", "Buyer", "Created", "Sold", ""].map((col) => (
-                <th key={col} style={{
-                  padding: "12px 14px", textAlign: "left", fontSize: 11, fontWeight: 700,
-                  color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em",
-                  borderBottom: `1px solid ${BORDER}`,
-                }}>{col}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {paged.length === 0 ? (
-              <tr><td colSpan={11} style={{ padding: 48, textAlign: "center" }}>
-                <div style={{ fontSize: 14, color: TEXT_DIM, fontWeight: 600 }}>No leads match your filters</div>
-              </td></tr>
-            ) : paged.map((lead) => (
-              <LeadRow key={lead.id} lead={lead}
-                onViewDetails={() => setDetailLead(lead)}
-                onEdit={() => setEditLead(lead)}
-                onExpire={() => handleExpire(lead.id)}
-                onReactivate={() => handleReactivate(lead.id)}
-                onDelete={() => handleDelete(lead.id)}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 16 }}>
-          <PagBtn disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>← Prev</PagBtn>
-          <span style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 600 }}>
-            Page {safePage} of {totalPages}
-          </span>
-          <PagBtn disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Next →</PagBtn>
-        </div>
-      )}
-
-      {/* Detail Modal */}
-      {detailLead && <DetailModal lead={detailLead} onClose={() => setDetailLead(null)} />}
+      {/* Lead Detail Side Panel */}
+      <SidePanel
+        isOpen={sidePanelOpen}
+        onClose={closePanel}
+        title={selectedLead?.title || selectedLead?.homeowner_name || "Lead Details"}
+        width="w-2/5"
+      >
+        {selectedLead && (
+          <LeadDetailPanel
+            lead={selectedLead}
+            onEdit={() => { closePanel(); setEditLead(selectedLead); }}
+            onExpire={() => handleExpire(selectedLead.id)}
+            onReactivate={() => handleReactivate(selectedLead.id)}
+            onDelete={() => handleDelete(selectedLead.id)}
+          />
+        )}
+      </SidePanel>
 
       {/* Edit Modal */}
       {editLead && (
@@ -495,14 +750,13 @@ function PagBtn({ children, disabled, onClick }: { children: React.ReactNode; di
 
 type RowProps = {
   lead: MarketplaceLead;
-  onViewDetails: () => void;
-  onEdit: () => void;
+  onRowClick: () => void;
   onExpire: () => void;
   onReactivate: () => void;
   onDelete: () => void;
 };
 
-function LeadRow({ lead, onViewDetails, onEdit, onExpire, onReactivate, onDelete }: RowProps) {
+function LeadRow({ lead, onRowClick, onExpire, onReactivate, onDelete }: RowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const stc = SYSTEM_TYPE_COLORS[lead.system_type] ?? { bg: "rgba(148,163,184,0.15)", text: TEXT_MUTED, label: lead.system_type };
   const sc = STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.available;
@@ -515,7 +769,9 @@ function LeadRow({ lead, onViewDetails, onEdit, onExpire, onReactivate, onDelete
         borderBottom: `1px solid ${BORDER}`,
         borderLeft: lead.status === "purchased" ? `3px solid ${EMERALD}` : "3px solid transparent",
         transition: "background 0.1s ease",
+        cursor: "pointer",
       }}
+      onClick={onRowClick}
       onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
     >
@@ -546,11 +802,23 @@ function LeadRow({ lead, onViewDetails, onEdit, onExpire, onReactivate, onDelete
           <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#334155" }} title="No LEAF" />
         )}
       </td>
+      <td style={{ padding: "10px 14px" }}>
+        {(() => {
+          const rc = lead.routing_channel ?? "open_market";
+          const cfg = ROUTING_BADGE_CONFIG[rc];
+          if (!cfg) return <span style={{ fontSize: 12, color: TEXT_DIM }}>—</span>;
+          return (
+            <span style={{ display: "inline-block", padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700, background: cfg.bg, color: cfg.text }}>
+              {cfg.label}{lead.is_free_assignment ? " (Free)" : ""}
+            </span>
+          );
+        })()}
+      </td>
       <td style={{ padding: "10px 14px", fontSize: 12, color: textColor }}>{lead.broker_name || "—"}</td>
       <td style={{ padding: "10px 14px", fontSize: 12, color: textColor }}>{lead.buyer_name || "—"}</td>
       <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_DIM }}>{fmtDate(lead.created_at)}</td>
       <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_DIM }}>{fmtDate(lead.purchased_date)}</td>
-      <td style={{ padding: "10px 14px", position: "relative" }}>
+      <td style={{ padding: "10px 14px", position: "relative" }} onClick={(e) => e.stopPropagation()}>
         <button type="button" onClick={() => setMenuOpen(!menuOpen)}
           style={{
             background: "none", border: "none", cursor: "pointer", padding: 4,
@@ -566,8 +834,6 @@ function LeadRow({ lead, onViewDetails, onEdit, onExpire, onReactivate, onDelete
               background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8,
               boxShadow: "0 4px 16px rgba(0,0,0,0.4)", minWidth: 160, padding: 4,
             }}>
-              <MenuItem onClick={() => { setMenuOpen(false); onViewDetails(); }}>View Details</MenuItem>
-              <MenuItem onClick={() => { setMenuOpen(false); onEdit(); }}>Edit Lead</MenuItem>
               {lead.status === "available" && (
                 <MenuItem onClick={() => { setMenuOpen(false); onExpire(); }}>Mark as Expired</MenuItem>
               )}
@@ -600,22 +866,30 @@ function MenuItem({ children, onClick, danger }: { children: React.ReactNode; on
   );
 }
 
-// ─── Detail Modal ───────────────────────────────────────────────────
+// ─── Lead Detail Panel (inside SidePanel) ───────────────────────────
 
-function DetailModal({ lead, onClose }: { lead: MarketplaceLead; onClose: () => void }) {
+function LeadDetailPanel({ lead, onEdit, onExpire, onReactivate, onDelete }: {
+  lead: MarketplaceLead;
+  onEdit: () => void;
+  onExpire: () => void;
+  onReactivate: () => void;
+  onDelete: () => void;
+}) {
   const stc = SYSTEM_TYPE_COLORS[lead.system_type] ?? { bg: "rgba(148,163,184,0.15)", text: TEXT_MUTED, label: lead.system_type };
   const sc = STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.available;
   const leaf = lead.leaf_report_data;
   const hasLeaf = lead.has_leaf && leaf && Object.keys(leaf).length > 0;
 
-  const fullAddr = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
-  const homeDetails = [
-    lead.home_type,
-    lead.home_year_built ? `Built ${lead.home_year_built}` : null,
-    lead.home_sqft ? `${lead.home_sqft.toLocaleString()} sqft` : null,
-    lead.beds != null ? `${lead.beds} bed` : null,
-    lead.baths != null ? `${lead.baths} bath` : null,
-  ].filter(Boolean).join(" · ");
+  const sectionStyle: React.CSSProperties = {
+    background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.5)",
+    borderRadius: 8, padding: 16, marginBottom: 16,
+  };
+  const sectionTitle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase",
+    letterSpacing: "0.06em", marginBottom: 10,
+  };
+  const fieldLabel: React.CSSProperties = { fontSize: 11, color: TEXT_DIM, fontWeight: 600 };
+  const fieldValue: React.CSSProperties = { fontSize: 13, color: TEXT_SEC, marginTop: 2 };
 
   // Revenue split (for sold leads)
   const totalAmt = lead.price;
@@ -623,70 +897,90 @@ function DetailModal({ lead, onClose }: { lead: MarketplaceLead; onClose: () => 
   const serviceFee = Math.round(totalAmt * 2) / 100;
   const posterAmt = Math.round(totalAmt * 68.6) / 100;
 
-  const sectionTitle: React.CSSProperties = { fontSize: 12, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 };
-  const fieldLabel: React.CSSProperties = { fontSize: 11, color: TEXT_DIM, fontWeight: 600 };
-  const fieldValue: React.CSSProperties = { fontSize: 13, color: TEXT_SEC, marginTop: 2 };
-
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 24,
-        width: 600, maxWidth: "90vw", maxHeight: "85vh", overflow: "auto",
-      }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: TEXT }}>{lead.title || lead.homeowner_name || "Lead Details"}</div>
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: stc.bg, color: stc.text }}>{stc.label}</span>
-              <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>{sc.label}</span>
-              {lead.is_exclusive && <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: "rgba(168,85,247,0.12)", color: "#a855f7" }}>Exclusive</span>}
-            </div>
-          </div>
-          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: TEXT_DIM, fontSize: 20, cursor: "pointer", padding: 4 }}>✕</button>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Scrollable content */}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        {/* Status & Type badges */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>{sc.label}</span>
+          <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: stc.bg, color: stc.text }}>{stc.label}</span>
+          {lead.routing_channel && ROUTING_BADGE_CONFIG[lead.routing_channel] && (
+            <span style={{
+              padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700,
+              background: ROUTING_BADGE_CONFIG[lead.routing_channel].bg,
+              color: ROUTING_BADGE_CONFIG[lead.routing_channel].text,
+            }}>
+              {ROUTING_BADGE_CONFIG[lead.routing_channel].label}
+              {lead.is_free_assignment ? " (Free)" : ""}
+            </span>
+          )}
+          {lead.has_leaf && <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: "rgba(16,185,129,0.12)", color: EMERALD }}>LEAF</span>}
         </div>
 
         {/* Lead Info */}
-        <div style={sectionTitle}>Lead Info</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
-          <div><div style={fieldLabel}>Price</div><div style={{ ...fieldValue, fontWeight: 700, color: TEXT }}>{money(lead.price)}</div></div>
-          <div><div style={fieldLabel}>Created</div><div style={fieldValue}>{fmtDate(lead.created_at)}</div></div>
-          {lead.expiration_date && <div><div style={fieldLabel}>Expires</div><div style={fieldValue}>{fmtDate(lead.expiration_date)}</div></div>}
-          {lead.broker_name && <div><div style={fieldLabel}>Posted By</div><div style={fieldValue}>{lead.broker_name}</div></div>}
-        </div>
-        {lead.description && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={fieldLabel}>Description</div>
-            <div style={{ ...fieldValue, lineHeight: 1.5 }}>{lead.description}</div>
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Lead Info</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div><div style={fieldLabel}>Price</div><div style={{ ...fieldValue, fontWeight: 700, color: TEXT }}>{money(lead.price)}</div></div>
+            <div><div style={fieldLabel}>Created</div><div style={fieldValue}>{fmtDate(lead.created_at)}</div></div>
+            {lead.expiration_date && <div><div style={fieldLabel}>Expires</div><div style={fieldValue}>{fmtDate(lead.expiration_date)}</div></div>}
+            {lead.broker_name && <div><div style={fieldLabel}>Posted By</div><div style={fieldValue}>{lead.broker_name}</div></div>}
           </div>
-        )}
+          {lead.description && (
+            <div style={{ marginTop: 12 }}>
+              <div style={fieldLabel}>Description</div>
+              <div style={{ ...fieldValue, lineHeight: 1.5 }}>{lead.description}</div>
+            </div>
+          )}
+        </div>
 
         {/* Property */}
-        {(fullAddr || homeDetails) && (
-          <>
-            <div style={sectionTitle}>Property</div>
-            <div style={{ marginBottom: 20 }}>
-              {fullAddr && <div style={fieldValue}>{fullAddr}</div>}
-              {homeDetails && <div style={{ ...fieldValue, marginTop: 4 }}>{homeDetails}</div>}
-            </div>
-          </>
-        )}
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Property</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {lead.address && <div style={{ gridColumn: "span 2" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ")}</div></div>}
+            {!lead.address && lead.city && <div><div style={fieldLabel}>City / Area</div><div style={fieldValue}>{[lead.city, lead.state].filter(Boolean).join(", ")}</div></div>}
+            {lead.home_type && <div><div style={fieldLabel}>Property Type</div><div style={fieldValue}>{lead.home_type}</div></div>}
+            {lead.home_sqft != null && <div><div style={fieldLabel}>Square Footage</div><div style={fieldValue}>{lead.home_sqft.toLocaleString()} sqft</div></div>}
+            {lead.home_year_built != null && <div><div style={fieldLabel}>Year Built</div><div style={fieldValue}>{lead.home_year_built}</div></div>}
+            {lead.beds != null && <div><div style={fieldLabel}>Bedrooms</div><div style={fieldValue}>{lead.beds}</div></div>}
+            {lead.baths != null && <div><div style={fieldLabel}>Bathrooms</div><div style={fieldValue}>{lead.baths}</div></div>}
+          </div>
+        </div>
 
         {/* Homeowner */}
-        <div style={sectionTitle}>Homeowner Contact</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
-          <div><div style={fieldLabel}>Name</div><div style={fieldValue}>{lead.homeowner_name || "—"}</div></div>
-          <div><div style={fieldLabel}>Phone</div><div style={fieldValue}>{lead.homeowner_phone || "—"}</div></div>
-          <div><div style={fieldLabel}>Email</div><div style={fieldValue}>{lead.homeowner_email || "—"}</div></div>
-          {lead.best_contact_time && <div><div style={fieldLabel}>Best Time</div><div style={fieldValue}>{lead.best_contact_time}</div></div>}
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Homeowner</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div><div style={fieldLabel}>Name</div><div style={fieldValue}>{lead.homeowner_name || "—"}</div></div>
+            <div><div style={fieldLabel}>Phone</div><div style={fieldValue}>
+              {lead.homeowner_phone ? (
+                <a href={`tel:${lead.homeowner_phone}`} style={{ color: TEXT_SEC, textDecoration: "none" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = EMERALD; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_SEC; }}>
+                  {lead.homeowner_phone}
+                </a>
+              ) : "—"}
+            </div></div>
+            <div><div style={fieldLabel}>Email</div><div style={fieldValue}>
+              {lead.homeowner_email ? (
+                <a href={`mailto:${lead.homeowner_email}`} style={{ color: TEXT_SEC, textDecoration: "none" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = EMERALD; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_SEC; }}>
+                  {lead.homeowner_email}
+                </a>
+              ) : "—"}
+            </div></div>
+            {lead.best_contact_time && <div><div style={fieldLabel}>Best Time</div><div style={fieldValue}>{lead.best_contact_time}</div></div>}
+          </div>
         </div>
 
         {/* LEAF */}
         {hasLeaf && (
-          <>
+          <div style={sectionStyle}>
             <div style={sectionTitle}>LEAF Energy Assessment</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {leaf!.current_system != null && <div><div style={fieldLabel}>Current System</div><div style={fieldValue}>{String(leaf!.current_system)}</div></div>}
               {leaf!.system_age != null && <div><div style={fieldLabel}>System Age</div><div style={fieldValue}>{String(leaf!.system_age)} years</div></div>}
               {leaf!.efficiency != null && <div><div style={fieldLabel}>Efficiency</div><div style={fieldValue}>{String(leaf!.efficiency)}</div></div>}
@@ -699,37 +993,80 @@ function DetailModal({ lead, onClose }: { lead: MarketplaceLead; onClose: () => 
                 color: String(leaf!.priority) === "Urgent" ? "#ef4444" : String(leaf!.priority) === "High" ? "#f59e0b" : EMERALD,
               }}>{String(leaf!.priority)}</div></div>}
             </div>
-          </>
+          </div>
         )}
 
         {/* Purchase info (sold) */}
         {lead.status === "purchased" && (
-          <>
+          <div style={sectionStyle}>
             <div style={sectionTitle}>Purchase Info</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
               <div><div style={fieldLabel}>Buyer</div><div style={fieldValue}>{lead.buyer_name || "—"}</div></div>
               <div><div style={fieldLabel}>Purchase Date</div><div style={fieldValue}>{fmtDate(lead.purchased_date)}</div></div>
             </div>
-
             <div style={sectionTitle}>Revenue Split</div>
             <div style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10,
-              background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 14, marginBottom: 10,
+              display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+              background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12,
             }}>
               <div><div style={fieldLabel}>Total</div><div style={{ ...fieldValue, fontWeight: 700, color: TEXT }}>{money(totalAmt)}</div></div>
               <div><div style={fieldLabel}>REI (30%)</div><div style={{ ...fieldValue, fontWeight: 700, color: EMERALD }}>{money(reiAmt)}</div></div>
               <div><div style={fieldLabel}>Poster (68.6%)</div><div style={{ ...fieldValue, fontWeight: 700, color: "#3b82f6" }}>{money(posterAmt)}</div></div>
               <div><div style={fieldLabel}>Service Fee (2%)</div><div style={{ ...fieldValue, fontWeight: 700, color: TEXT_MUTED }}>{money(serviceFee)}</div></div>
             </div>
-          </>
+          </div>
         )}
+      </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-          <button type="button" onClick={onClose} style={{
-            padding: "8px 18px", borderRadius: 8, border: `1px solid ${BORDER}`,
-            background: "transparent", color: TEXT_SEC, fontSize: 13, fontWeight: 600, cursor: "pointer",
-          }}>Close</button>
-        </div>
+      {/* Action buttons pinned to bottom */}
+      <div style={{
+        flexShrink: 0, borderTop: "1px solid rgba(51,65,85,0.5)",
+        padding: "16px 0 0", marginTop: 16,
+        display: "flex", gap: 10,
+      }}>
+        <button type="button" onClick={onEdit} style={{
+          flex: 1, padding: "9px 14px", borderRadius: 8, border: "none",
+          background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 700,
+          cursor: "pointer", transition: "opacity 0.15s",
+        }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}>
+          Edit Lead
+        </button>
+        {lead.status === "available" && (
+          <button type="button" onClick={onExpire} style={{
+            flex: 1, padding: "9px 14px", borderRadius: 8,
+            border: "1px solid rgba(234,179,8,0.3)", background: "transparent",
+            color: "#f59e0b", fontSize: 12, fontWeight: 700,
+            cursor: "pointer", transition: "background 0.15s",
+          }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(234,179,8,0.08)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+            Mark Expired
+          </button>
+        )}
+        {lead.status === "expired" && (
+          <button type="button" onClick={onReactivate} style={{
+            flex: 1, padding: "9px 14px", borderRadius: 8,
+            border: `1px solid rgba(16,185,129,0.3)`, background: "transparent",
+            color: EMERALD, fontSize: 12, fontWeight: 700,
+            cursor: "pointer", transition: "background 0.15s",
+          }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(16,185,129,0.08)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+            Reactivate
+          </button>
+        )}
+        <button type="button" onClick={onDelete} style={{
+          flex: 1, padding: "9px 14px", borderRadius: 8,
+          border: "1px solid rgba(239,68,68,0.3)", background: "transparent",
+          color: "#f87171", fontSize: 12, fontWeight: 700,
+          cursor: "pointer", transition: "background 0.15s",
+        }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+          Delete Lead
+        </button>
       </div>
     </div>
   );
@@ -825,6 +1162,21 @@ const AREAS = [
 
 const HOME_TYPES = ["Single Family", "Townhouse", "Condo", "Multi-Family", "Commercial"];
 
+type RoutingChannel = "open_market" | "internal_network" | "exclusive";
+
+const ROUTING_CARDS: { key: RoutingChannel; icon: string; title: string; desc: string }[] = [
+  { key: "open_market", icon: "\uD83C\uDF10", title: "Open Market", desc: "Post to the public job board. Any contractor can purchase this lead." },
+  { key: "internal_network", icon: "\uD83D\uDC65", title: "My Network Only", desc: "Post to REI\u2019s contractor network. Auto-releases to open market if unclaimed." },
+  { key: "exclusive", icon: "\uD83C\uDFAF", title: "Assign to Contractor", desc: "Send directly to a specific contractor in your network." },
+];
+
+const RELEASE_OPTIONS = [
+  { value: "24", label: "24 hours" },
+  { value: "48", label: "48 hours" },
+  { value: "72", label: "72 hours" },
+  { value: "never", label: "Never" },
+];
+
 function PostLeadModal({ areas, onClose, onPosted, onError }: {
   areas: string[];
   onClose: () => void;
@@ -839,11 +1191,13 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
   const [systemType, setSystemType] = useState("hvac");
   const [price, setPrice] = useState("");
 
-  // Routing
-  const [routing, setRouting] = useState<"marketplace" | "assign">("marketplace");
-  const [contractors, setContractors] = useState<{ id: string; name: string }[]>([]);
-  const [contractorsLoaded, setContractorsLoaded] = useState(false);
-  const [assignTo, setAssignTo] = useState("");
+  // Routing — Phase 8A
+  const [routingChannel, setRoutingChannel] = useState<RoutingChannel>("open_market");
+  const [networkReleaseHours, setNetworkReleaseHours] = useState("48");
+  const [networkContractors, setNetworkContractors] = useState<{ id: string; name: string; company_name: string | null }[]>([]);
+  const [networkContractorsLoaded, setNetworkContractorsLoaded] = useState(false);
+  const [exclusiveContractorId, setExclusiveContractorId] = useState("");
+  const [isFreeAssignment, setIsFreeAssignment] = useState(false);
 
   // Property
   const [homeType, setHomeType] = useState("");
@@ -865,17 +1219,19 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
   const [hoPhone, setHoPhone] = useState("");
   const [hoNotes, setHoNotes] = useState("");
 
-  // Load contractors when "Assign" is selected
-  async function loadContractors() {
-    if (contractorsLoaded) return;
-    const list = await fetchContractors();
-    setContractors(list);
-    setContractorsLoaded(true);
+  // Load network contractors when exclusive is selected
+  async function loadNetworkContractors() {
+    if (networkContractorsLoaded) return;
+    const list = await fetchNetworkContractors();
+    setNetworkContractors(list);
+    setNetworkContractorsLoaded(true);
   }
 
-  function handleRoutingChange(mode: "marketplace" | "assign") {
-    setRouting(mode);
-    if (mode === "assign") loadContractors();
+  function handleChannelChange(channel: RoutingChannel) {
+    setRoutingChannel(channel);
+    if (channel === "exclusive") loadNetworkContractors();
+    // Reset free assignment if switching away from exclusive
+    if (channel !== "exclusive") setIsFreeAssignment(false);
   }
 
   // All unique areas: merge existing from data + fallback list
@@ -893,13 +1249,15 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
     borderTop: `1px solid ${BORDER}`,
   };
 
+  const priceDisabled = routingChannel === "exclusive" && isFreeAssignment;
+
   async function handlePost() {
     setSaving(true);
     const input: PostLeadInput = {
       title,
       description,
       system_type: systemType,
-      price: parseFloat(price) || 0,
+      price: priceDisabled ? 0 : (parseFloat(price) || 0),
       home_type: homeType,
       home_year_built: yearBuilt ? Number(yearBuilt) : null,
       home_sqft: sqft ? Number(sqft) : null,
@@ -914,8 +1272,12 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
       homeowner_email: hoEmail,
       homeowner_phone: hoPhone,
       best_contact_time: hoNotes,
-      routing,
-      assign_to_contractor_id: routing === "assign" ? assignTo || null : null,
+      routing_channel: routingChannel,
+      exclusive_contractor_id: routingChannel === "exclusive" ? exclusiveContractorId || null : null,
+      is_free_assignment: routingChannel === "exclusive" ? isFreeAssignment : false,
+      network_release_hours: routingChannel === "internal_network" && networkReleaseHours !== "never"
+        ? Number(networkReleaseHours)
+        : null,
     };
 
     const res = await adminPostLead(input);
@@ -927,54 +1289,123 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
     }
   }
 
-  const routingBtnStyle = (active: boolean): React.CSSProperties => ({
-    flex: 1, padding: "10px 12px", borderRadius: 8, fontSize: 13, fontWeight: 700,
-    cursor: "pointer", transition: "all 0.15s", textAlign: "center",
-    border: `1px solid ${active ? EMERALD : BORDER}`,
-    background: active ? "rgba(16,185,129,0.12)" : BG,
-    color: active ? EMERALD : TEXT_MUTED,
-  });
+  const buttonLabel = routingChannel === "exclusive"
+    ? (saving ? "Assigning\u2026" : "Assign Lead")
+    : routingChannel === "internal_network"
+    ? (saving ? "Posting\u2026" : "Post to Network")
+    : (saving ? "Posting\u2026" : "Post Lead");
+
+  const buttonColor = routingChannel === "exclusive" ? "#a78bfa" : EMERALD;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{
         background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 24,
-        width: 640, maxWidth: "92vw", maxHeight: "88vh", overflow: "auto",
+        width: 680, maxWidth: "92vw", maxHeight: "88vh", overflow: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
           <div style={{ fontSize: 18, fontWeight: 700, color: TEXT }}>Post New Lead</div>
-          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: TEXT_DIM, fontSize: 20, cursor: "pointer", padding: 4 }}>✕</button>
+          <button type="button" onClick={onClose} style={{ background: "none", border: "none", color: TEXT_DIM, fontSize: 20, cursor: "pointer", padding: 4 }}>{"\u2715"}</button>
         </div>
 
-        {/* Lead Routing */}
+        {/* ─── Routing Channel Cards ─── */}
         <div style={{ marginBottom: 16 }}>
           <div style={labelStyle}>Lead Routing</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" onClick={() => handleRoutingChange("marketplace")} style={routingBtnStyle(routing === "marketplace")}>
-              Post to Marketplace
-            </button>
-            <button type="button" onClick={() => handleRoutingChange("assign")} style={routingBtnStyle(routing === "assign")}>
-              Assign to Contractor
-            </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            {ROUTING_CARDS.map((card) => {
+              const active = routingChannel === card.key;
+              return (
+                <button
+                  key={card.key}
+                  type="button"
+                  onClick={() => handleChannelChange(card.key)}
+                  style={{
+                    padding: 14, borderRadius: 12, textAlign: "left",
+                    cursor: "pointer", transition: "all 0.15s",
+                    border: `1px solid ${active ? EMERALD : "rgba(51,65,85,0.5)"}`,
+                    background: active ? "rgba(16,185,129,0.1)" : "rgba(30,41,59,0.5)",
+                  }}
+                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.borderColor = "#475569"; }}
+                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.borderColor = "rgba(51,65,85,0.5)"; }}
+                >
+                  <div style={{ fontSize: 20, marginBottom: 6 }}>{card.icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: active ? EMERALD : TEXT, marginBottom: 4 }}>{card.title}</div>
+                  <div style={{ fontSize: 11, color: TEXT_MUTED, lineHeight: 1.4 }}>{card.desc}</div>
+                </button>
+              );
+            })}
           </div>
-          {routing === "marketplace" && (
-            <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 6 }}>
-              Lead goes to the open job board — any contractor can purchase it.
+
+          {/* ─── My Network: auto-release timer ─── */}
+          {routingChannel === "internal_network" && (
+            <div style={{ marginTop: 10, padding: "10px 14px", background: BG, border: `1px solid ${BORDER}`, borderRadius: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 600, whiteSpace: "nowrap" }}>Auto-release to Open Market after:</div>
+                <select
+                  value={networkReleaseHours}
+                  onChange={(e) => setNetworkReleaseHours(e.target.value)}
+                  style={{ ...inputStyle, width: "auto", flex: "0 0 140px", cursor: "pointer" }}
+                >
+                  {RELEASE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
-          {routing === "assign" && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 11, color: "#a78bfa", marginBottom: 6 }}>
-                Lead is assigned directly — it appears in the contractor{"'"}s My Leads with full contact info unlocked. No payment required.
+
+          {/* ─── Exclusive: contractor picker + paid/free toggle ─── */}
+          {routingChannel === "exclusive" && (
+            <div style={{ marginTop: 10, padding: "12px 14px", background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 600, marginBottom: 4 }}>Select Contractor</div>
+                <select
+                  value={exclusiveContractorId}
+                  onChange={(e) => setExclusiveContractorId(e.target.value)}
+                  style={{ ...inputStyle, cursor: "pointer" }}
+                >
+                  <option value="">Select a contractor\u2026</option>
+                  {networkContractors.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.company_name ? `${c.company_name} — ${c.name}` : c.name}
+                    </option>
+                  ))}
+                </select>
+                {networkContractorsLoaded && networkContractors.length === 0 && (
+                  <div style={{ fontSize: 11, color: "#f87171", marginTop: 4 }}>No active partners in your network. Add partners via My Network page.</div>
+                )}
               </div>
-              <select value={assignTo} onChange={(e) => setAssignTo(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
-                <option value="">Select a contractor…</option>
-                {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              {contractorsLoaded && contractors.length === 0 && (
-                <div style={{ fontSize: 11, color: "#f87171", marginTop: 4 }}>No active contractors found.</div>
-              )}
+              <div>
+                <div style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 600, marginBottom: 4 }}>Assignment Type</div>
+                <div style={{ display: "flex", gap: 0, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsFreeAssignment(false)}
+                    style={{
+                      padding: "7px 16px", border: "none",
+                      borderRight: `1px solid ${BORDER}`,
+                      background: !isFreeAssignment ? "rgba(16,185,129,0.1)" : "transparent",
+                      color: !isFreeAssignment ? EMERALD : TEXT_MUTED,
+                      fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    }}
+                  >
+                    Paid Lead
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsFreeAssignment(true)}
+                    style={{
+                      padding: "7px 16px", border: "none",
+                      background: isFreeAssignment ? "rgba(148,163,184,0.12)" : "transparent",
+                      color: isFreeAssignment ? TEXT_SEC : TEXT_MUTED,
+                      fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    }}
+                  >
+                    Free Assignment
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -982,25 +1413,46 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
         {/* Basic Info */}
         <div style={{ marginBottom: 12 }}>
           <div style={labelStyle}>Title *</div>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. HVAC Replacement — Lake Oswego" style={inputStyle} />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. HVAC Replacement \u2014 Lake Oswego" style={inputStyle} />
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={labelStyle}>Description</div>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Lead details, notes for contractors…"
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Lead details, notes for contractors\u2026"
             style={{ ...inputStyle, height: 72, resize: "vertical", fontFamily: "inherit" }} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
           <div>
             <div style={labelStyle}>Service Type *</div>
             <select value={systemType} onChange={(e) => setSystemType(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
-              {SERVICE_TYPES.filter((s) => s.value !== "all").map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
+              {SERVICE_TYPES.filter((s) => s.value !== "all").map((s) => {
+                const stc = SYSTEM_TYPE_COLORS[s.value];
+                return (
+                  <option key={s.value} value={s.value} style={{ color: stc?.text }}>
+                    {s.label}
+                  </option>
+                );
+              })}
             </select>
+            {/* Color indicator for selected type */}
+            {systemType && SYSTEM_TYPE_COLORS[systemType] && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: SYSTEM_TYPE_COLORS[systemType].text }} />
+                <span style={{ fontSize: 11, color: SYSTEM_TYPE_COLORS[systemType].text, fontWeight: 600 }}>{SYSTEM_TYPE_COLORS[systemType].label}</span>
+              </div>
+            )}
           </div>
           <div>
-            <div style={labelStyle}>Price ($){routing === "marketplace" ? " *" : ""}</div>
-            <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" style={inputStyle} />
+            <div style={labelStyle}>
+              Price ($){routingChannel === "open_market" || (routingChannel === "internal_network") ? " *" : ""}
+            </div>
+            {priceDisabled ? (
+              <div>
+                <input type="number" value="0" disabled style={{ ...inputStyle, opacity: 0.4, cursor: "not-allowed" }} />
+                <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 4, fontStyle: "italic" }}>Free assignment — no charge</div>
+              </div>
+            ) : (
+              <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0.00" style={inputStyle} />
+            )}
           </div>
         </div>
 
@@ -1010,7 +1462,7 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
           <div>
             <div style={labelStyle}>Home Type</div>
             <select value={homeType} onChange={(e) => setHomeType(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
-              <option value="">—</option>
+              <option value="">{"\u2014"}</option>
               {HOME_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
@@ -1057,7 +1509,7 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
         <div>
           <div style={labelStyle}>Area</div>
           <select value={area} onChange={(e) => setArea(e.target.value)} style={{ ...inputStyle, cursor: "pointer" }}>
-            <option value="">—</option>
+            <option value="">{"\u2014"}</option>
             {allAreas.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
@@ -1080,7 +1532,7 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
         </div>
         <div>
           <div style={labelStyle}>Notes</div>
-          <textarea value={hoNotes} onChange={(e) => setHoNotes(e.target.value)} placeholder="Best contact times, special instructions…"
+          <textarea value={hoNotes} onChange={(e) => setHoNotes(e.target.value)} placeholder="Best contact times, special instructions\u2026"
             style={{ ...inputStyle, height: 56, resize: "vertical", fontFamily: "inherit" }} />
         </div>
 
@@ -1092,9 +1544,9 @@ function PostLeadModal({ areas, onClose, onPosted, onError }: {
           }}>Cancel</button>
           <button type="button" onClick={handlePost} disabled={saving} style={{
             padding: "9px 20px", borderRadius: 8, border: "none",
-            background: routing === "assign" ? "#a78bfa" : EMERALD, color: "#fff", fontSize: 13, fontWeight: 700,
+            background: buttonColor, color: "#fff", fontSize: 13, fontWeight: 700,
             cursor: "pointer", opacity: saving ? 0.5 : 1,
-          }}>{saving ? (routing === "assign" ? "Assigning…" : "Posting…") : (routing === "assign" ? "Assign Lead" : "Post Lead")}</button>
+          }}>{buttonLabel}</button>
         </div>
       </div>
     </div>
