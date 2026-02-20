@@ -609,7 +609,7 @@ function ScheduleServiceModal({
     setSaving(true);
     try {
       const catLabel = serviceType === "hes" ? "HES Assessment" : "Home Inspection";
-      await createScheduleJob({
+      const payload = {
         type: serviceType, team_member_id: memberId || undefined,
         customer_name: customerName.trim(), customer_email: customerEmail.trim() || undefined,
         customer_phone: customerPhone.trim() || undefined, address: address.trim() || undefined,
@@ -624,9 +624,20 @@ function ScheduleServiceModal({
         catalog_total_price: totalPrice > 0 ? totalPrice : undefined,
         service_name: catLabel,
         tier_name: selectedTier?.name || selectedTier?.size_label || undefined,
-      });
-      onScheduled();
-    } catch (err: any) { alert(err?.message ?? "Failed to schedule service."); } finally { setSaving(false); }
+      };
+      console.log("[ScheduleServiceModal] submitting payload:", JSON.stringify(payload, null, 2));
+      const result = await createScheduleJob(payload);
+      if (result?.error) {
+        console.error("[ScheduleServiceModal] server returned error:", result.error);
+        alert(`Failed to schedule: ${result.error}`);
+      } else {
+        console.log("[ScheduleServiceModal] success");
+        onScheduled();
+      }
+    } catch (err: any) {
+      console.error("[ScheduleServiceModal] caught error:", err);
+      alert(err?.message ?? "Failed to schedule service.");
+    } finally { setSaving(false); }
   }
 
   return (

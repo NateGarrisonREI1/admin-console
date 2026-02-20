@@ -32,36 +32,44 @@ export async function createScheduleJob(input: {
   catalog_total_price?: number;
   service_name?: string;
   tier_name?: string;
-}) {
-  const svc = new AdminOpsService();
-  let created: any;
-  if (input.type === "hes") {
-    created = await svc.createHesSchedule(input);
-  } else {
-    created = await svc.createInspectorSchedule(input);
-  }
+}): Promise<{ error?: string }> {
+  console.log("[createScheduleJob] input:", JSON.stringify(input, null, 2));
+  try {
+    const svc = new AdminOpsService();
+    let created: any;
+    if (input.type === "hes") {
+      created = await svc.createHesSchedule(input);
+    } else {
+      created = await svc.createInspectorSchedule(input);
+    }
+    console.log("[createScheduleJob] created:", created?.id ?? "no id returned");
 
-  // Log activity
-  if (created?.id) {
-    const serviceLine = [input.service_name, input.tier_name].filter(Boolean).join(" — ")
-      || (input.type === "hes" ? "HES Assessment" : "Home Inspection");
-    await logJobActivity(
-      created.id,
-      "job_created",
-      `Job scheduled — ${input.customer_name}`,
-      { name: "Admin", role: "admin" },
-      {
-        service: serviceLine,
-        date: input.scheduled_date,
-        time: input.scheduled_time,
-        team_member_id: input.team_member_id,
-      },
-      input.type
-    );
-  }
+    // Log activity
+    if (created?.id) {
+      const serviceLine = [input.service_name, input.tier_name].filter(Boolean).join(" — ")
+        || (input.type === "hes" ? "HES Assessment" : "Home Inspection");
+      await logJobActivity(
+        created.id,
+        "job_created",
+        `Job scheduled — ${input.customer_name}`,
+        { name: "Admin", role: "admin" },
+        {
+          service: serviceLine,
+          date: input.scheduled_date,
+          time: input.scheduled_time,
+          team_member_id: input.team_member_id,
+        },
+        input.type
+      );
+    }
 
-  revalidatePath("/admin/schedule");
-  revalidatePath("/admin/team");
+    revalidatePath("/admin/schedule");
+    revalidatePath("/admin/team");
+    return {};
+  } catch (err: any) {
+    console.error("[createScheduleJob] ERROR:", err?.message ?? err);
+    return { error: err?.message ?? "Unknown error creating schedule job" };
+  }
 }
 
 // ─── Cancel a job ───────────────────────────────────────────────────

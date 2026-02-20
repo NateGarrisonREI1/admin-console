@@ -371,7 +371,10 @@ export class AdminOpsService {
       })
       .select("*, team_member:hes_team_members(*)")
       .single();
-    if (error) throw new InternalError(error.message);
+    if (error) {
+      console.error("[AdminOpsService.createHesSchedule] Supabase error:", error.message, error.details, error.hint);
+      throw new InternalError(error.message);
+    }
     return data as HesScheduleEntry;
   }
 
@@ -527,7 +530,10 @@ export class AdminOpsService {
       })
       .select("*, team_member:inspector_team_members(*)")
       .single();
-    if (error) throw new InternalError(error.message);
+    if (error) {
+      console.error("[AdminOpsService.createInspectorSchedule] Supabase error:", error.message, error.details, error.hint);
+      throw new InternalError(error.message);
+    }
     return data as InspectorScheduleEntry;
   }
 
