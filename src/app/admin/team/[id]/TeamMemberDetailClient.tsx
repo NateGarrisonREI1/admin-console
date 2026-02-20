@@ -1106,7 +1106,7 @@ export default function TeamMemberDetailClient({ data }: Props) {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <ModalOverlay onClose={() => setShowDeleteConfirm(false)}>
-          <div style={{ width: 400 }}>
+          <div className="admin-modal-content" style={{ width: 400 }}>
             <h3 style={{ fontSize: 17, fontWeight: 700, color: "#f87171", margin: "0 0 12px" }}>Delete Team Member</h3>
             <p style={{ fontSize: 14, color: TEXT_SEC, lineHeight: 1.5, margin: "0 0 6px" }}>
               Are you sure you want to remove <strong>{member.name}</strong>? This will also delete their schedule history.

@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import type { CSSProperties } from "react";
 import type { AdminBrokerSummary, BrokerHealthSummary, BrokerHealthAudit } from "@/types/admin-ops";
 import { fetchBrokerAudit } from "../contractor-leads/actions";
@@ -134,6 +135,44 @@ function HealthBadge({ score, riskLevel }: { score: number; riskLevel: "low" | "
       }}>
         {riskLevel}
       </span>
+    </div>
+  );
+}
+
+// ─── Mobile Card (< 640px) ────────────────────────────────────
+
+function BrokerMobileCard({
+  broker, healthScore, onClick,
+}: {
+  broker: AdminBrokerSummary; healthScore?: { overall: number; risk_level: "low" | "medium" | "high" }; onClick: () => void;
+}) {
+  const inactive = isInactive(broker);
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: "rgba(30,41,59,0.5)",
+        borderRadius: 12,
+        padding: 16,
+        border: "1px solid rgba(51,65,85,0.5)",
+        marginBottom: 12,
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>{brokerDisplayName(broker)}</div>
+        <StatusBadge inactive={inactive} />
+      </div>
+      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Since {fmtDate(broker.created_at)}</div>
+      <div style={{ display: "flex", gap: 16, fontSize: 12, alignItems: "center" }}>
+        <div><span style={{ color: "#64748b" }}>Leads </span><span style={{ fontWeight: 700, color: "#f1f5f9" }}>{broker.leads_posted}</span></div>
+        <div><span style={{ color: "#64748b" }}>Revenue </span><span style={{ fontWeight: 700, color: "#10b981" }}>{money(broker.revenue_earned)}</span></div>
+        {healthScore && (
+          <div style={{ marginLeft: "auto" }}>
+            <HealthBadge score={healthScore.overall} riskLevel={healthScore.risk_level} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -395,6 +434,7 @@ export default function BrokersClient({ brokers, healthData }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ActiveTab>("all-brokers");
   const [filter, setFilter] = useState<FilterStatus>("all");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Health audit state
   const [brokerRiskFilter, setBrokerRiskFilter] = useState<BrokerRiskFilter>("all");
@@ -486,10 +526,58 @@ export default function BrokersClient({ brokers, healthData }: Props) {
       {/* TAB 1: ALL BROKERS */}
       {activeTab === "all-brokers" && (
         <>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div className="admin-filter-desktop" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <FilterTab label="All" count={brokers.length} active={filter === "all"} onClick={() => setFilter("all")} />
             <FilterTab label="Active" count={activeBrokers.length} active={filter === "active"} onClick={() => setFilter("active")} />
             <FilterTab label="Inactive" count={inactiveBrokers.length} active={filter === "inactive"} onClick={() => setFilter("inactive")} />
+          </div>
+
+          {/* Mobile Filter Toggle */}
+          <div className="admin-mobile-filter-toggle">
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen((p) => !p)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 14px", borderRadius: 8,
+                border: `1px solid ${filter !== "all" ? "rgba(16,185,129,0.30)" : "#334155"}`,
+                background: "#1e293b", cursor: "pointer",
+              }}
+            >
+              <AdjustmentsHorizontalIcon style={{ width: 18, height: 18, color: filter !== "all" ? "#10b981" : "#94a3b8" }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: filter !== "all" ? "#10b981" : "#f1f5f9" }}>Filters</span>
+              {filter !== "all" && (
+                <span style={{
+                  padding: "1px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+                  background: "rgba(16,185,129,0.15)", color: "#10b981",
+                }}>1</span>
+              )}
+              <ChevronDownIcon style={{
+                width: 16, height: 16, marginLeft: "auto",
+                color: "#94a3b8", transition: "transform 0.15s",
+                transform: mobileFiltersOpen ? "rotate(180deg)" : "rotate(0)",
+              }} />
+            </button>
+            {mobileFiltersOpen && (
+              <div style={{
+                marginTop: 8, padding: 14, borderRadius: 10,
+                background: "#1e293b", border: "1px solid #334155",
+                display: "flex", flexDirection: "column", gap: 12,
+              }}>
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Status</label>
+                  <select
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value as FilterStatus)}
+                    className="admin-select" style={{ fontSize: 13 }}
+                  >
+                    <option value="all">All ({brokers.length})</option>
+                    <option value="active">Active ({activeBrokers.length})</option>
+                    <option value="inactive">Inactive ({inactiveBrokers.length})</option>
+                  </select>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Count label */}
@@ -504,7 +592,8 @@ export default function BrokersClient({ brokers, healthData }: Props) {
               </div>
             </div>
           ) : (
-            <div style={{ background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.5)", borderRadius: 12, overflow: "hidden" }}>
+            <>
+            <div className="admin-table-desktop" style={{ background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.5)", borderRadius: 12, overflow: "hidden" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid rgba(51,65,85,0.5)" }}>
@@ -576,6 +665,17 @@ export default function BrokersClient({ brokers, healthData }: Props) {
                 </tbody>
               </table>
             </div>
+            <div className="admin-card-mobile">
+              {filtered.map((broker) => (
+                <BrokerMobileCard
+                  key={broker.id}
+                  broker={broker}
+                  healthScore={healthMap.get(broker.id)}
+                  onClick={() => router.push(`/admin/brokers/${broker.id}`)}
+                />
+              ))}
+            </div>
+            </>
           )}
 
         </>
@@ -588,7 +688,7 @@ export default function BrokersClient({ brokers, healthData }: Props) {
             <BrokerAuditView audit={auditData} loading={auditLoading} onBack={() => { setSelectedBrokerId(null); setAuditData(null); }} />
           ) : (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+              <div className="admin-kpi-grid-3">
                 <HealthStatCard label="Total Brokers" value={String(healthData.length)} />
                 <HealthStatCard label="Avg Health Score" value={String(avgHealthScore)} />
                 <HealthStatCard label="At-Risk Brokers" value={String(atRiskBrokers)} alert={atRiskBrokers > 0} />

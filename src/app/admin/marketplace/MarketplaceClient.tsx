@@ -5,6 +5,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import SidePanel from "@/components/ui/SidePanel";
 import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, type OptionColor } from "@/components/ui/FilterableHeader";
+import { AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import type { MarketplaceData, MarketplaceLead, PostLeadInput } from "../_actions/marketplace";
 import {
   adminUpdateLead,
@@ -130,6 +131,7 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
   const [createdDateFilter, setCreatedDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({});
   const [soldDateFilter, setSoldDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({});
   const [globalSearch, setGlobalSearch] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Sort state
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -423,7 +425,7 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div className="admin-kpi-grid-6" style={{ marginBottom: 20 }}>
         {statCards.map((s) => (
           <div key={s.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px 16px" }}>
             <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>{s.label}</div>
@@ -582,13 +584,93 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
                 style={{ maxWidth: 300, fontSize: 13, padding: "7px 12px" }} />
             </div>
 
+            {/* Mobile Filter Toggle */}
+            <div className="admin-mobile-filter-toggle">
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen((p) => !p)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 14px", borderRadius: 8,
+                  border: `1px solid ${activeFilters.length > 0 ? "rgba(16,185,129,0.30)" : BORDER}`,
+                  background: CARD, cursor: "pointer",
+                }}
+              >
+                <AdjustmentsHorizontalIcon style={{ width: 18, height: 18, color: activeFilters.length > 0 ? EMERALD : TEXT_MUTED }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: activeFilters.length > 0 ? EMERALD : TEXT }}>Filters</span>
+                {activeFilters.length > 0 && (
+                  <span style={{
+                    padding: "1px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+                    background: "rgba(16,185,129,0.15)", color: EMERALD,
+                  }}>{activeFilters.length}</span>
+                )}
+                <ChevronDownIcon style={{
+                  width: 16, height: 16, marginLeft: "auto",
+                  color: TEXT_MUTED, transition: "transform 0.15s",
+                  transform: mobileFiltersOpen ? "rotate(180deg)" : "rotate(0)",
+                }} />
+              </button>
+              {mobileFiltersOpen && (
+                <div style={{
+                  marginTop: 8, padding: 14, borderRadius: 10,
+                  background: CARD, border: `1px solid ${BORDER}`,
+                  display: "flex", flexDirection: "column", gap: 12,
+                }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Type</label>
+                    <select
+                      value={typeFilter.length === 1 ? typeFilter[0] : ""}
+                      onChange={(e) => { setTypeFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Types</option>
+                      {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Status</label>
+                    <select
+                      value={statusFilter.length === 1 ? statusFilter[0] : ""}
+                      onChange={(e) => { setStatusFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Statuses</option>
+                      {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Area</label>
+                    <select
+                      value={areaFilter.length === 1 ? areaFilter[0] : ""}
+                      onChange={(e) => { setAreaFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Areas</option>
+                      {areaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Routing</label>
+                    <select
+                      value={routingFilter.length === 1 ? routingFilter[0] : ""}
+                      onChange={(e) => { setRoutingFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Routing</option>
+                      {ROUTING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Active Filter Chips */}
             <div style={{ marginBottom: activeFilters.length > 0 ? 12 : 0 }}>
               <ActiveFilterBar filters={activeFilters} onClearAll={clearAllFilters} />
             </div>
 
             {/* Table */}
-            <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
+            <div className="admin-table-desktop" style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
               <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
                 <thead>
                   <tr>
@@ -677,6 +759,15 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
                 </tbody>
               </table>
             </div>
+            <div className="admin-card-mobile">
+              {paged.length === 0 ? (
+                <div style={{ padding: 48, textAlign: "center", fontSize: 14, color: TEXT_DIM, fontWeight: 600 }}>
+                  No leads match your filters
+                </div>
+              ) : paged.map((lead) => (
+                <LeadMobileCard key={lead.id} lead={lead} onClick={() => openPanel(lead)} />
+              ))}
+            </div>
 
             {/* Pagination */}
             {totalPages > 1 && (
@@ -698,15 +789,56 @@ export default function MarketplaceClient({ data }: { data: MarketplaceData }) {
         onClose={closePanel}
         title={selectedLead?.title || selectedLead?.homeowner_name || "Lead Details"}
         width="w-2/5"
+        footer={selectedLead ? (
+          <div style={{ display: "flex", gap: 10 }}>
+            <button type="button" onClick={() => { closePanel(); setEditLead(selectedLead); }} style={{
+              flex: 1, padding: "9px 14px", borderRadius: 8, border: "none",
+              background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 700,
+              cursor: "pointer", transition: "opacity 0.15s",
+            }}
+              onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}>
+              Edit Lead
+            </button>
+            {selectedLead.status === "available" && (
+              <button type="button" onClick={() => handleExpire(selectedLead.id)} style={{
+                flex: 1, padding: "9px 14px", borderRadius: 8,
+                border: "1px solid rgba(234,179,8,0.3)", background: "transparent",
+                color: "#f59e0b", fontSize: 12, fontWeight: 700,
+                cursor: "pointer", transition: "background 0.15s",
+              }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(234,179,8,0.08)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                Mark Expired
+              </button>
+            )}
+            {selectedLead.status === "expired" && (
+              <button type="button" onClick={() => handleReactivate(selectedLead.id)} style={{
+                flex: 1, padding: "9px 14px", borderRadius: 8,
+                border: "1px solid rgba(16,185,129,0.3)", background: "transparent",
+                color: EMERALD, fontSize: 12, fontWeight: 700,
+                cursor: "pointer", transition: "background 0.15s",
+              }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(16,185,129,0.08)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+                Reactivate
+              </button>
+            )}
+            <button type="button" onClick={() => handleDelete(selectedLead.id)} style={{
+              flex: 1, padding: "9px 14px", borderRadius: 8,
+              border: "1px solid rgba(239,68,68,0.3)", background: "transparent",
+              color: "#f87171", fontSize: 12, fontWeight: 700,
+              cursor: "pointer", transition: "background 0.15s",
+            }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
+              Delete Lead
+            </button>
+          </div>
+        ) : undefined}
       >
         {selectedLead && (
-          <LeadDetailPanel
-            lead={selectedLead}
-            onEdit={() => { closePanel(); setEditLead(selectedLead); }}
-            onExpire={() => handleExpire(selectedLead.id)}
-            onReactivate={() => handleReactivate(selectedLead.id)}
-            onDelete={() => handleDelete(selectedLead.id)}
-          />
+          <LeadDetailPanel lead={selectedLead} />
         )}
       </SidePanel>
 
@@ -850,6 +982,55 @@ function LeadRow({ lead, onRowClick, onExpire, onReactivate, onDelete }: RowProp
   );
 }
 
+// ─── Mobile Card (< 640px) ──────────────────────────────────────────
+
+function LeadMobileCard({ lead, onClick }: { lead: MarketplaceLead; onClick: () => void }) {
+  const stc = SYSTEM_TYPE_COLORS[lead.system_type] ?? { bg: "rgba(148,163,184,0.15)", text: TEXT_MUTED, label: lead.system_type };
+  const sc = STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.available;
+  const isMuted = lead.status === "expired" || lead.status === "archived";
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: "rgba(30,41,59,0.5)",
+        borderRadius: 12,
+        padding: 16,
+        border: lead.status === "purchased" ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(51,65,85,0.5)",
+        marginBottom: 12,
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: isMuted ? TEXT_DIM : TEXT }}>
+          {lead.title || lead.homeowner_name || "\u2014"}
+        </div>
+        <span style={{ fontSize: 14, fontWeight: 700, color: isMuted ? TEXT_DIM : TEXT }}>{money(lead.price)}</span>
+      </div>
+      <div style={{ fontSize: 12, color: TEXT_DIM, marginBottom: 8 }}>
+        {[lead.city, lead.state].filter(Boolean).join(", ") || lead.zip || "\u2014"}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: stc.bg, color: stc.text }}>
+          {stc.label}
+        </span>
+        <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>
+          {sc.label}
+        </span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: TEXT_DIM }}>{fmtDate(lead.created_at)}</span>
+        {lead.has_leaf && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: EMERALD, display: "inline-block" }} />
+            <span style={{ fontSize: 10, color: EMERALD, fontWeight: 600 }}>LEAF</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MenuItem({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
   return (
     <button type="button" onClick={onClick}
@@ -868,12 +1049,8 @@ function MenuItem({ children, onClick, danger }: { children: React.ReactNode; on
 
 // ─── Lead Detail Panel (inside SidePanel) ───────────────────────────
 
-function LeadDetailPanel({ lead, onEdit, onExpire, onReactivate, onDelete }: {
+function LeadDetailPanel({ lead }: {
   lead: MarketplaceLead;
-  onEdit: () => void;
-  onExpire: () => void;
-  onReactivate: () => void;
-  onDelete: () => void;
 }) {
   const stc = SYSTEM_TYPE_COLORS[lead.system_type] ?? { bg: "rgba(148,163,184,0.15)", text: TEXT_MUTED, label: lead.system_type };
   const sc = STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.available;
@@ -898,9 +1075,7 @@ function LeadDetailPanel({ lead, onEdit, onExpire, onReactivate, onDelete }: {
   const posterAmt = Math.round(totalAmt * 68.6) / 100;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Scrollable content */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+    <div>
         {/* Status & Type badges */}
         <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
           <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>{sc.label}</span>
@@ -1016,58 +1191,6 @@ function LeadDetailPanel({ lead, onEdit, onExpire, onReactivate, onDelete }: {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Action buttons pinned to bottom */}
-      <div style={{
-        flexShrink: 0, borderTop: "1px solid rgba(51,65,85,0.5)",
-        padding: "16px 0 0", marginTop: 16,
-        display: "flex", gap: 10,
-      }}>
-        <button type="button" onClick={onEdit} style={{
-          flex: 1, padding: "9px 14px", borderRadius: 8, border: "none",
-          background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 700,
-          cursor: "pointer", transition: "opacity 0.15s",
-        }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}>
-          Edit Lead
-        </button>
-        {lead.status === "available" && (
-          <button type="button" onClick={onExpire} style={{
-            flex: 1, padding: "9px 14px", borderRadius: 8,
-            border: "1px solid rgba(234,179,8,0.3)", background: "transparent",
-            color: "#f59e0b", fontSize: 12, fontWeight: 700,
-            cursor: "pointer", transition: "background 0.15s",
-          }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(234,179,8,0.08)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-            Mark Expired
-          </button>
-        )}
-        {lead.status === "expired" && (
-          <button type="button" onClick={onReactivate} style={{
-            flex: 1, padding: "9px 14px", borderRadius: 8,
-            border: `1px solid rgba(16,185,129,0.3)`, background: "transparent",
-            color: EMERALD, fontSize: 12, fontWeight: 700,
-            cursor: "pointer", transition: "background 0.15s",
-          }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(16,185,129,0.08)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-            Reactivate
-          </button>
-        )}
-        <button type="button" onClick={onDelete} style={{
-          flex: 1, padding: "9px 14px", borderRadius: 8,
-          border: "1px solid rgba(239,68,68,0.3)", background: "transparent",
-          color: "#f87171", fontSize: 12, fontWeight: 700,
-          cursor: "pointer", transition: "background 0.15s",
-        }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}>
-          Delete Lead
-        </button>
-      </div>
     </div>
   );
 }

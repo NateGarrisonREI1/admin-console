@@ -9,6 +9,7 @@ type SidePanelProps = {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   width?: "w-1/4" | "w-1/3" | "w-2/5";
 };
 
@@ -18,10 +19,11 @@ const WIDTH_MAP: Record<string, string> = {
   "w-2/5": "40%",
 };
 
-export default function SidePanel({ isOpen, onClose, title, children, width = "w-1/3" }: SidePanelProps) {
+export default function SidePanel({ isOpen, onClose, title, children, footer, width = "w-1/3" }: SidePanelProps) {
   const [mounted, setMounted] = useState(false);
   // visible tracks the CSS transition state (true = slid in)
   const [visible, setVisible] = useState(false);
+  const [isMobilePanel, setIsMobilePanel] = useState(false);
 
   // Mount portal on first open
   useEffect(() => {
@@ -51,6 +53,16 @@ export default function SidePanel({ isOpen, onClose, title, children, width = "w
     }
   }, [mounted]);
 
+  // Track mobile breakpoint
+  useEffect(() => {
+    if (!mounted) return;
+    const mql = window.matchMedia("(max-width: 767px)");
+    setIsMobilePanel(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobilePanel(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [mounted]);
+
   if (!mounted) return null;
 
   const panelWidth = WIDTH_MAP[width] ?? WIDTH_MAP["w-1/3"];
@@ -71,9 +83,13 @@ export default function SidePanel({ isOpen, onClose, title, children, width = "w
       {/* Panel */}
       <div
         style={{
-          position: "fixed", right: 0, top: 0, height: "100%", zIndex: 9991,
-          width: panelWidth, maxWidth: "90vw",
-          background: "#0f172a", borderLeft: "1px solid #334155",
+          position: "fixed", zIndex: 9991,
+          ...(isMobilePanel
+            ? { inset: 0, width: "100%", height: "100%" }
+            : { right: 0, top: 0, height: "100%", width: panelWidth, maxWidth: "90vw" }
+          ),
+          background: "#0f172a",
+          borderLeft: isMobilePanel ? "none" : "1px solid #334155",
           boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
           display: "flex", flexDirection: "column",
           transform: visible ? "translateX(0)" : "translateX(100%)",
@@ -87,7 +103,7 @@ export default function SidePanel({ isOpen, onClose, title, children, width = "w
           flexShrink: 0,
         }}>
           {title && (
-            <h2 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9", margin: 0 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: "#f1f5f9", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1, marginRight: 12 }}>
               {title}
             </h2>
           )}
@@ -97,7 +113,7 @@ export default function SidePanel({ isOpen, onClose, title, children, width = "w
             style={{
               background: "none", border: "none", padding: 4,
               color: "#94a3b8", fontSize: 18, cursor: "pointer",
-              lineHeight: 1, transition: "color 0.15s",
+              lineHeight: 1, transition: "color 0.15s", flexShrink: 0,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "#f1f5f9"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; }}
@@ -107,9 +123,20 @@ export default function SidePanel({ isOpen, onClose, title, children, width = "w
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: 24, minHeight: 0 }}>
           {children}
         </div>
+
+        {/* Footer (sticky, outside scroll) */}
+        {footer && (
+          <div style={{
+            flexShrink: 0, padding: "16px 24px",
+            borderTop: "1px solid rgba(51,65,85,0.5)",
+            background: "#0f172a",
+          }}>
+            {footer}
+          </div>
+        )}
       </div>
     </>,
     document.body,

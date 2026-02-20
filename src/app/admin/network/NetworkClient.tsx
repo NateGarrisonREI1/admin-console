@@ -3,6 +3,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import type { NetworkData, NetworkPartner, MemberType, PlatformUser } from "./actions";
 import {
   searchPlatformUsers,
@@ -180,6 +181,76 @@ function ServiceTypePill({ label, color }: { label: string; color?: string }) {
     >
       {label}
     </span>
+  );
+}
+
+// ─── Mobile Card (< 640px) ───────────────────────────────────────────────────
+
+function NetworkMobileCard({
+  partner, showServiceTypes, tabConfig, isPending,
+  onEdit, onRemove, onResendInvite,
+}: {
+  partner: NetworkPartner; showServiceTypes: boolean; tabConfig: TabConfig; isPending: boolean;
+  onEdit: () => void; onRemove: () => void; onResendInvite: () => void;
+}) {
+  return (
+    <div
+      style={{
+        background: "rgba(30,41,59,0.5)",
+        borderRadius: 12,
+        padding: 16,
+        border: "1px solid rgba(51,65,85,0.5)",
+        marginBottom: 12,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>
+          {isPending && !partner.company_name && partner.name === partner.email
+            ? partner.email
+            : partner.company_name || partner.name}
+        </div>
+        <StatusPill status={partner.status} />
+      </div>
+      {!isPending && partner.company_name && partner.name && partner.name !== partner.company_name && (
+        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>{partner.name}</div>
+      )}
+      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>
+        {partner.email}
+        {partner.phone && <span style={{ marginLeft: 8, color: "#64748b" }}>{partner.phone}</span>}
+      </div>
+      {showServiceTypes && !isPending && partner.services.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+          {partner.services.map((s) => (
+            <ServiceTypePill key={s} label={SERVICE_TYPE_LABELS[s] ?? s} color={tabConfig.accent} />
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        {isPending ? (
+          <>
+            <button type="button" onClick={onResendInvite}
+              style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: "rgba(251,191,36,0.08)", color: "#fbbf24", border: "1px solid rgba(251,191,36,0.25)", cursor: "pointer", flex: 1 }}>
+              Resend Invite
+            </button>
+            <button type="button" onClick={onRemove}
+              style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: "rgba(248,113,113,0.08)", color: "#f87171", border: "1px solid rgba(248,113,113,0.2)", cursor: "pointer", flex: 1 }}>
+              Cancel Invite
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={onEdit}
+              style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: "#334155", color: "#cbd5e1", border: "1px solid #475569", cursor: "pointer", flex: 1 }}>
+              Edit
+            </button>
+            <button type="button" onClick={onRemove}
+              style={{ padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: "rgba(248,113,113,0.08)", color: "#f87171", border: "1px solid rgba(248,113,113,0.2)", cursor: "pointer", flex: 1 }}>
+              Remove
+            </button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -781,6 +852,7 @@ export default function NetworkClient({ data }: { data: NetworkData }) {
 
   const [serviceFilter, setServiceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("active");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [browseOpen, setBrowseOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -951,7 +1023,7 @@ export default function NetworkClient({ data }: { data: NetworkData }) {
         </div>
 
         {/* KPI Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+        <div className="admin-kpi-grid-3" style={{ marginBottom: 24 }}>
           {[
             { label: `Total ${currentTabConfig.label}`, value: tabProviders.length },
             { label: "Active", value: totalActive, color: "#10b981" },
@@ -964,8 +1036,8 @@ export default function NetworkClient({ data }: { data: NetworkData }) {
           ))}
         </div>
 
-        {/* Filters */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        {/* Filters — Desktop */}
+        <div className="admin-filter-desktop" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           {currentTabConfig.showServiceTypes && (
             <div>
               <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginRight: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Service</label>
@@ -993,8 +1065,74 @@ export default function NetworkClient({ data }: { data: NetworkData }) {
           </div>
         </div>
 
+        {/* Filters — Mobile */}
+        {(() => {
+          const mobileActiveCount = (serviceFilter !== "all" ? 1 : 0) + (statusFilter !== "active" ? 1 : 0);
+          return (
+            <div className="admin-mobile-filter-toggle" style={{ marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen((p) => !p)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 14px", borderRadius: 8,
+                  border: `1px solid ${mobileActiveCount > 0 ? "rgba(16,185,129,0.30)" : "#334155"}`,
+                  background: "#1e293b", cursor: "pointer",
+                }}
+              >
+                <AdjustmentsHorizontalIcon style={{ width: 18, height: 18, color: mobileActiveCount > 0 ? "#10b981" : "#94a3b8" }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: mobileActiveCount > 0 ? "#10b981" : "#f1f5f9" }}>Filters</span>
+                {mobileActiveCount > 0 && (
+                  <span style={{
+                    padding: "1px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+                    background: "rgba(16,185,129,0.15)", color: "#10b981",
+                  }}>{mobileActiveCount}</span>
+                )}
+                <span style={{ marginLeft: "auto", fontSize: 12, color: "#475569", fontWeight: 600 }}>
+                  {filtered.length} {currentTabConfig.label.toLowerCase()}
+                </span>
+                <ChevronDownIcon style={{
+                  width: 16, height: 16,
+                  color: "#94a3b8", transition: "transform 0.15s",
+                  transform: mobileFiltersOpen ? "rotate(180deg)" : "rotate(0)",
+                }} />
+              </button>
+              {mobileFiltersOpen && (
+                <div style={{
+                  marginTop: 8, padding: 14, borderRadius: 10,
+                  background: "#1e293b", border: "1px solid #334155",
+                  display: "flex", flexDirection: "column", gap: 12,
+                }}>
+                  {currentTabConfig.showServiceTypes && (
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Service</label>
+                      <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}
+                        className="admin-select" style={{ fontSize: 13 }}>
+                        <option value="all">All Services</option>
+                        {Object.entries(SERVICE_TYPE_LABELS).map(([value, label]) => (
+                          <option key={value} value={value}>{label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Status</label>
+                    <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+                      className="admin-select" style={{ fontSize: 13 }}>
+                      <option value="all">All Statuses</option>
+                      <option value="active">Active</option>
+                      <option value="paused">Paused</option>
+                      <option value="pending_invite">Pending Invite</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Table */}
-        <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 14, overflow: "hidden" }}>
+        <div className="admin-table-desktop" style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 14, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
@@ -1106,6 +1244,26 @@ export default function NetworkClient({ data }: { data: NetworkData }) {
               </tbody>
             </table>
           </div>
+        </div>
+        <div className="admin-card-mobile">
+          {filtered.length === 0 ? (
+            <div style={{ padding: "48px 24px", textAlign: "center", color: "#475569", fontSize: 13, fontWeight: 500 }}>
+              {tabProviders.length === 0
+                ? `No ${currentTabConfig.label.toLowerCase()} in your network yet.`
+                : `No ${currentTabConfig.label.toLowerCase()} match the current filters.`}
+            </div>
+          ) : filtered.map((p) => (
+            <NetworkMobileCard
+              key={p.id}
+              partner={p}
+              showServiceTypes={currentTabConfig.showServiceTypes}
+              tabConfig={currentTabConfig}
+              isPending={p.status === "pending_invite"}
+              onEdit={() => setEditTarget(p)}
+              onRemove={() => setRemoveTarget(p)}
+              onResendInvite={() => handleResendInvite(p)}
+            />
+          ))}
         </div>
       </div>
 

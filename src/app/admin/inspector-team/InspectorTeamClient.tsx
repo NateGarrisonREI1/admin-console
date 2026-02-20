@@ -1187,7 +1187,7 @@ export default function InspectorTeamClient({
       </div>
 
       {/* ── KPI Strip ─────────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+      <div className="admin-kpi-grid-3">
         {[
           { label: "Active Inspectors", value: String(activeCount), color: "#10b981" },
           { label: "Today's Inspections", value: String(todayCount), color: "#f59e0b" },

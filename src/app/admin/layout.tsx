@@ -32,6 +32,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       >
         {/* Dark gradient header */}
         <header
+          className="admin-header"
           style={{
             background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
             borderBottom: "1px solid #334155",
@@ -54,7 +55,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 boxShadow: "0 0 8px rgba(16,185,129,0.4)",
               }}
             />
-            <span style={{ fontWeight: 700, fontSize: 14, color: "#f1f5f9" }}>
+            <span className="admin-header-title" style={{ fontWeight: 700, fontSize: 14, color: "#f1f5f9" }}>
               REI Admin
             </span>
           </div>

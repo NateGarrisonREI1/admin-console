@@ -262,3 +262,110 @@
 * {
   box-sizing: border-box;
 }
+
+/* =========================================================
+   Mobile / Tablet Responsive
+   ========================================================= */
+
+/* --- KPI stat grids --- */
+.admin-kpi-grid {
+  display: grid !important;
+  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (min-width: 768px) {
+  .admin-kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
+}
+
+.admin-kpi-grid-3 {
+  display: grid !important;
+  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (min-width: 768px) {
+  .admin-kpi-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.admin-kpi-grid-6 {
+  display: grid !important;
+  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+}
+@media (min-width: 640px) {
+  .admin-kpi-grid-6 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (min-width: 1024px) {
+  .admin-kpi-grid-6 {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+/* --- Modals: full-width on mobile --- */
+@media (max-width: 767px) {
+  .admin-modal-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 20px !important;
+    border-radius: 12px !important;
+  }
+}
+
+/* --- Tables: smaller font on narrow screens --- */
+@media (max-width: 639px) {
+  .admin-table {
+    font-size: 12px;
+  }
+  .admin-table thead th {
+    padding: 8px 10px;
+    font-size: 10px;
+  }
+  .admin-table tbody td {
+    padding: 8px 10px;
+  }
+}
+
+/* --- Header: hide title on small mobile, pad for hamburger --- */
+@media (max-width: 639px) {
+  .admin-header-title {
+    display: none !important;
+  }
+}
+@media (max-width: 767px) {
+  .admin-header {
+    padding-left: 52px !important;
+  }
+}
+
+/* --- Table → Card responsive toggle (640px breakpoint) --- */
+.admin-card-mobile {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .admin-table-desktop {
+    display: none !important;
+  }
+  .admin-card-mobile {
+    display: block;
+  }
+}
+
+/* --- Mobile filter toggle (640px breakpoint) --- */
+.admin-mobile-filter-toggle {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .admin-mobile-filter-toggle {
+    display: block;
+  }
+  .admin-filter-desktop {
+    display: none !important;
+  }
+}

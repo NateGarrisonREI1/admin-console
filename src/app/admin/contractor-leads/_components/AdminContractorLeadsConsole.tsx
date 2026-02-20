@@ -382,7 +382,7 @@ export default function ContractorLeadsConsole({ directLeadsData }: Props) {
       </div>
 
       {/* ── Stats Strip ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div className="admin-kpi-grid">
         <StatCard label="Total Leads" value={String(leads.length)} />
         <StatCard label="Pending Assignment" value={String(leadCounts.pending)} />
         <StatCard label="Assigned" value={String(leadCounts.assigned)} />
@@ -642,7 +642,7 @@ export default function ContractorLeadsConsole({ directLeadsData }: Props) {
             onClick={() => !isPending && setAssignModalLead(null)}
             style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.60)" }}
           />
-          <div style={modalContentStyle}>
+          <div className="admin-modal-content" style={modalContentStyle}>
             <div style={{ fontSize: 18, fontWeight: 950, color: "#f1f5f9" }}>Assign Lead</div>
             <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>
               {assignModalLead.customer_name} &mdash;{" "}
@@ -739,7 +739,7 @@ export default function ContractorLeadsConsole({ directLeadsData }: Props) {
             onClick={() => !isPending && setNewLeadModalOpen(false)}
             style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.60)" }}
           />
-          <div style={{ ...modalContentStyle, maxWidth: 540, maxHeight: "85vh", overflow: "auto" }}>
+          <div className="admin-modal-content" style={{ ...modalContentStyle, maxWidth: 540, maxHeight: "85vh", overflow: "auto" }}>
             <div style={{ fontSize: 18, fontWeight: 950, color: "#f1f5f9" }}>New Direct Lead</div>
             <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>
               Enter customer and service details

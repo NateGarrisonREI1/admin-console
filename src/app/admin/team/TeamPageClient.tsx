@@ -9,6 +9,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "@heroicons/react/20/solid";
+import { AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import type { TeamPageData, UnifiedTeamMember, UnifiedScheduleEntry, MemberType } from "./actions";
 import { addTeamMember, scheduleService, fetchScheduleWeek, fetchScheduleMonth } from "./actions";
 import type { ServiceCatalog, ServiceCatalogCategory } from "../_actions/services";
@@ -147,6 +148,52 @@ function ListToast({ message, onDone }: { message: string; onDone: () => void })
   );
 }
 
+// ─── Mobile Card (< 640px) ──────────────────────────────────────────
+
+function TeamMobileCard({
+  member, todayInfo, onClick,
+}: {
+  member: UnifiedTeamMember;
+  todayInfo: { count: number; assignment: string | null };
+  onClick: () => void;
+}) {
+  const dot = getStatusDot(member, todayInfo.count);
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: "rgba(30,41,59,0.5)",
+        borderRadius: 12,
+        padding: 16,
+        border: "1px solid rgba(51,65,85,0.5)",
+        marginBottom: 12,
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{member.name}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: dot.color }} />
+          <span style={{ fontSize: 11, color: TEXT_MUTED, fontWeight: 500 }}>{dot.label}</span>
+        </div>
+      </div>
+      <div style={{ marginBottom: 6 }}>
+        <span style={{
+          display: "inline-block", padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+          background: member.type === "hes" ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
+          color: member.type === "hes" ? "#10b981" : "#f59e0b",
+        }}>
+          {member.type === "hes" ? "HES" : "Inspector"}
+        </span>
+      </div>
+      <div style={{ fontSize: 12, color: TEXT_MUTED }}>
+        {member.email ?? "No email"}
+        {member.phone && <span style={{ marginLeft: 8, color: TEXT_DIM }}>{member.phone}</span>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Team Table ─────────────────────────────────────────────────────
 
 function TeamTable({
@@ -166,7 +213,7 @@ function TeamTable({
       </div>
 
       {/* Table */}
-      <div style={{ overflowX: "auto" }}>
+      <div className="admin-table-desktop" style={{ overflowX: "auto" }}>
         <table className="admin-table" style={{ minWidth: 800 }}>
           <thead>
             <tr>
@@ -278,6 +325,23 @@ function TeamTable({
             )}
           </tbody>
         </table>
+      </div>
+      <div className="admin-card-mobile" style={{ padding: 16 }}>
+        {members.length === 0 ? (
+          <div style={{ padding: "32px 24px", textAlign: "center", color: TEXT_DIM, fontSize: 13 }}>
+            No team members found.
+          </div>
+        ) : members.map((member) => {
+          const info = todayJobMap.get(member.id) ?? { count: 0, assignment: null };
+          return (
+            <TeamMobileCard
+              key={member.id}
+              member={member}
+              todayInfo={info}
+              onClick={() => onView(member)}
+            />
+          );
+        })}
       </div>
     </div>
   );
@@ -710,7 +774,7 @@ function AddTeamMemberModal({ onClose, onAdded }: { onClose: () => void; onAdded
 
   return (
     <ModalOverlay onClose={onClose}>
-      <div style={{ width: 500 }}>
+      <div className="admin-modal-content" style={{ width: 500 }}>
         <h3 style={{ fontSize: 17, fontWeight: 700, color: TEXT, margin: "0 0 18px" }}>Add Team Member</h3>
 
         {/* Type selector cards */}
@@ -924,7 +988,7 @@ function ScheduleServiceModal({
 
   return (
     <ModalOverlay onClose={onClose}>
-      <div style={{ width: 520 }}>
+      <div className="admin-modal-content" style={{ width: 520 }}>
         <h3 style={{ fontSize: 17, fontWeight: 700, color: TEXT, margin: "0 0 18px" }}>Schedule Service</h3>
 
         {/* Type selector cards */}
@@ -1128,6 +1192,7 @@ function ScheduleServiceModal({
 export default function TeamPageClient({ data, initialTab }: Props) {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterType>("all");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [scheduleView, setScheduleView] = useState<ScheduleView>("week");
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
@@ -1226,8 +1291,8 @@ export default function TeamPageClient({ data, initialTab }: Props) {
         </div>
       )}
 
-      {/* Filter Toggle */}
-      <div style={{ display: "flex", gap: 0, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
+      {/* Filter Toggle — Desktop */}
+      <div className="admin-filter-desktop" style={{ display: "flex", gap: 0, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", width: "fit-content" }}>
         {([
           { key: "all" as FilterType, label: "All" },
           { key: "hes" as FilterType, label: "HES Assessors" },
@@ -1262,6 +1327,54 @@ export default function TeamPageClient({ data, initialTab }: Props) {
             </button>
           );
         })}
+      </div>
+
+      {/* Filter Toggle — Mobile */}
+      <div className="admin-mobile-filter-toggle">
+        <button
+          type="button"
+          onClick={() => setMobileFiltersOpen((p) => !p)}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 14px", borderRadius: 8,
+            border: `1px solid ${filter !== "all" ? "rgba(16,185,129,0.30)" : BORDER}`,
+            background: CARD, cursor: "pointer",
+          }}
+        >
+          <AdjustmentsHorizontalIcon style={{ width: 18, height: 18, color: filter !== "all" ? EMERALD : TEXT_MUTED }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: filter !== "all" ? EMERALD : TEXT }}>Filters</span>
+          {filter !== "all" && (
+            <span style={{
+              padding: "1px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+              background: "rgba(16,185,129,0.15)", color: EMERALD,
+            }}>1</span>
+          )}
+          <ChevronDownIcon style={{
+            width: 16, height: 16, marginLeft: "auto",
+            color: TEXT_MUTED, transition: "transform 0.15s",
+            transform: mobileFiltersOpen ? "rotate(180deg)" : "rotate(0)",
+          }} />
+        </button>
+        {mobileFiltersOpen && (
+          <div style={{
+            marginTop: 8, padding: 14, borderRadius: 10,
+            background: CARD, border: `1px solid ${BORDER}`,
+            display: "flex", flexDirection: "column", gap: 12,
+          }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Type</label>
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as FilterType)}
+                className="admin-select" style={{ fontSize: 13 }}
+              >
+                <option value="all">All ({data.members.length})</option>
+                <option value="hes">HES Assessors ({data.members.filter((m) => m.type === "hes").length})</option>
+                <option value="inspector">Inspectors ({data.members.filter((m) => m.type === "inspector").length})</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       {(

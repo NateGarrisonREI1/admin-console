@@ -136,7 +136,7 @@ export default function AuthLogsClient({
       </div>
 
       {/* Stats strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div className="admin-kpi-grid">
         {[
           { label: "Total Events", value: totalEvents.toString(), color: EMERALD },
           { label: "Successful Logins", value: successCount.toString(), color: "#10b981" },

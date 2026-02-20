@@ -262,7 +262,7 @@ export default function BrokerPlatformClient({ data }: { data: BrokerPlatformDat
       </div>
 
       {/* ROW 1: KPIs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+      <div className="admin-kpi-grid-6">
         <KpiCard label="Active Brokers" value={data.activeBrokers} color={EMERALD} />
         <KpiCard label="New This Month" value={data.newThisMonth} color="#38bdf8" />
         <KpiCard label="Revenue MTD" value={money(data.platformRevenueMtd)} color={EMERALD} />

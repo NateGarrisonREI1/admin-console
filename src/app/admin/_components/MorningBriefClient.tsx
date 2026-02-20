@@ -140,7 +140,7 @@ export default function MorningBriefClient({ data }: { data: MorningBriefData })
       </div>
 
       {/* Row 1: Key Numbers */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div className="admin-kpi-grid">
         <StatCard label="Revenue (MTD)" value={money(data.revenueMtd)} sub={changeStr} color={EMERALD} />
         <StatCard label="Open Projects" value={String(data.openProjects)} color="#38bdf8" />
         <StatCard label="Team Capacity" value={data.teamAvailableToday} color="#fbbf24" />

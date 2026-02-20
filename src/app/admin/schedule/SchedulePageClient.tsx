@@ -19,6 +19,8 @@ import { fetchServiceCatalog } from "../_actions/services";
 import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, type OptionColor } from "@/components/ui/FilterableHeader";
 import ActivityLog from "@/components/ui/ActivityLog";
 import type { ActivityLogEntry } from "@/lib/activityLog";
+import { useIsMobile, useIsSmallMobile } from "@/lib/useMediaQuery";
+import { PlusIcon, AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 const PANEL_WIDTH = 420;
 
 // ─── Design tokens ──────────────────────────────────────────────────
@@ -94,6 +96,7 @@ function typeLabel(type: string): string {
 // ─── Calendar Helpers ────────────────────────────────────────────────
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEKDAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 
 function getMonthGridDays(year: number, month: number): string[] {
   const first = new Date(year, month, 1);
@@ -314,6 +317,60 @@ function DisplayBadge({ config }: { config: { bg: string; color: string; border:
   );
 }
 
+// ─── Mobile Card (< 640px) ──────────────────────────────────────────
+
+function ScheduleMobileCard({
+  job, isSelected, overdue, onClick,
+}: {
+  job: ScheduleJob; isSelected: boolean; overdue: boolean; onClick: () => void;
+}) {
+  const isMuted = job.status === "completed" || job.status === "cancelled" || job.status === "archived";
+  const todayRow = job.scheduled_date === todayStr();
+  const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
+  const statusBadge = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
+  const addr = [job.address, job.city].filter(Boolean).join(", ");
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: "rgba(30,41,59,0.5)",
+        borderRadius: 12,
+        padding: 16,
+        border: isSelected ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(51,65,85,0.5)",
+        marginBottom: 12,
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: overdue ? "#f87171" : isMuted ? TEXT_DIM : TEXT }}>
+            {formatDate(job.scheduled_date)}
+          </span>
+          <span style={{ fontSize: 12, color: isMuted ? TEXT_DIM : TEXT_SEC }}>{formatTime(job.scheduled_time)}</span>
+          {todayRow && !isMuted && (
+            <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: EMERALD, padding: "1px 5px", borderRadius: 4 }}>TODAY</span>
+          )}
+          {overdue && (
+            <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#ef4444", padding: "1px 5px", borderRadius: 4 }}>OVERDUE</span>
+          )}
+        </div>
+        <DisplayBadge config={statusBadge} />
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: isMuted ? TEXT_DIM : TEXT, marginBottom: 4 }}>
+        {job.customer_name}
+      </div>
+      {addr && <div style={{ fontSize: 12, color: TEXT_SEC, marginBottom: 6 }}>{addr}</div>}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <DisplayBadge config={typeBadge} />
+        <span style={{ fontSize: 12, color: job.team_member_name ? TEXT_SEC : TEXT_DIM }}>
+          {job.team_member_name || "Unassigned"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── KPI Card ───────────────────────────────────────────────────────
 
 function KpiCard({ label, value, color }: { label: string; value: string | number; color: string }) {
@@ -359,7 +416,7 @@ function ModalOverlay({ onClose, children }: { onClose: () => void; children: Re
         zIndex: 50, padding: 20,
       }}
     >
-      <div style={{
+      <div className="admin-modal-content" style={{
         background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16,
         padding: 28, maxHeight: "85vh", overflowY: "auto",
         boxShadow: "0 25px 50px -12px rgba(0,0,0,0.5)",
@@ -903,11 +960,14 @@ type ViewMode = "list" | "calendar";
 
 export default function SchedulePageClient({ data }: { data: SchedulePageData }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
+  const isCompactMobile = useIsSmallMobile();
   const today = useMemo(() => todayStr(), []);
   const { monday, sunday } = useMemo(() => getWeekBounds(), []);
   const { monthStart, monthEnd } = useMemo(() => getMonthBounds(), []);
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [mobileSelectedDay, setMobileSelectedDay] = useState<string | null>(null);
 
   // Column filter state
   const [dateFilter, setDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({ preset: "this_week" });
@@ -920,6 +980,7 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [amountRange, setAmountRange] = useState<{ min?: string; max?: string }>({});
   const [globalSearch, setGlobalSearch] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   // Sort state
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -1221,7 +1282,7 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   return (
     <>
     <style>{`@keyframes schedPanelFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-    <div style={{ display: "flex", flexDirection: "column", gap: 16, marginRight: panelOpen ? PANEL_WIDTH : 0, transition: "margin-right 300ms ease" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, marginRight: isMobile ? 0 : (panelOpen ? PANEL_WIDTH : 0), transition: "margin-right 300ms ease" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
@@ -1230,14 +1291,16 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
             Manage upcoming assessments, inspections, and service requests
           </p>
         </div>
-        <button type="button" onClick={openScheduleModal} style={{
-          padding: "8px 14px", borderRadius: 8, border: "none", background: PURPLE,
-          color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
-        }}>+ Schedule Service</button>
+        {!isMobile && (
+          <button type="button" onClick={openScheduleModal} style={{
+            padding: "8px 14px", borderRadius: 8, border: "none", background: PURPLE,
+            color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}>+ Schedule Service</button>
+        )}
       </div>
 
       {/* Stats Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+      <div className="admin-kpi-grid">
         <KpiCard label="Today's Jobs" value={data.stats.todayJobs} color="#fbbf24" />
         <KpiCard label="This Week" value={data.stats.thisWeek} color="#60a5fa" />
         <KpiCard label="Pending Requests" value={data.stats.pendingRequests} color="#fb923c" />
@@ -1267,12 +1330,95 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
           className="admin-input" style={{ maxWidth: 340, fontSize: 13, padding: "7px 12px" }} />
       </div>
 
+      {/* Mobile Filter Toggle */}
+      <div className="admin-mobile-filter-toggle">
+        <button
+          type="button"
+          onClick={() => setMobileFiltersOpen((p) => !p)}
+          style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 8,
+            padding: "10px 14px", borderRadius: 8,
+            border: `1px solid ${activeFilters.length > 0 ? "rgba(16,185,129,0.30)" : BORDER}`,
+            background: CARD, cursor: "pointer",
+          }}
+        >
+          <AdjustmentsHorizontalIcon style={{ width: 18, height: 18, color: activeFilters.length > 0 ? EMERALD : TEXT_MUTED }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: activeFilters.length > 0 ? EMERALD : TEXT }}>Filters</span>
+          {activeFilters.length > 0 && (
+            <span style={{
+              padding: "1px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+              background: "rgba(16,185,129,0.15)", color: EMERALD,
+            }}>{activeFilters.length}</span>
+          )}
+          <ChevronDownIcon style={{
+            width: 16, height: 16, marginLeft: "auto",
+            color: TEXT_MUTED, transition: "transform 0.15s",
+            transform: mobileFiltersOpen ? "rotate(180deg)" : "rotate(0)",
+          }} />
+        </button>
+        {mobileFiltersOpen && (
+          <div style={{
+            marginTop: 8, padding: 14, borderRadius: 10,
+            background: CARD, border: `1px solid ${BORDER}`,
+            display: "flex", flexDirection: "column", gap: 12,
+          }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Date</label>
+              <select
+                value={dateFilter.preset ?? ""}
+                onChange={(e) => setDateFilter(e.target.value ? { preset: e.target.value } : {})}
+                className="admin-select" style={{ fontSize: 13 }}
+              >
+                <option value="">All Dates</option>
+                <option value="today">Today</option>
+                <option value="this_week">This Week</option>
+                <option value="this_month">This Month</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Type</label>
+              <select
+                value={typeFilter.length === 1 ? typeFilter[0] : ""}
+                onChange={(e) => setTypeFilter(e.target.value ? [e.target.value] : [])}
+                className="admin-select" style={{ fontSize: 13 }}
+              >
+                <option value="">All Types</option>
+                {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Status</label>
+              <select
+                value={statusFilter.length === 1 ? statusFilter[0] : ""}
+                onChange={(e) => setStatusFilter(e.target.value ? [e.target.value] : [])}
+                className="admin-select" style={{ fontSize: 13 }}
+              >
+                <option value="">All Statuses</option>
+                {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Assigned To</label>
+              <select
+                value={assignedFilter.length === 1 ? assignedFilter[0] : ""}
+                onChange={(e) => setAssignedFilter(e.target.value ? [e.target.value] : [])}
+                className="admin-select" style={{ fontSize: 13 }}
+              >
+                <option value="">All Members</option>
+                {memberOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Active Filter Chips */}
       <ActiveFilterBar filters={activeFilters} onClearAll={clearAllFilters} />
 
       {/* Content */}
       {viewMode === "list" ? (
-        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
+        <>
+        <div className="admin-table-desktop" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table className="admin-table" style={{ minWidth: 1100, tableLayout: "fixed" }}>
               <thead>
@@ -1430,120 +1576,274 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
             </table>
           </div>
         </div>
+        <div className="admin-card-mobile">
+          {filteredJobs.length === 0 ? (
+            <div style={{ padding: "40px 24px", textAlign: "center", color: TEXT_DIM, fontSize: 13 }}>
+              No jobs match your current filters.
+            </div>
+          ) : filteredJobs.map((job) => (
+            <ScheduleMobileCard
+              key={job.id}
+              job={job}
+              isSelected={selectedJobId === job.id}
+              overdue={isOverdue(job)}
+              onClick={() => handleRowClick(job.id)}
+            />
+          ))}
+        </div>
+        </>
       ) : (
         <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
           {/* Calendar Toolbar */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BORDER}` }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button type="button" onClick={calendarPrev} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 6, color: TEXT_MUTED, cursor: "pointer", padding: "4px 10px", fontSize: 16, lineHeight: 1 }}>{"\u2039"}</button>
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: TEXT, margin: 0, minWidth: 200, textAlign: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: isCompactMobile ? "10px 12px" : "12px 16px", borderBottom: `1px solid ${BORDER}`, gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: isCompactMobile ? 4 : 8, flex: 1, minWidth: 0 }}>
+              <button type="button" onClick={calendarPrev} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 6, color: TEXT_MUTED, cursor: "pointer", padding: "4px 10px", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{"\u2039"}</button>
+              <h2 style={{ fontSize: isCompactMobile ? 13 : 15, fontWeight: 700, color: TEXT, margin: 0, textAlign: "center", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {calendarView === "month" ? monthYearLabel(calendarDate) : weekRangeLabel(weekDays)}
               </h2>
-              <button type="button" onClick={calendarNext} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 6, color: TEXT_MUTED, cursor: "pointer", padding: "4px 10px", fontSize: 16, lineHeight: 1 }}>{"\u203A"}</button>
-              <button type="button" onClick={calendarToday} style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 6, color: EMERALD, cursor: "pointer", padding: "5px 12px", fontSize: 12, fontWeight: 700 }}>Today</button>
+              <button type="button" onClick={calendarNext} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 6, color: TEXT_MUTED, cursor: "pointer", padding: "4px 10px", fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{"\u203A"}</button>
+              <button type="button" onClick={() => { calendarToday(); setMobileSelectedDay(null); }} style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 6, color: EMERALD, cursor: "pointer", padding: "5px 12px", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>Today</button>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
               <div style={{ display: "flex", gap: 0, background: "#0f172a", border: `1px solid ${BORDER}`, borderRadius: 6, overflow: "hidden" }}>
                 {(["month", "week"] as const).map((v, idx) => (
-                  <button key={v} type="button" onClick={() => setCalendarView(v)} style={{
-                    padding: "5px 14px", border: "none",
+                  <button key={v} type="button" onClick={() => { setCalendarView(v); setMobileSelectedDay(null); }} style={{
+                    padding: isCompactMobile ? "5px 10px" : "5px 14px", border: "none",
                     borderRight: idx === 0 ? `1px solid ${BORDER}` : "none",
                     background: calendarView === v ? "rgba(124,58,237,0.12)" : "transparent",
                     color: calendarView === v ? "#a78bfa" : TEXT_MUTED,
                     fontSize: 12, fontWeight: 700, cursor: "pointer", textTransform: "capitalize",
-                  }}>{v}</button>
+                  }}>{isCompactMobile ? v.charAt(0).toUpperCase() : v}</button>
                 ))}
               </div>
-              <div style={{ position: "relative" }}>
-                <button type="button" onClick={() => setSyncPopoverOpen(!syncPopoverOpen)} style={{
-                  background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)",
-                  borderRadius: 6, color: "#60a5fa", cursor: "pointer", padding: "5px 12px", fontSize: 12, fontWeight: 700,
-                }}>Sync</button>
-                {syncPopoverOpen && (
-                  <>
-                    <div onClick={() => setSyncPopoverOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 29 }} />
-                    <div style={{
-                      position: "absolute", right: 0, top: "calc(100% + 8px)", width: 340, zIndex: 30,
-                      background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16,
-                      boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
-                    }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, marginBottom: 8 }}>Sync with Google Calendar</div>
-                      <p style={{ fontSize: 12, color: TEXT_MUTED, margin: "0 0 10px", lineHeight: 1.5 }}>
-                        Copy this iCal feed URL and add it in Google Calendar:<br />
-                        <span style={{ color: TEXT_DIM }}>Settings &rarr; Add calendar &rarr; From URL</span>
-                      </p>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <input readOnly value={feedUrl} style={{
-                          flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6,
-                          background: "#0f172a", border: `1px solid ${BORDER}`, color: TEXT_SEC,
-                        }} onClick={(e) => (e.target as HTMLInputElement).select()} />
-                        <button type="button" onClick={() => { navigator.clipboard.writeText(feedUrl); setSyncPopoverOpen(false); setToast("Feed URL copied!"); }} style={{
-                          padding: "6px 12px", borderRadius: 6, border: "none",
-                          background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-                        }}>Copy</button>
+              {!isCompactMobile && (
+                <div style={{ position: "relative" }}>
+                  <button type="button" onClick={() => setSyncPopoverOpen(!syncPopoverOpen)} style={{
+                    background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)",
+                    borderRadius: 6, color: "#60a5fa", cursor: "pointer", padding: "5px 12px", fontSize: 12, fontWeight: 700,
+                  }}>Sync</button>
+                  {syncPopoverOpen && (
+                    <>
+                      <div onClick={() => setSyncPopoverOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 29 }} />
+                      <div style={{
+                        position: "absolute", right: 0, top: "calc(100% + 8px)", width: 340, zIndex: 30,
+                        background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16,
+                        boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
+                      }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, marginBottom: 8 }}>Sync with Google Calendar</div>
+                        <p style={{ fontSize: 12, color: TEXT_MUTED, margin: "0 0 10px", lineHeight: 1.5 }}>
+                          Copy this iCal feed URL and add it in Google Calendar:<br />
+                          <span style={{ color: TEXT_DIM }}>Settings &rarr; Add calendar &rarr; From URL</span>
+                        </p>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input readOnly value={feedUrl} style={{
+                            flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6,
+                            background: "#0f172a", border: `1px solid ${BORDER}`, color: TEXT_SEC,
+                          }} onClick={(e) => (e.target as HTMLInputElement).select()} />
+                          <button type="button" onClick={() => { navigator.clipboard.writeText(feedUrl); setSyncPopoverOpen(false); setToast("Feed URL copied!"); }} style={{
+                            padding: "6px 12px", borderRadius: 6, border: "none",
+                            background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                          }}>Copy</button>
+                        </div>
                       </div>
-                    </div>
-                  </>
-                )}
-              </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
           {calendarView === "month" ? (
-            <>
-              {/* Weekday header row */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: `1px solid ${BORDER}` }}>
-                {WEEKDAY_LABELS.map((d) => (
-                  <div key={d} style={{ padding: "6px 8px", fontSize: 11, fontWeight: 700, color: TEXT_DIM, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.05em" }}>{d}</div>
-                ))}
-              </div>
-              {/* Month grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
-                {monthGridDays.map((dateStr, idx) => {
-                  const dayNum = parseInt(dateStr.slice(8), 10);
-                  const isCurrentMonth = dateStr.startsWith(currentMonthPrefix);
-                  const isToday = dateStr === today;
-                  const dayJobs = jobsByDate.get(dateStr) ?? [];
-                  return (
-                    <div key={dateStr} style={{
-                      minHeight: 94, padding: "4px 5px",
-                      borderRight: (idx % 7) < 6 ? "1px solid rgba(51,65,85,0.25)" : "none",
-                      borderBottom: idx < 35 ? "1px solid rgba(51,65,85,0.25)" : "none",
-                      background: isToday ? "rgba(16,185,129,0.04)" : undefined,
-                    }}>
-                      <div style={{ marginBottom: 3, textAlign: "right", paddingRight: 2 }}>
+            isCompactMobile ? (
+              /* ── Mobile Month View: compact grid with count badges ── */
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: `1px solid ${BORDER}` }}>
+                  {WEEKDAY_LETTERS.map((d, i) => (
+                    <div key={i} style={{ padding: "6px 0", fontSize: 11, fontWeight: 700, color: TEXT_DIM, textAlign: "center" }}>{d}</div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+                  {monthGridDays.map((dateStr, idx) => {
+                    const dayNum = parseInt(dateStr.slice(8), 10);
+                    const isCurrentMonth = dateStr.startsWith(currentMonthPrefix);
+                    const isToday = dateStr === today;
+                    const isSelected = mobileSelectedDay === dateStr;
+                    const dayJobs = jobsByDate.get(dateStr) ?? [];
+                    const count = dayJobs.length;
+                    return (
+                      <button
+                        key={dateStr}
+                        type="button"
+                        onClick={() => setMobileSelectedDay(isSelected ? null : dateStr)}
+                        style={{
+                          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                          minHeight: 48, padding: "4px 2px", cursor: "pointer",
+                          background: isSelected ? "rgba(124,58,237,0.12)" : isToday ? "rgba(16,185,129,0.04)" : "transparent",
+                          border: "none",
+                          borderRight: (idx % 7) < 6 ? "1px solid rgba(51,65,85,0.25)" : "none",
+                          borderBottom: idx < 35 ? "1px solid rgba(51,65,85,0.25)" : "none",
+                        }}
+                      >
                         {isToday ? (
                           <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 800 }}>{dayNum}</span>
                         ) : (
-                          <span style={{ fontSize: 12, fontWeight: 500, color: isCurrentMonth ? TEXT_SEC : TEXT_DIM }}>{dayNum}</span>
+                          <span style={{ fontSize: 12, fontWeight: isSelected ? 700 : 500, color: isSelected ? "#a78bfa" : isCurrentMonth ? TEXT_SEC : TEXT_DIM }}>{dayNum}</span>
+                        )}
+                        {count > 0 && (
+                          <span style={{
+                            marginTop: 2, fontSize: 9, fontWeight: 700, lineHeight: 1,
+                            padding: "2px 5px", borderRadius: 9999,
+                            background: "rgba(16,185,129,0.15)", color: EMERALD,
+                          }}>{count}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Mobile day detail list */}
+                {mobileSelectedDay && (() => {
+                  const dayJobs = (jobsByDate.get(mobileSelectedDay) ?? []).sort((a, b) => (a.scheduled_time ?? "99:99").localeCompare(b.scheduled_time ?? "99:99"));
+                  const d = new Date(mobileSelectedDay + "T12:00:00");
+                  return (
+                    <div style={{ borderTop: `1px solid ${BORDER}`, padding: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, marginBottom: 10 }}>
+                        {d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                        <span style={{ marginLeft: 6, fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>{dayJobs.length} job{dayJobs.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      {dayJobs.length === 0 ? (
+                        <div style={{ fontSize: 12, color: TEXT_DIM, textAlign: "center", padding: "16px 0" }}>No jobs scheduled</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {dayJobs.map((job) => {
+                            const badge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
+                            const isSel = selectedJobId === job.id;
+                            return (
+                              <div key={job.id} onClick={() => setSelectedJobId(job.id)} style={{
+                                display: "flex", alignItems: "center", gap: 10,
+                                padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                                background: isSel ? badge.color : badge.bg, border: `1px solid ${badge.border}`, transition: "all 0.1s",
+                              }}>
+                                <div style={{ width: 50, flexShrink: 0, fontSize: 11, fontWeight: 700, color: isSel ? "#fff" : badge.color }}>{formatTime(job.scheduled_time)}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 600, color: isSel ? "#fff" : TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.customer_name}</div>
+                                  <div style={{ fontSize: 11, color: isSel ? "rgba(255,255,255,0.7)" : TEXT_DIM }}>{typeLabel(job.type)}{job.team_member_name ? ` · ${job.team_member_name}` : ""}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </>
+            ) : (
+              /* ── Desktop Month View ── */
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: `1px solid ${BORDER}` }}>
+                  {WEEKDAY_LABELS.map((d) => (
+                    <div key={d} style={{ padding: "6px 8px", fontSize: 11, fontWeight: 700, color: TEXT_DIM, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.05em" }}>{d}</div>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+                  {monthGridDays.map((dateStr, idx) => {
+                    const dayNum = parseInt(dateStr.slice(8), 10);
+                    const isCurrentMonth = dateStr.startsWith(currentMonthPrefix);
+                    const isToday = dateStr === today;
+                    const dayJobs = jobsByDate.get(dateStr) ?? [];
+                    return (
+                      <div key={dateStr} style={{
+                        minHeight: 94, padding: "4px 5px",
+                        borderRight: (idx % 7) < 6 ? "1px solid rgba(51,65,85,0.25)" : "none",
+                        borderBottom: idx < 35 ? "1px solid rgba(51,65,85,0.25)" : "none",
+                        background: isToday ? "rgba(16,185,129,0.04)" : undefined,
+                      }}>
+                        <div style={{ marginBottom: 3, textAlign: "right", paddingRight: 2 }}>
+                          {isToday ? (
+                            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 800 }}>{dayNum}</span>
+                          ) : (
+                            <span style={{ fontSize: 12, fontWeight: 500, color: isCurrentMonth ? TEXT_SEC : TEXT_DIM }}>{dayNum}</span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                          {dayJobs.slice(0, 3).map((job) => {
+                            const badge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
+                            const isSel = selectedJobId === job.id;
+                            return (
+                              <div key={job.id} onClick={() => setSelectedJobId(job.id)} style={{
+                                padding: "1px 4px", borderRadius: 3, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                                background: isSel ? badge.color : badge.bg, color: isSel ? "#fff" : badge.color,
+                                border: `1px solid ${badge.border}`, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                transition: "all 0.1s",
+                              }}>
+                                {job.scheduled_time ? formatTime(job.scheduled_time).split(" ")[0] + " " : ""}{job.customer_name}
+                              </div>
+                            );
+                          })}
+                          {dayJobs.length > 3 && (
+                            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, paddingLeft: 2 }}>+{dayJobs.length - 3} more</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )
+          ) : isCompactMobile ? (
+            /* ── Mobile Week View: single-column vertical day list ── */
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {weekDays.map((dateStr, idx) => {
+                const d = new Date(dateStr + "T12:00:00");
+                const isToday = dateStr === today;
+                const dayJobs = (jobsByDate.get(dateStr) ?? []).sort((a, b) => (a.scheduled_time ?? "99:99").localeCompare(b.scheduled_time ?? "99:99"));
+                return (
+                  <div key={dateStr} style={{ borderBottom: idx < 6 ? `1px solid rgba(51,65,85,0.25)` : "none" }}>
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "8px 12px", background: isToday ? "rgba(16,185,129,0.06)" : undefined,
+                      borderBottom: dayJobs.length > 0 ? `1px solid rgba(51,65,85,0.15)` : "none",
+                    }}>
+                      <div style={{ width: 32, textAlign: "center", flexShrink: 0 }}>
+                        {isToday ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: "50%", background: EMERALD, color: "#fff", fontSize: 14, fontWeight: 700 }}>{d.getDate()}</span>
+                        ) : (
+                          <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{d.getDate()}</span>
                         )}
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                        {dayJobs.slice(0, 3).map((job) => {
+                      <div style={{ fontSize: 12, fontWeight: 700, color: isToday ? EMERALD : TEXT_MUTED, textTransform: "uppercase" }}>{WEEKDAY_LABELS[idx]}</div>
+                      <span style={{ fontSize: 11, color: TEXT_DIM, marginLeft: "auto" }}>{dayJobs.length > 0 ? `${dayJobs.length} job${dayJobs.length !== 1 ? "s" : ""}` : ""}</span>
+                    </div>
+                    {dayJobs.length > 0 && (
+                      <div style={{ padding: "6px 12px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+                        {dayJobs.map((job) => {
                           const badge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
                           const isSel = selectedJobId === job.id;
                           return (
                             <div key={job.id} onClick={() => setSelectedJobId(job.id)} style={{
-                              padding: "1px 4px", borderRadius: 3, fontSize: 10, fontWeight: 600, cursor: "pointer",
-                              background: isSel ? badge.color : badge.bg, color: isSel ? "#fff" : badge.color,
-                              border: `1px solid ${badge.border}`, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              transition: "all 0.1s",
+                              display: "flex", alignItems: "center", gap: 10,
+                              padding: "6px 10px", borderRadius: 8, cursor: "pointer",
+                              background: isSel ? badge.color : badge.bg, border: `1px solid ${badge.border}`, transition: "all 0.1s",
                             }}>
-                              {job.scheduled_time ? formatTime(job.scheduled_time).split(" ")[0] + " " : ""}{job.customer_name}
+                              <div style={{ width: 50, flexShrink: 0, fontSize: 11, fontWeight: 700, color: isSel ? "#fff" : badge.color }}>{formatTime(job.scheduled_time)}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: isSel ? "#fff" : TEXT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.customer_name}</div>
+                                <div style={{ fontSize: 10, color: isSel ? "rgba(255,255,255,0.7)" : TEXT_DIM }}>{typeLabel(job.type)}</div>
+                              </div>
                             </div>
                           );
                         })}
-                        {dayJobs.length > 3 && (
-                          <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, paddingLeft: 2 }}>+{dayJobs.length - 3} more</div>
-                        )}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
+                    )}
+                    {dayJobs.length === 0 && (
+                      <div style={{ padding: "8px 12px", fontSize: 11, color: TEXT_DIM, opacity: 0.4 }}>No jobs</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           ) : (
-            /* Week View */
+            /* ── Desktop Week View ── */
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
               {weekDays.map((dateStr, idx) => {
                 const d = new Date(dateStr + "T12:00:00");
@@ -1680,12 +1980,24 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
       {toast && <Toast message={toast} onDone={clearToast} />}
     </div>
 
-    {/* Inline side panel — no backdrop, no portal */}
+    {/* Mobile backdrop for side panel */}
+    {isMobile && panelOpen && (
+      <div
+        onClick={() => setSelectedJobId(null)}
+        style={{ position: "fixed", inset: 0, zIndex: 39, background: "rgba(0,0,0,0.5)" }}
+      />
+    )}
+
+    {/* Side panel — full-screen overlay on mobile, side-by-side on desktop */}
     <div style={{
-      position: "fixed", right: 0, top: 0, height: "100%",
-      width: PANEL_WIDTH, zIndex: 40,
-      background: "#0f172a", borderLeft: `1px solid ${BORDER}`,
-      boxShadow: panelOpen ? "-4px 0 24px rgba(0,0,0,0.3)" : "none",
+      position: "fixed",
+      ...(isMobile
+        ? { inset: 0, width: "100%", height: "100%" }
+        : { right: 0, top: 0, height: "100%", width: PANEL_WIDTH }
+      ),
+      zIndex: 40,
+      background: "#0f172a", borderLeft: isMobile ? "none" : `1px solid ${BORDER}`,
+      boxShadow: panelOpen ? (isMobile ? "none" : "-4px 0 24px rgba(0,0,0,0.3)") : "none",
       transform: panelOpen ? "translateX(0)" : "translateX(100%)",
       transition: "transform 300ms ease, box-shadow 300ms ease",
       display: "flex", flexDirection: "column",
@@ -1726,6 +2038,24 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
         )}
       </div>
     </div>
+
+    {/* Mobile FAB */}
+    {isMobile && (
+      <button
+        type="button"
+        onClick={openScheduleModal}
+        style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 30,
+          width: 56, height: 56, borderRadius: 9999,
+          background: PURPLE, border: "none", color: "#fff",
+          boxShadow: "0 8px 24px rgba(124,58,237,0.4)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer",
+        }}
+      >
+        <PlusIcon style={{ width: 24, height: 24 }} />
+      </button>
+    )}
     </>
   );
 }
