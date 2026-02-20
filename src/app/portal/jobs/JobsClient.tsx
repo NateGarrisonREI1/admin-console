@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   MapPinIcon,
   ClockIcon,
+  ReceiptPercentIcon,
 } from "@heroicons/react/24/outline";
 import { fetchTechJobs, type PortalScheduleJob } from "../actions";
 
@@ -40,6 +41,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  scheduled: { bg: "rgba(59,130,246,0.15)", text: "#60a5fa" },
   pending: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8" },
   confirmed: { bg: "rgba(59,130,246,0.15)", text: "#60a5fa" },
   rescheduled: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b" },
@@ -232,6 +234,11 @@ function JobRow({ job }: { job: PortalScheduleJob }) {
   const serviceLine = [job.service_name, job.tier_name]
     .filter(Boolean)
     .join(" — ");
+  const isTestMode = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_test_");
+  const isPaidCompleted = job.status === "completed" && job.payment_status === "paid" && job.payment_id;
+  const receiptUrl = isPaidCompleted
+    ? `${isTestMode ? "https://dashboard.stripe.com/test/payments" : "https://dashboard.stripe.com/payments"}/${job.payment_id}`
+    : null;
 
   return (
     <Link
@@ -292,6 +299,31 @@ function JobRow({ job }: { job: PortalScheduleJob }) {
             >
               {job.status.replace(/_/g, " ")}
             </span>
+            {receiptUrl && (
+              <a
+                href={receiptUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 3,
+                  padding: "2px 7px",
+                  borderRadius: 9999,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  background: "rgba(167,139,250,0.1)",
+                  color: "#a78bfa",
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                <ReceiptPercentIcon style={{ width: 11, height: 11 }} />
+                Receipt
+              </a>
+            )}
           </div>
 
           {/* Service */}

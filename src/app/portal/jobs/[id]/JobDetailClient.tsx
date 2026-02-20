@@ -56,6 +56,27 @@ function mapsUrl(job: PortalJobDetail): string {
   return `https://maps.google.com/?q=${encodeURIComponent(fullAddress(job))}`;
 }
 
+function formatTimestamp(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }) + " PST";
+}
+
+function stripePaymentUrl(paymentId: string | null, isTest: boolean): string | null {
+  if (!paymentId) return null;
+  const base = isTest
+    ? "https://dashboard.stripe.com/test/payments"
+    : "https://dashboard.stripe.com/payments";
+  return `${base}/${paymentId}`;
+}
+
 // ─── Status transition config ───────────────────────────────────────
 
 type StatusAction = {
@@ -68,6 +89,14 @@ type StatusAction = {
 };
 
 const STATUS_ACTIONS: Record<string, StatusAction> = {
+  scheduled: {
+    nextStatus: "en_route",
+    label: "I'm On My Way",
+    icon: "truck",
+    bg: "rgba(59,130,246,0.15)",
+    border: "rgba(59,130,246,0.4)",
+    color: "#60a5fa",
+  },
   pending: {
     nextStatus: "en_route",
     label: "I'm On My Way",
@@ -112,6 +141,7 @@ const STATUS_ACTIONS: Record<string, StatusAction> = {
 };
 
 const STATUS_DISPLAY: Record<string, { bg: string; text: string; label: string }> = {
+  scheduled: { bg: "rgba(59,130,246,0.15)", text: "#60a5fa", label: "Scheduled" },
   pending: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "Pending" },
   confirmed: { bg: "rgba(59,130,246,0.15)", text: "#60a5fa", label: "Confirmed" },
   rescheduled: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Rescheduled" },
@@ -359,6 +389,9 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
   const price = job.catalog_total_price ?? job.invoice_amount;
   const isTestMode = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_test_");
   const isInProgress = job.status === "in_progress";
+  const isCompleted = job.status === "completed";
+  const isPaid = job.payment_status === "paid";
+  const receiptUrl = stripePaymentUrl(job.payment_id, !!isTestMode);
 
   // ─── Payment Overlay ──────────────────────────────────────────────
 
@@ -814,6 +847,150 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
           <CheckCircleIcon style={{ width: 22, height: 22 }} />
           Complete Job
         </button>
+      )}
+
+      {/* Completed Summary Card */}
+      {isCompleted && (
+        <div
+          style={{
+            background: "rgba(16,185,129,0.06)",
+            border: "1px solid rgba(16,185,129,0.25)",
+            borderRadius: 12,
+            padding: 20,
+            marginBottom: 16,
+          }}
+        >
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                background: "rgba(16,185,129,0.15)",
+                border: "2px solid #10b981",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              <CheckCircleIcon style={{ width: 20, height: 20, color: "#10b981" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#10b981" }}>
+                Job Completed
+              </div>
+              {job.job_completed_at && (
+                <div style={{ fontSize: 12, color: "#64748b" }}>
+                  {formatTimestamp(job.job_completed_at)}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Payment info */}
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "10px 14px", borderRadius: 8,
+              background: isPaid ? "rgba(16,185,129,0.08)" : "rgba(245,158,11,0.08)",
+              border: isPaid ? "1px solid rgba(16,185,129,0.15)" : "1px solid rgba(245,158,11,0.15)",
+            }}>
+              <div>
+                <div style={{ fontSize: 10, color: "#475569", fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>
+                  Payment
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: isPaid ? "#10b981" : "#f59e0b" }}>
+                  {isPaid ? `Paid $${(price ?? 0).toFixed(2)}` : "Payment pending"}
+                </div>
+                {isPaid && job.payment_received_at && (
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                    {formatTimestamp(job.payment_received_at)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* LEAF delivery status */}
+            {job.leaf_delivery_status && (
+              <div style={{
+                padding: "10px 14px", borderRadius: 8,
+                background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.3)",
+              }}>
+                <div style={{ fontSize: 10, color: "#475569", fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>
+                  LEAF Report
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: job.leaf_delivery_status === "delivered" ? "#10b981" : job.leaf_delivery_status === "queued" ? "#f59e0b" : "#64748b" }}>
+                  {job.leaf_delivery_status === "delivered" ? "Delivered" : job.leaf_delivery_status === "queued" ? "Queued for delivery" : "Not applicable"}
+                </div>
+              </div>
+            )}
+
+            {/* Stripe links */}
+            {isPaid && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {receiptUrl ? (
+                  <a
+                    href={receiptUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      background: "rgba(167,139,250,0.12)",
+                      border: "1px solid rgba(167,139,250,0.3)",
+                      color: "#a78bfa",
+                      textDecoration: "none",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <ClipboardDocumentIcon style={{ width: 15, height: 15 }} />
+                    View Receipt
+                  </a>
+                ) : (
+                  <div style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+                    padding: "10px 14px", borderRadius: 8, fontSize: 12, color: "#475569",
+                    background: "rgba(30,41,59,0.3)", border: "1px solid rgba(51,65,85,0.2)",
+                  }}>
+                    Receipt unavailable
+                  </div>
+                )}
+                {receiptUrl && (
+                  <a
+                    href={receiptUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      background: "transparent",
+                      border: "1px solid rgba(51,65,85,0.5)",
+                      color: "#94a3b8",
+                      textDecoration: "none",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    View in Stripe
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Customer & Job Info */}

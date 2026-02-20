@@ -42,11 +42,18 @@ export async function ensureProfileAndGetRole(
 
   if (existing?.role) return existing.role as AppRole;
 
-  // 2) Create default profile
-  const { error: insErr } = await supabase.from("app_profiles").insert({ id: userId });
+  // 2) Get the auth user's email so we never create a profile without it
+  const { data: authData } = await supabase.auth.getUser();
+  const email = authData?.user?.email ?? null;
+
+  // 3) Create default profile with email
+  const { error: insErr } = await supabase.from("app_profiles").insert({
+    id: userId,
+    email,
+  });
   if (insErr) throw new Error(`Failed to create app_profiles row: ${insErr.message}`);
 
-  // 3) Fetch again
+  // 4) Fetch again
   const { data: created, error: sel2Err } = await supabase
     .from("app_profiles")
     .select("role")

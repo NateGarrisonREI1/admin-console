@@ -316,6 +316,7 @@ export async function adminInviteUser(input: {
     .upsert(
       {
         id: userId,
+        email,
         role: input.role,
         status,
         first_name: input.profile?.first_name ?? null,

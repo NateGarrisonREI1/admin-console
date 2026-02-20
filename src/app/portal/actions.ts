@@ -123,6 +123,8 @@ export type PortalScheduleJob = {
   service_name: string | null;
   tier_name: string | null;
   catalog_total_price: number | null;
+  payment_status: string | null;
+  payment_id: string | null;
 };
 
 // ─── Schedule Queries ───────────────────────────────────────────────
@@ -201,48 +203,97 @@ function mapScheduleRow(
     service_name: row.service_name ?? (type === "hes" ? "HES Assessment" : "Home Inspection"),
     tier_name: row.tier_name,
     catalog_total_price: row.catalog_total_price,
+    payment_status: row.payment_status ?? null,
+    payment_id: row.payment_id ?? null,
   };
 }
 
 export async function fetchTechSchedule(
   date: string
 ): Promise<PortalScheduleJob[]> {
+  console.log("\n========== fetchTechSchedule DEBUG ==========");
+  console.log("[fetchTechSchedule] date param received:", date);
+  console.log("[fetchTechSchedule] server Date.now():", new Date().toISOString());
+  console.log("[fetchTechSchedule] server 'today' (UTC):", new Date().toISOString().slice(0, 10));
+
   const { id } = await requirePortalUser();
   const { data: profile } = await supabaseAdmin
     .from("app_profiles")
     .select("email")
     .eq("id", id)
     .single();
-  if (!profile?.email) return [];
+
+  console.log("[fetchTechSchedule] auth user id:", id);
+  console.log("[fetchTechSchedule] profile email:", profile?.email ?? "NOT FOUND");
+
+  if (!profile?.email) {
+    console.log("[fetchTechSchedule] EARLY EXIT: no email on profile");
+    return [];
+  }
 
   const { hesIds, inspIds } = await findTeamMemberIds(profile.email);
+  console.log("[fetchTechSchedule] hesIds found:", hesIds);
+  console.log("[fetchTechSchedule] inspIds found:", inspIds);
+
+  if (hesIds.length === 0 && inspIds.length === 0) {
+    console.log("[fetchTechSchedule] EARLY EXIT: no team member IDs found for email", profile.email);
+    console.log("========== END fetchTechSchedule DEBUG ==========\n");
+    return [];
+  }
+
   const jobs: PortalScheduleJob[] = [];
 
   if (hesIds.length > 0) {
-    const { data } = await supabaseAdmin
+    // First: query WITHOUT date filter to see ALL jobs for this tech
+    const { data: allJobs, error: allErr } = await supabaseAdmin
+      .from("hes_schedule")
+      .select("id, scheduled_date, scheduled_time, status, team_member_id, customer_name")
+      .in("team_member_id", hesIds)
+      .not("status", "in", '("cancelled","archived")')
+      .order("scheduled_date", { ascending: true })
+      .limit(20);
+    console.log("[fetchTechSchedule] ALL hes_schedule jobs for this tech (up to 20):");
+    console.log(JSON.stringify(allJobs, null, 2));
+    if (allErr) console.log("[fetchTechSchedule] allJobs error:", allErr.message);
+
+    // Now the actual filtered query
+    const { data, error } = await supabaseAdmin
       .from("hes_schedule")
       .select("*")
       .in("team_member_id", hesIds)
       .eq("scheduled_date", date)
       .not("status", "in", '("cancelled","archived")')
       .order("scheduled_time", { ascending: true });
+
+    console.log("[fetchTechSchedule] hes_schedule query for date", date, "→ rows:", data?.length ?? 0);
+    if (error) console.log("[fetchTechSchedule] hes_schedule error:", error.message);
+    if (data && data.length > 0) {
+      console.log("[fetchTechSchedule] hes_schedule first row sample:", JSON.stringify(data[0], null, 2));
+    }
+
     if (data) jobs.push(...data.map((r: any) => mapScheduleRow(r, "hes")));
   }
 
   if (inspIds.length > 0) {
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from("inspector_schedule")
       .select("*")
       .in("team_member_id", inspIds)
       .eq("scheduled_date", date)
       .not("status", "in", '("cancelled","archived")')
       .order("scheduled_time", { ascending: true });
+
+    console.log("[fetchTechSchedule] inspector_schedule query for date", date, "→ rows:", data?.length ?? 0);
+    if (error) console.log("[fetchTechSchedule] inspector_schedule error:", error.message);
+
     if (data)
       jobs.push(...data.map((r: any) => mapScheduleRow(r, "inspector")));
   }
 
   // Sort by time
   jobs.sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? ""));
+  console.log("[fetchTechSchedule] total jobs returned:", jobs.length);
+  console.log("========== END fetchTechSchedule DEBUG ==========\n");
   return jobs;
 }
 
@@ -356,6 +407,9 @@ export type PortalJobDetail = PortalScheduleJob & {
   tech_arrived_at: string | null;
   job_started_at: string | null;
   job_completed_at: string | null;
+  payment_received_at: string | null;
+  leaf_delivery_status: string | null;
+  stripe_checkout_session_id: string | null;
 };
 
 // ─── Fetch all tech jobs (for Jobs list page) ─────────────────────
@@ -375,7 +429,7 @@ export async function fetchTechJobs(
   const jobs: PortalScheduleJob[] = [];
 
   const statusFilter = filter === "upcoming"
-    ? ["pending", "confirmed", "rescheduled"]
+    ? ["scheduled", "pending", "confirmed", "rescheduled"]
     : filter === "in_progress"
     ? ["en_route", "on_site", "in_progress"]
     : filter === "completed"
@@ -446,10 +500,13 @@ export async function fetchJobDetail(
     return {
       ...mapScheduleRow(hesRow, "hes"),
       team_member_name: hesRow.hes_team_members?.name ?? null,
-      tech_en_route_at: hesRow.tech_en_route_at,
-      tech_arrived_at: hesRow.tech_arrived_at,
-      job_started_at: hesRow.job_started_at,
-      job_completed_at: hesRow.job_completed_at,
+      tech_en_route_at: hesRow.tech_en_route_at ?? null,
+      tech_arrived_at: hesRow.tech_arrived_at ?? null,
+      job_started_at: hesRow.job_started_at ?? null,
+      job_completed_at: hesRow.job_completed_at ?? null,
+      payment_received_at: hesRow.payment_received_at ?? null,
+      leaf_delivery_status: hesRow.leaf_delivery_status ?? null,
+      stripe_checkout_session_id: hesRow.stripe_checkout_session_id ?? null,
     };
   }
 
@@ -463,10 +520,13 @@ export async function fetchJobDetail(
     return {
       ...mapScheduleRow(inspRow, "inspector"),
       team_member_name: inspRow.inspector_team_members?.name ?? null,
-      tech_en_route_at: inspRow.tech_en_route_at,
-      tech_arrived_at: inspRow.tech_arrived_at,
-      job_started_at: inspRow.job_started_at,
-      job_completed_at: inspRow.job_completed_at,
+      tech_en_route_at: inspRow.tech_en_route_at ?? null,
+      tech_arrived_at: inspRow.tech_arrived_at ?? null,
+      job_started_at: inspRow.job_started_at ?? null,
+      job_completed_at: inspRow.job_completed_at ?? null,
+      payment_received_at: inspRow.payment_received_at ?? null,
+      leaf_delivery_status: inspRow.leaf_delivery_status ?? null,
+      stripe_checkout_session_id: inspRow.stripe_checkout_session_id ?? null,
     };
   }
 

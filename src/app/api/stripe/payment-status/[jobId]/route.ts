@@ -20,11 +20,29 @@ export async function GET(
   }
 
   // Try hes_schedule first
-  const { data: hesRow } = await supabaseAdmin
+  const { data: hesRow, error: hesErr } = await supabaseAdmin
     .from("hes_schedule")
     .select("payment_status, payment_received_at, catalog_total_price, invoice_amount")
     .eq("id", jobId)
     .maybeSingle();
+
+  if (hesErr) {
+    console.error("[payment-status] hes_schedule query error:", hesErr.message);
+    // Column may not exist yet — fall back to minimal select
+    const { data: hesFallback } = await supabaseAdmin
+      .from("hes_schedule")
+      .select("payment_status, invoice_amount")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (hesFallback) {
+      return NextResponse.json({
+        payment_status: hesFallback.payment_status || "none",
+        payment_received_at: null,
+        catalog_total_price: hesFallback.invoice_amount,
+      });
+    }
+  }
 
   if (hesRow) {
     return NextResponse.json({
@@ -35,11 +53,28 @@ export async function GET(
   }
 
   // Try inspector_schedule
-  const { data: inspRow } = await supabaseAdmin
+  const { data: inspRow, error: inspErr } = await supabaseAdmin
     .from("inspector_schedule")
     .select("payment_status, payment_received_at, catalog_total_price, invoice_amount")
     .eq("id", jobId)
     .maybeSingle();
+
+  if (inspErr) {
+    console.error("[payment-status] inspector_schedule query error:", inspErr.message);
+    const { data: inspFallback } = await supabaseAdmin
+      .from("inspector_schedule")
+      .select("payment_status, invoice_amount")
+      .eq("id", jobId)
+      .maybeSingle();
+
+    if (inspFallback) {
+      return NextResponse.json({
+        payment_status: inspFallback.payment_status || "none",
+        payment_received_at: null,
+        catalog_total_price: inspFallback.invoice_amount,
+      });
+    }
+  }
 
   if (inspRow) {
     return NextResponse.json({
