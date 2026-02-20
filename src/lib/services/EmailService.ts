@@ -1,19 +1,15 @@
 // src/lib/services/EmailService.ts
-// Email sending via Resend + campaign email helpers.
+// Email sending via SendGrid + campaign email helpers.
 
+import sgMail from "@sendgrid/mail";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "noreply@leafenergy.app";
+const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || "support@renewableenergyincentives.com";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://leafenergy.app";
 
-// Lazy-init Resend to avoid build-time errors when API key is missing
-let _resend: import("resend").Resend | null = null;
-function getResend() {
-  if (!_resend && process.env.RESEND_API_KEY) {
-    const { Resend } = require("resend") as typeof import("resend");
-    _resend = new Resend(process.env.RESEND_API_KEY);
-  }
-  return _resend;
+// Init SendGrid once
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 }
 
 type EmailPayload = {
@@ -23,27 +19,27 @@ type EmailPayload = {
 };
 
 async function sendEmail(payload: EmailPayload) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[EmailService] No RESEND_API_KEY set, logging email:", {
+  if (!process.env.SENDGRID_API_KEY) {
+    console.log("[EmailService] No SENDGRID_API_KEY set, logging email:", {
       to: payload.to,
       subject: payload.subject,
     });
     return;
   }
 
-  const resend = getResend();
-  if (!resend) return;
+  console.log("[EmailService] Sending email:", { to: payload.to, subject: payload.subject, from: FROM_EMAIL });
 
   try {
-    const { error } = await resend.emails.send({
-      from: `LEAF Energy <${FROM_EMAIL}>`,
-      to: [payload.to],
+    const [response] = await sgMail.send({
+      from: { email: FROM_EMAIL, name: "LEAF Energy" },
+      to: payload.to,
       subject: payload.subject,
       html: payload.html,
     });
-    if (error) console.error("[EmailService] Send failed:", error.message);
-  } catch (err) {
-    console.error("[EmailService] Send error:", err);
+    console.log("[EmailService] SendGrid response:", response.statusCode);
+  } catch (err: any) {
+    console.error("[EmailService] SendGrid error:", err?.response?.body || err.message || err);
+    throw err;
   }
 }
 
@@ -53,8 +49,8 @@ async function sendEmailWithAttachments(payload: {
   html: string;
   attachments: { filename: string; content: Buffer }[];
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[EmailService] No RESEND_API_KEY set, logging email:", {
+  if (!process.env.SENDGRID_API_KEY) {
+    console.log("[EmailService] No SENDGRID_API_KEY set, logging email:", {
       to: payload.to,
       subject: payload.subject,
       attachmentCount: payload.attachments.length,
@@ -62,23 +58,30 @@ async function sendEmailWithAttachments(payload: {
     return;
   }
 
-  const resend = getResend();
-  if (!resend) return;
+  console.log("[EmailService] Sending email with attachments:", {
+    to: payload.to,
+    subject: payload.subject,
+    from: FROM_EMAIL,
+    attachments: payload.attachments.map((a) => a.filename),
+  });
 
   try {
-    const { error } = await resend.emails.send({
-      from: `LEAF Energy <${FROM_EMAIL}>`,
-      to: [payload.to],
+    const [response] = await sgMail.send({
+      from: { email: FROM_EMAIL, name: "LEAF Energy" },
+      to: payload.to,
       subject: payload.subject,
       html: payload.html,
       attachments: payload.attachments.map((a) => ({
         filename: a.filename,
-        content: a.content,
+        content: a.content.toString("base64"),
+        type: "application/pdf",
+        disposition: "attachment",
       })),
     });
-    if (error) console.error("[EmailService] Send failed:", error.message);
-  } catch (err) {
-    console.error("[EmailService] Send error:", err);
+    console.log("[EmailService] SendGrid response:", response.statusCode);
+  } catch (err: any) {
+    console.error("[EmailService] SendGrid error:", err?.response?.body || err.message || err);
+    throw err;
   }
 }
 
