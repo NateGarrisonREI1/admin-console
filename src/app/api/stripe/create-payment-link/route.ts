@@ -110,15 +110,16 @@ export async function POST(request: Request) {
         customer_email: job.customer_email || "",
       },
       customer_email: job.customer_email || undefined,
-      success_url: `${appUrl}/payment/success?job_id=${jobId}`,
+      success_url: `${appUrl}/payment/success?job_id=${jobId}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/portal/jobs/${jobId}`,
     });
 
-    // 8. Update job with payment link info
+    // 8. Update job with payment link info + checkout URL
     const table = jobType === "hes" ? "hes_schedule" : "inspector_schedule";
     await supabaseAdmin.from(table).update({
       stripe_payment_link_id: session.id,
       payment_status: "pending",
+      checkout_url: session.url,
     }).eq("id", jobId);
 
     // 9. Log activity

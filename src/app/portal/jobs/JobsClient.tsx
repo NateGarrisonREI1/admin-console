@@ -49,6 +49,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   on_site: { bg: "rgba(16,185,129,0.15)", text: "#10b981" },
   in_progress: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b" },
   completed: { bg: "rgba(16,185,129,0.15)", text: "#10b981" },
+  paid: { bg: "rgba(16,185,129,0.20)", text: "#34d399" },
 };
 
 const SERVICE_BORDER: Record<string, string> = {
@@ -228,7 +229,9 @@ export default function JobsClient() {
 // ─── Job Row ────────────────────────────────────────────────────────
 
 function JobRow({ job }: { job: PortalScheduleJob }) {
-  const statusColor = STATUS_COLORS[job.status] ?? STATUS_COLORS.pending;
+  const isPaidCompleted_ = job.status === "completed" && job.payment_status === "paid";
+  const statusColor = isPaidCompleted_ ? STATUS_COLORS.paid : (STATUS_COLORS[job.status] ?? STATUS_COLORS.pending);
+  const statusLabel = isPaidCompleted_ ? "PAID" : job.status.replace(/_/g, " ");
   const borderColor = SERVICE_BORDER[job.type] ?? "#10b981";
   const addr = [job.address, job.city, job.state].filter(Boolean).join(", ");
   const serviceLine = [job.service_name, job.tier_name]
@@ -297,14 +300,12 @@ function JobRow({ job }: { job: PortalScheduleJob }) {
                 flexShrink: 0,
               }}
             >
-              {job.status.replace(/_/g, " ")}
+              {statusLabel}
             </span>
             {receiptUrl && (
-              <a
-                href={receiptUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); window.open(receiptUrl, "_blank"); }}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -315,14 +316,15 @@ function JobRow({ job }: { job: PortalScheduleJob }) {
                   fontWeight: 600,
                   background: "rgba(167,139,250,0.1)",
                   color: "#a78bfa",
-                  textDecoration: "none",
+                  border: "none",
+                  cursor: "pointer",
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
                 <ReceiptPercentIcon style={{ width: 11, height: 11 }} />
                 Receipt
-              </a>
+              </button>
             )}
           </div>
 

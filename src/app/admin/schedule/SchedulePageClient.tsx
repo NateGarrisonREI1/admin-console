@@ -178,9 +178,17 @@ const STATUS_DISPLAY: Record<string, { bg: string; color: string; border: string
   rescheduled:  { bg: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "rgba(37,99,235,0.35)", label: "Rescheduled" },
   in_progress:  { bg: "rgba(217,119,6,0.15)", color: "#fbbf24", border: "rgba(217,119,6,0.35)", label: "In Progress" },
   completed:    { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Completed" },
+  paid:         { bg: "rgba(16,185,129,0.20)", color: "#34d399", border: "rgba(16,185,129,0.5)",  label: "Paid" },
   cancelled:    { bg: "rgba(100,116,139,0.12)", color: "#94a3b8", border: "rgba(100,116,139,0.3)", label: "Cancelled" },
   archived:     { bg: "rgba(71,85,105,0.15)", color: "#94a3b8", border: "rgba(71,85,105,0.3)", label: "Archived" },
 };
+
+function resolveStatusBadge(job: ScheduleJob) {
+  if (job.status === "completed" && job.payment_status === "paid") {
+    return STATUS_DISPLAY.paid;
+  }
+  return STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
+}
 
 // ─── Status transition map ──────────────────────────────────────────
 
@@ -327,7 +335,7 @@ function ScheduleMobileCard({
   const isMuted = job.status === "completed" || job.status === "cancelled" || job.status === "archived";
   const todayRow = job.scheduled_date === todayStr();
   const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
-  const statusBadge = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
+  const statusBadge = resolveStatusBadge(job);
   const addr = [job.address, job.city].filter(Boolean).join(", ");
 
   return (
@@ -790,7 +798,7 @@ function JobDetailContent({
   const mapUrl = makeMapEmbed(job.address, job.city, job.state, job.zip);
   const directionsUrl = makeMapHref(job.address, job.city, job.state, job.zip);
   const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
-  const statusBadge = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
+  const statusBadge = resolveStatusBadge(job);
 
   async function handlePillAction(newStatus: string, label: string) {
     if (busy) return;
@@ -1497,7 +1505,7 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
                   const isMuted = job.status === "completed" || job.status === "cancelled" || job.status === "archived";
                   const isSelected = selectedJobId === job.id;
                   const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
-                  const statusBadge = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
+                  const statusBadge = resolveStatusBadge(job);
 
                   const leftBorder = isSelected
                     ? "3px solid rgba(16,185,129,0.6)"

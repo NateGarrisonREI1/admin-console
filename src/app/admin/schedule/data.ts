@@ -34,6 +34,7 @@ export type ScheduleJob = {
   catalog_total_price: number | null;
   service_name: string | null;
   tier_name: string | null;
+  payment_status: string | null;
   created_at: string;
 };
 
@@ -100,6 +101,7 @@ function unifyHes(row: HesScheduleEntry): ScheduleJob {
     catalog_total_price: row.catalog_total_price ?? null,
     service_name: row.service_name ?? "HES Assessment",
     tier_name: row.tier_name ?? null,
+    payment_status: row.payment_status ?? null,
     created_at: row.created_at,
   };
 }
@@ -131,6 +133,7 @@ function unifyInsp(row: InspectorScheduleEntry): ScheduleJob {
     catalog_total_price: row.catalog_total_price ?? null,
     service_name: row.service_name ?? "Home Inspection",
     tier_name: row.tier_name ?? null,
+    payment_status: row.payment_status ?? null,
     created_at: row.created_at,
   };
 }

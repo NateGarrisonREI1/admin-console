@@ -15,6 +15,7 @@ import {
   ChatBubbleLeftIcon,
   ClipboardDocumentIcon,
   ArrowRightIcon,
+  LinkIcon,
 } from "@heroicons/react/24/outline";
 import { QRCodeSVG } from "qrcode.react";
 import ActivityLog from "@/components/ui/ActivityLog";
@@ -149,6 +150,7 @@ const STATUS_DISPLAY: Record<string, { bg: string; text: string; label: string }
   on_site: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "On Site" },
   in_progress: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "In Progress" },
   completed: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "Completed" },
+  paid: { bg: "rgba(16,185,129,0.20)", text: "#34d399", label: "Paid" },
 };
 
 const SERVICE_BORDER: Record<string, string> = {
@@ -192,6 +194,11 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
   const [paidAmount, setPaidAmount] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
+
+  // Send Payment Link modal state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
 
   const loadJob = useCallback(async () => {
     const data = await fetchJobDetail(jobId);
@@ -339,6 +346,69 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
     });
   }
 
+  // ─── Send Payment Link handlers ────────────────────────────────────
+
+  async function handleSendPaymentLink() {
+    // If we already have a checkout_url stored on the job, reuse it
+    if (job?.checkout_url) {
+      setShareUrl(job.checkout_url);
+      setShowShareModal(true);
+      return;
+    }
+
+    // Otherwise, create a new payment link
+    setShareBusy(true);
+    try {
+      const res = await fetch("/api/stripe/create-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_id: jobId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || "Failed to create payment link.");
+        setShareBusy(false);
+        return;
+      }
+      setShareUrl(data.url);
+      setShowShareModal(true);
+      // Reload job to get the stored checkout_url
+      await loadJob();
+    } catch (err: any) {
+      showToast(err.message || "Network error.");
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  function handleShareText() {
+    if (!shareUrl || !job) return;
+    const serviceName =
+      [job.service_name, job.tier_name].filter(Boolean).join(" — ") ||
+      (job.type === "hes" ? "HES Assessment" : "Home Inspection");
+    const message = `Here is your payment link for your ${serviceName}: ${shareUrl}`;
+    const smsUrl = `sms:${job.customer_phone || ""}?body=${encodeURIComponent(message)}`;
+    window.open(smsUrl);
+  }
+
+  function handleShareEmail() {
+    if (!shareUrl || !job) return;
+    const serviceName =
+      [job.service_name, job.tier_name].filter(Boolean).join(" — ") ||
+      (job.type === "hes" ? "HES Assessment" : "Home Inspection");
+    const subject = `Payment Link — ${serviceName}`;
+    const body = `Hi ${job.customer_name},\n\nHere is your payment link for your ${serviceName}:\n${shareUrl}\n\nThank you!`;
+    const mailUrl = `mailto:${job.customer_email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailUrl);
+  }
+
+  function handleShareCopy() {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      showToast("Payment link copied!");
+    });
+  }
+
   // ─── Note handler ─────────────────────────────────────────────────
 
   async function handleAddNote() {
@@ -383,7 +453,9 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
 
   const addr = fullAddress(job);
   const statusAction = STATUS_ACTIONS[job.status];
-  const statusDisplay = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
+  const statusDisplay = (job.status === "completed" && job.payment_status === "paid")
+    ? STATUS_DISPLAY.paid
+    : (STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending);
   const borderColor = SERVICE_BORDER[job.type] ?? "#10b981";
   const serviceLine = [job.service_name, job.tier_name].filter(Boolean).join(" — ");
   const price = job.catalog_total_price ?? job.invoice_amount;
@@ -392,6 +464,7 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
   const isCompleted = job.status === "completed";
   const isPaid = job.payment_status === "paid";
   const receiptUrl = stripePaymentUrl(job.payment_id, !!isTestMode);
+  const showSendPaymentLink = (isInProgress || (isCompleted && !isPaid));
 
   // ─── Payment Overlay ──────────────────────────────────────────────
 
@@ -847,6 +920,138 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
           <CheckCircleIcon style={{ width: 22, height: 22 }} />
           Complete Job
         </button>
+      )}
+
+      {/* Send Payment Link button */}
+      {showSendPaymentLink && (
+        <button
+          type="button"
+          onClick={handleSendPaymentLink}
+          disabled={shareBusy}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            padding: "12px 20px",
+            borderRadius: 12,
+            fontSize: 14,
+            fontWeight: 700,
+            border: "1px solid rgba(167,139,250,0.4)",
+            background: "rgba(167,139,250,0.12)",
+            color: "#a78bfa",
+            cursor: shareBusy ? "not-allowed" : "pointer",
+            opacity: shareBusy ? 0.6 : 1,
+            transition: "all 0.15s",
+            marginBottom: 16,
+          }}
+        >
+          <LinkIcon style={{ width: 18, height: 18 }} />
+          {shareBusy ? "Creating Link..." : "Send Payment Link"}
+        </button>
+      )}
+
+      {/* Share Payment Link Modal */}
+      {showShareModal && shareUrl && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 9998,
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+          onClick={() => setShowShareModal(false)}
+        >
+          <div
+            style={{
+              background: "#1e293b",
+              border: "1px solid rgba(51,65,85,0.8)",
+              borderRadius: 16,
+              padding: 24,
+              maxWidth: 360,
+              width: "100%",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: "#f1f5f9", margin: 0 }}>
+                Send Payment Link
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowShareModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}
+              >
+                <XMarkIcon style={{ width: 20, height: 20, color: "#64748b" }} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
+              {serviceLine || (job.type === "hes" ? "HES Assessment" : "Home Inspection")}
+            </div>
+            <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 6 }}>
+              {job.customer_name}
+            </div>
+            {price && (
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#a78bfa", marginBottom: 20 }}>
+                ${price.toFixed(2)}
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {job.customer_phone && (
+                <button
+                  type="button"
+                  onClick={handleShareText}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+                    border: "1px solid rgba(59,130,246,0.3)", background: "rgba(59,130,246,0.12)",
+                    color: "#60a5fa", cursor: "pointer", transition: "all 0.15s",
+                  }}
+                >
+                  <ChatBubbleLeftIcon style={{ width: 18, height: 18 }} />
+                  Text to Customer
+                </button>
+              )}
+
+              {job.customer_email && (
+                <button
+                  type="button"
+                  onClick={handleShareEmail}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+                    border: "1px solid rgba(16,185,129,0.3)", background: "rgba(16,185,129,0.12)",
+                    color: "#10b981", cursor: "pointer", transition: "all 0.15s",
+                  }}
+                >
+                  <EnvelopeIcon style={{ width: 18, height: 18 }} />
+                  Email to Customer
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleShareCopy}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  padding: "12px 20px", borderRadius: 10, fontSize: 14, fontWeight: 600,
+                  border: "1px solid rgba(51,65,85,0.5)", background: "rgba(30,41,59,0.5)",
+                  color: "#94a3b8", cursor: "pointer", transition: "all 0.15s",
+                }}
+              >
+                <ClipboardDocumentIcon style={{ width: 18, height: 18 }} />
+                Copy Link
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Completed Summary Card */}

@@ -410,6 +410,7 @@ export type PortalJobDetail = PortalScheduleJob & {
   payment_received_at: string | null;
   leaf_delivery_status: string | null;
   stripe_checkout_session_id: string | null;
+  checkout_url: string | null;
 };
 
 // ─── Fetch all tech jobs (for Jobs list page) ─────────────────────
@@ -507,6 +508,7 @@ export async function fetchJobDetail(
       payment_received_at: hesRow.payment_received_at ?? null,
       leaf_delivery_status: hesRow.leaf_delivery_status ?? null,
       stripe_checkout_session_id: hesRow.stripe_checkout_session_id ?? null,
+      checkout_url: hesRow.checkout_url ?? null,
     };
   }
 
@@ -527,6 +529,7 @@ export async function fetchJobDetail(
       payment_received_at: inspRow.payment_received_at ?? null,
       leaf_delivery_status: inspRow.leaf_delivery_status ?? null,
       stripe_checkout_session_id: inspRow.stripe_checkout_session_id ?? null,
+      checkout_url: inspRow.checkout_url ?? null,
     };
   }
 
