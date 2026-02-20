@@ -94,6 +94,101 @@ export async function POST(request: Request) {
     );
 
     console.log(`[stripe-webhook] Payment confirmed for job ${jobId} — $${amountPaid}`);
+
+    // ─── Post-payment: PDF receipt + email (fire-and-forget) ────────
+    try {
+      const customerEmail = session.customer_details?.email || session.metadata?.customer_email;
+
+      if (customerEmail) {
+        // Fetch job details for the receipt
+        const { data: jobRow } = await supabaseAdmin
+          .from(table)
+          .select("customer_name, customer_email, address, city, state, zip, scheduled_date, service_name, tier_name")
+          .eq("id", jobId)
+          .single();
+
+        if (jobRow) {
+          const serviceName =
+            [jobRow.service_name, jobRow.tier_name].filter(Boolean).join(" — ") ||
+            (jobType === "inspector" ? "Home Inspection" : "HES Assessment");
+          const address = [jobRow.address, jobRow.city, jobRow.state, jobRow.zip].filter(Boolean).join(", ");
+
+          // 1. Generate PDF
+          const { generateReceiptPdf } = await import("@/lib/generateReceipt");
+          const pdfBuffer = await generateReceiptPdf({
+            jobId,
+            jobType: jobType as "hes" | "inspector",
+            customerName: jobRow.customer_name,
+            customerEmail,
+            serviceName,
+            address,
+            scheduledDate: jobRow.scheduled_date,
+            amountCents: session.amount_total || 0,
+            paymentId: (session.payment_intent as string) || session.id,
+            stripeSessionId: session.id,
+            paidAt: now,
+          });
+
+          const receiptFilename = `LEAF-Receipt-${jobId.slice(0, 8)}.pdf`;
+          const storagePath = `receipts/${jobType}/${jobId}/${receiptFilename}`;
+
+          // 2. Upload to Supabase Storage
+          const { error: uploadErr } = await supabaseAdmin.storage
+            .from("job-files")
+            .upload(storagePath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+
+          let receiptUrl: string | null = null;
+          if (uploadErr) {
+            console.error("[stripe-webhook] Receipt upload failed:", uploadErr.message);
+          } else {
+            const { data: signedData } = await supabaseAdmin.storage
+              .from("job-files")
+              .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+            receiptUrl = signedData?.signedUrl ?? null;
+          }
+
+          // 3. Save receipt_url on job record
+          if (receiptUrl) {
+            await supabaseAdmin.from(table).update({ receipt_url: receiptUrl }).eq("id", jobId);
+          }
+
+          // 4. Send receipt email
+          const { sendReceiptEmail } = await import("@/lib/services/EmailService");
+          const LEAF_APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://leafenergy.app";
+          const reportUrl = `${LEAF_APP_URL}/report/${jobId}`;
+          const paidDate = new Date(now).toLocaleDateString("en-US", {
+            month: "long", day: "numeric", year: "numeric",
+          });
+
+          await sendReceiptEmail({
+            to: customerEmail,
+            customerName: jobRow.customer_name,
+            serviceName,
+            amount: amountPaid,
+            paidDate,
+            reportUrl,
+            receiptPdfBuffer: pdfBuffer,
+            receiptFilename,
+          });
+
+          // 5. Log activity
+          await logJobActivity(
+            jobId,
+            "receipt_sent",
+            `Receipt emailed to ${customerEmail}`,
+            { role: "system" },
+            { receipt_url: receiptUrl, email: customerEmail },
+            jobType
+          );
+
+          console.log(`[stripe-webhook] Receipt generated and emailed for job ${jobId}`);
+        }
+      } else {
+        console.log(`[stripe-webhook] No customer email for receipt — job ${jobId}`);
+      }
+    } catch (receiptErr: any) {
+      console.error("[stripe-webhook] Receipt/email error (non-blocking):", receiptErr?.message ?? receiptErr);
+    }
   }
 
   return NextResponse.json({ received: true });

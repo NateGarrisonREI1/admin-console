@@ -238,9 +238,9 @@ function JobRow({ job }: { job: PortalScheduleJob }) {
     .filter(Boolean)
     .join(" — ");
   const isTestMode = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_test_");
-  const isPaidCompleted = job.status === "completed" && job.payment_status === "paid" && job.payment_id;
+  const isPaidCompleted = job.status === "completed" && job.payment_status === "paid";
   const receiptUrl = isPaidCompleted
-    ? `${isTestMode ? "https://dashboard.stripe.com/test/payments" : "https://dashboard.stripe.com/payments"}/${job.payment_id}`
+    ? job.receipt_url || (job.payment_id ? `${isTestMode ? "https://dashboard.stripe.com/test/payments" : "https://dashboard.stripe.com/payments"}/${job.payment_id}` : null)
     : null;
 
   return (

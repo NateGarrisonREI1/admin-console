@@ -61,6 +61,7 @@ export type HesScheduleEntry = {
   catalog_total_price: number | null;
   service_name: string | null;
   tier_name: string | null;
+  receipt_url: string | null;
   created_at: string;
   updated_at: string;
   // Joined
@@ -115,6 +116,7 @@ export type InspectorScheduleEntry = {
   catalog_total_price: number | null;
   service_name: string | null;
   tier_name: string | null;
+  receipt_url: string | null;
   created_at: string;
   updated_at: string;
   // Joined

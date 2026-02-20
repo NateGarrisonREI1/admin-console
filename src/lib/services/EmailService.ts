@@ -47,6 +47,111 @@ async function sendEmail(payload: EmailPayload) {
   }
 }
 
+async function sendEmailWithAttachments(payload: {
+  to: string;
+  subject: string;
+  html: string;
+  attachments: { filename: string; content: Buffer }[];
+}) {
+  if (!process.env.RESEND_API_KEY) {
+    console.log("[EmailService] No RESEND_API_KEY set, logging email:", {
+      to: payload.to,
+      subject: payload.subject,
+      attachmentCount: payload.attachments.length,
+    });
+    return;
+  }
+
+  const resend = getResend();
+  if (!resend) return;
+
+  try {
+    const { error } = await resend.emails.send({
+      from: `LEAF Energy <${FROM_EMAIL}>`,
+      to: [payload.to],
+      subject: payload.subject,
+      html: payload.html,
+      attachments: payload.attachments.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+      })),
+    });
+    if (error) console.error("[EmailService] Send failed:", error.message);
+  } catch (err) {
+    console.error("[EmailService] Send error:", err);
+  }
+}
+
+// ──────────────────────────────────────────
+// Receipt email
+// ──────────────────────────────────────────
+
+export async function sendReceiptEmail(params: {
+  to: string;
+  customerName: string;
+  serviceName: string;
+  amount: string;
+  paidDate: string;
+  reportUrl: string;
+  receiptPdfBuffer: Buffer;
+  receiptFilename: string;
+}): Promise<void> {
+  const { to, customerName, serviceName, amount, paidDate, reportUrl, receiptPdfBuffer, receiptFilename } = params;
+
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;background:#0f172a;border-radius:12px;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);padding:32px 24px;text-align:center;border-bottom:2px solid #10b981;">
+        <h1 style="color:#f1f5f9;font-size:24px;font-weight:700;margin:0 0 4px;">Payment Receipt</h1>
+        <p style="color:#64748b;font-size:13px;margin:0;">LEAF Energy Services</p>
+      </div>
+      <div style="padding:32px 24px;">
+        <p style="color:#e2e8f0;font-size:15px;margin:0 0 20px;">Hi ${customerName},</p>
+        <p style="color:#cbd5e1;font-size:14px;line-height:1.6;margin:0 0 24px;">
+          Thank you for your payment. Your receipt is attached to this email.
+        </p>
+        <div style="background:rgba(30,41,59,0.8);border:1px solid rgba(51,65,85,0.5);border-radius:12px;padding:20px;margin:0 0 24px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr>
+              <td style="padding:6px 0;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;">Service</td>
+              <td style="padding:6px 0;color:#e2e8f0;font-size:14px;font-weight:600;text-align:right;">${serviceName}</td>
+            </tr>
+            <tr>
+              <td style="padding:6px 0;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;">Date</td>
+              <td style="padding:6px 0;color:#e2e8f0;font-size:14px;text-align:right;">${paidDate}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0 6px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;border-top:1px solid rgba(51,65,85,0.5);">Total Paid</td>
+              <td style="padding:12px 0 6px;color:#10b981;font-size:20px;font-weight:700;text-align:right;border-top:1px solid rgba(51,65,85,0.5);">$${amount}</td>
+            </tr>
+          </table>
+        </div>
+        <div style="text-align:center;margin:0 0 24px;">
+          <p style="color:#94a3b8;font-size:13px;margin:0 0 12px;">Your LEAF Home Energy Report:</p>
+          <a href="${reportUrl}" style="display:inline-block;padding:14px 32px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:600;font-size:16px;">
+            View Your LEAF Report
+          </a>
+        </div>
+        <p style="color:#475569;font-size:12px;margin:24px 0 0;text-align:center;">
+          A PDF copy of your receipt is attached to this email.
+        </p>
+      </div>
+      <div style="background:rgba(15,23,42,0.8);padding:20px 24px;text-align:center;border-top:1px solid rgba(51,65,85,0.3);">
+        <p style="color:#64748b;font-size:12px;margin:0 0 4px;font-weight:600;">Renewable Energy Incentives</p>
+        <p style="color:#475569;font-size:11px;margin:0;">
+          Questions? <a href="mailto:support@renewableenergyincentives.com" style="color:#64748b;text-decoration:underline;">support@renewableenergyincentives.com</a>
+        </p>
+      </div>
+    </div>
+  `;
+
+  await sendEmailWithAttachments({
+    to,
+    subject: `Payment Receipt — ${serviceName}`,
+    html,
+    attachments: [{ filename: receiptFilename, content: receiptPdfBuffer }],
+  });
+}
+
 // ──────────────────────────────────────────
 // Campaign email helpers
 // ──────────────────────────────────────────

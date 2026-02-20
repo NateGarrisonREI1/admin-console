@@ -463,7 +463,8 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
   const isInProgress = job.status === "in_progress";
   const isCompleted = job.status === "completed";
   const isPaid = job.payment_status === "paid";
-  const receiptUrl = stripePaymentUrl(job.payment_id, !!isTestMode);
+  const receiptUrl = job.receipt_url || stripePaymentUrl(job.payment_id, !!isTestMode);
+  const stripeUrl = stripePaymentUrl(job.payment_id, !!isTestMode);
   const showSendPaymentLink = (isInProgress || (isCompleted && !isPaid));
 
   // ─── Payment Overlay ──────────────────────────────────────────────
@@ -1168,9 +1169,9 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
                     Receipt unavailable
                   </div>
                 )}
-                {receiptUrl && (
+                {stripeUrl && (
                   <a
-                    href={receiptUrl}
+                    href={stripeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{

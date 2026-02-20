@@ -125,6 +125,7 @@ export type PortalScheduleJob = {
   catalog_total_price: number | null;
   payment_status: string | null;
   payment_id: string | null;
+  receipt_url: string | null;
 };
 
 // ─── Schedule Queries ───────────────────────────────────────────────
@@ -205,6 +206,7 @@ function mapScheduleRow(
     catalog_total_price: row.catalog_total_price,
     payment_status: row.payment_status ?? null,
     payment_id: row.payment_id ?? null,
+    receipt_url: row.receipt_url ?? null,
   };
 }
 
