@@ -3,9 +3,13 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 import { fetchLeadPricingConfig } from "../_actions/lead-pricing";
-import { listMigrationFiles } from "../_actions/migrations";
+import { fetchServiceCatalog } from "../_actions/services";
+import { fetchRefundRequests } from "../refunds/actions";
+import { fetchAuthLogs } from "../auth-logs/actions";
 import LeadPricingClient from "./lead-pricing/LeadPricingClient";
-import MigrationsClient from "./migrations/MigrationsClient";
+import ServicesClient from "./services/ServicesClient";
+import AdminRefundsClient from "../refunds/AdminRefundsClient";
+import AuthLogsClient from "../auth-logs/AuthLogsClient";
 
 type Props = {
   searchParams: Promise<{ tab?: string }>;
@@ -19,8 +23,16 @@ export default async function SettingsPage({ searchParams }: Props) {
     ? await fetchLeadPricingConfig()
     : [];
 
-  const migrationFiles = tab === "database"
-    ? await listMigrationFiles()
+  const serviceCatalog = tab === "service-catalog"
+    ? await fetchServiceCatalog()
+    : [];
+
+  const refundRequests = tab === "refunds"
+    ? await fetchRefundRequests()
+    : [];
+
+  const authEvents = tab === "auth-logs"
+    ? await fetchAuthLogs({ limit: 200 })
     : [];
 
   return (
@@ -36,10 +48,12 @@ export default async function SettingsPage({ searchParams }: Props) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: 4 }}>
+      <div style={{ display: "flex", gap: 4, background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
         <TabLink href="/admin/settings?tab=users" active={tab === "users"}>Users</TabLink>
         <TabLink href="/admin/settings?tab=lead-pricing" active={tab === "lead-pricing"}>Lead Pricing</TabLink>
-        <TabLink href="/admin/settings?tab=database" active={tab === "database"}>Database</TabLink>
+        <TabLink href="/admin/settings?tab=service-catalog" active={tab === "service-catalog"}>Service Catalog</TabLink>
+        <TabLink href="/admin/settings?tab=refunds" active={tab === "refunds"}>Refunds</TabLink>
+        <TabLink href="/admin/settings?tab=auth-logs" active={tab === "auth-logs"}>Auth Logs</TabLink>
       </div>
 
       {/* Tab Content */}
@@ -70,8 +84,16 @@ export default async function SettingsPage({ searchParams }: Props) {
         <LeadPricingClient config={leadPricingConfig} embedded />
       )}
 
-      {tab === "database" && (
-        <MigrationsClient files={migrationFiles} />
+      {tab === "service-catalog" && (
+        <ServicesClient catalog={serviceCatalog} />
+      )}
+
+      {tab === "refunds" && (
+        <AdminRefundsClient initialRequests={refundRequests} />
+      )}
+
+      {tab === "auth-logs" && (
+        <AuthLogsClient initialEvents={authEvents} />
       )}
     </div>
   );

@@ -336,12 +336,16 @@ export type PostLeadInput = {
 
 export async function fetchNetworkContractors(): Promise<{ id: string; name: string; company_name: string | null }[]> {
   await requireAdmin();
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("rei_contractor_network")
     .select("id, contractor_id, name, company_name")
     .eq("status", "active")
     .order("company_name", { ascending: true });
 
+  if (error) {
+    console.warn("[fetchNetworkContractors] Table may not exist:", error.message);
+    return [];
+  }
   if (!data) return [];
   return (data as Record<string, unknown>[]).map((r) => ({
     id: r.id as string,

@@ -52,6 +52,15 @@ export type HesScheduleEntry = {
   report_generated: boolean;
   invoice_amount: number | null;
   payment_status: string;
+  // Catalog fields
+  service_category_id: string | null;
+  service_tier_id: string | null;
+  addon_ids: string[] | null;
+  catalog_base_price: number | null;
+  catalog_addon_total: number | null;
+  catalog_total_price: number | null;
+  service_name: string | null;
+  tier_name: string | null;
   created_at: string;
   updated_at: string;
   // Joined
@@ -97,6 +106,15 @@ export type InspectorScheduleEntry = {
   report_generated: boolean;
   invoice_amount: number | null;
   payment_status: string;
+  // Catalog fields
+  service_category_id: string | null;
+  service_tier_id: string | null;
+  addon_ids: string[] | null;
+  catalog_base_price: number | null;
+  catalog_addon_total: number | null;
+  catalog_total_price: number | null;
+  service_name: string | null;
+  tier_name: string | null;
   created_at: string;
   updated_at: string;
   // Joined

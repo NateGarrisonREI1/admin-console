@@ -394,6 +394,39 @@ code {
 }
 
 /* ===============================
+   Dark scrollbars (admin + portal)
+   =============================== */
+
+/* WebKit (Chrome, Safari, Edge) */
+.admin-root ::-webkit-scrollbar,
+.portal-root ::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.admin-root ::-webkit-scrollbar-track,
+.portal-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-root ::-webkit-scrollbar-thumb,
+.portal-root ::-webkit-scrollbar-thumb {
+  background: rgb(71 85 105);
+  border-radius: 3px;
+}
+.admin-root ::-webkit-scrollbar-thumb:hover,
+.portal-root ::-webkit-scrollbar-thumb:hover {
+  background: rgb(100 116 139);
+}
+
+/* Firefox */
+.admin-root,
+.admin-root *,
+.portal-root,
+.portal-root * {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(71 85 105) transparent;
+}
+
+/* ===============================
    Admin UI keyframes (Phase 6A)
    Used by inline animation styles
    =============================== */

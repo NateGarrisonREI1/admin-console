@@ -3,6 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { AdminOpsService } from "@/lib/services/AdminOpsService";
+import { fetchJobActivity, logJobActivity, type ActivityLogEntry } from "@/lib/activityLog";
 
 export type MemberType = "hes" | "inspector";
 
@@ -23,13 +24,42 @@ export async function createScheduleJob(input: {
   scheduled_time?: string;
   special_notes?: string;
   invoice_amount?: number;
+  service_category_id?: string;
+  service_tier_id?: string;
+  addon_ids?: string[];
+  catalog_base_price?: number;
+  catalog_addon_total?: number;
+  catalog_total_price?: number;
+  service_name?: string;
+  tier_name?: string;
 }) {
   const svc = new AdminOpsService();
+  let created: any;
   if (input.type === "hes") {
-    await svc.createHesSchedule(input);
+    created = await svc.createHesSchedule(input);
   } else {
-    await svc.createInspectorSchedule(input);
+    created = await svc.createInspectorSchedule(input);
   }
+
+  // Log activity
+  if (created?.id) {
+    const serviceLine = [input.service_name, input.tier_name].filter(Boolean).join(" — ")
+      || (input.type === "hes" ? "HES Assessment" : "Home Inspection");
+    await logJobActivity(
+      created.id,
+      "job_created",
+      `Job scheduled — ${input.customer_name}`,
+      { name: "Admin", role: "admin" },
+      {
+        service: serviceLine,
+        date: input.scheduled_date,
+        time: input.scheduled_time,
+        team_member_id: input.team_member_id,
+      },
+      input.type
+    );
+  }
+
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");
 }
@@ -43,6 +73,9 @@ export async function cancelScheduleJob(id: string, type: MemberType) {
   } else {
     await svc.updateInspectorSchedule(id, { status: "cancelled" });
   }
+
+  await logJobActivity(id, "job_cancelled", "Job cancelled", { name: "Admin", role: "admin" }, undefined, type);
+
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");
 }
@@ -60,8 +93,33 @@ export async function updateScheduleJobStatus(
   } else {
     await svc.updateInspectorSchedule(id, { status });
   }
+
+  await logJobActivity(
+    id,
+    `status_${status}`,
+    `Status changed to ${status.replace(/_/g, " ")}`,
+    { name: "Admin", role: "admin" },
+    undefined,
+    type
+  );
+
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");
+}
+
+// ─── Fetch team members by type ──────────────────────────────────
+
+export async function getTeamMembersByType(
+  type: MemberType
+): Promise<{ id: string; name: string }[]> {
+  const svc = new AdminOpsService();
+  if (type === "hes") {
+    const members = await svc.getHesTeamMembers();
+    return members.map((m) => ({ id: m.id, name: m.name }));
+  } else {
+    const members = await svc.getInspectorTeamMembers();
+    return members.map((m) => ({ id: m.id, name: m.name }));
+  }
 }
 
 // ─── Reschedule a job (update date/time/member) ─────────────────
@@ -73,6 +131,9 @@ export async function rescheduleJob(
     scheduled_date: string;
     scheduled_time?: string;
     team_member_id?: string;
+    previous_member_id?: string;
+    previous_member_name?: string;
+    new_member_name?: string;
   }
 ) {
   const svc = new AdminOpsService();
@@ -88,6 +149,51 @@ export async function rescheduleJob(
   } else {
     await svc.updateInspectorSchedule(id, payload);
   }
+
+  // Build a human-readable date/time string for the title
+  const dateObj = updates.scheduled_time
+    ? new Date(`${updates.scheduled_date}T${updates.scheduled_time}`)
+    : new Date(`${updates.scheduled_date}T12:00:00`);
+  const formattedDate = dateObj.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    ...(updates.scheduled_time
+      ? { hour: "numeric", minute: "2-digit", hour12: true }
+      : {}),
+  });
+
+  console.log(`[rescheduleJob] About to log activity for job ${id}, type=${type}, date=${formattedDate}`);
+  await logJobActivity(
+    id,
+    "job_rescheduled",
+    `Rescheduled to ${formattedDate}`,
+    { name: "Admin", role: "admin" },
+    { new_date: updates.scheduled_date, new_time: updates.scheduled_time, team_member_id: updates.team_member_id },
+    type
+  );
+
+  // Log reassignment if the assigned member changed
+  const memberChanged =
+    (updates.previous_member_id ?? "") !== (updates.team_member_id ?? "");
+  console.log(`[rescheduleJob] Member changed? ${memberChanged} (prev=${updates.previous_member_id}, new=${updates.team_member_id})`);
+  if (memberChanged) {
+    const fromName = updates.previous_member_name || "Unassigned";
+    const toName = updates.new_member_name || "Unassigned";
+    await logJobActivity(
+      id,
+      "job_reassigned",
+      `Reassigned from ${fromName} to ${toName}`,
+      { name: "Admin", role: "admin" },
+      {
+        previous_member_id: updates.previous_member_id,
+        new_member_id: updates.team_member_id,
+      },
+      type
+    );
+  }
+
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");
 }
@@ -101,6 +207,9 @@ export async function archiveScheduleJob(id: string, type: MemberType) {
   } else {
     await svc.updateInspectorSchedule(id, { status: "archived" });
   }
+
+  await logJobActivity(id, "job_archived", "Job archived", { name: "Admin", role: "admin" }, undefined, type);
+
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");
 }
@@ -108,6 +217,9 @@ export async function archiveScheduleJob(id: string, type: MemberType) {
 // ─── Delete a job (hard delete) ─────────────────────────────────────
 
 export async function deleteScheduleJob(id: string, type: MemberType) {
+  // Log before deletion since the job won't exist after
+  await logJobActivity(id, "job_deleted", "Job permanently deleted", { name: "Admin", role: "admin" }, undefined, type);
+
   const svc = new AdminOpsService();
   if (type === "hes") {
     await svc.deleteHesSchedule(id);
@@ -116,4 +228,12 @@ export async function deleteScheduleJob(id: string, type: MemberType) {
   }
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");
+}
+
+// ─── Activity Log ──────────────────────────────────────────────────
+
+export async function getJobActivityLog(
+  jobId: string
+): Promise<ActivityLogEntry[]> {
+  return fetchJobActivity(jobId);
 }

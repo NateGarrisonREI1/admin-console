@@ -336,6 +336,14 @@ export class AdminOpsService {
     scheduled_time?: string;
     special_notes?: string;
     invoice_amount?: number;
+    service_category_id?: string;
+    service_tier_id?: string;
+    addon_ids?: string[];
+    catalog_base_price?: number;
+    catalog_addon_total?: number;
+    catalog_total_price?: number;
+    service_name?: string;
+    tier_name?: string;
   }): Promise<HesScheduleEntry> {
     const { data, error } = await supabaseAdmin
       .from("hes_schedule")
@@ -352,6 +360,14 @@ export class AdminOpsService {
         scheduled_time: input.scheduled_time || null,
         special_notes: input.special_notes?.trim() || null,
         invoice_amount: input.invoice_amount ?? 200,
+        service_category_id: input.service_category_id || null,
+        service_tier_id: input.service_tier_id || null,
+        addon_ids: input.addon_ids?.length ? input.addon_ids : [],
+        catalog_base_price: input.catalog_base_price ?? null,
+        catalog_addon_total: input.catalog_addon_total ?? 0,
+        catalog_total_price: input.catalog_total_price ?? null,
+        service_name: input.service_name || null,
+        tier_name: input.tier_name || null,
       })
       .select("*, team_member:hes_team_members(*)")
       .single();
@@ -475,6 +491,14 @@ export class AdminOpsService {
     scheduled_time?: string;
     special_notes?: string;
     invoice_amount?: number;
+    service_category_id?: string;
+    service_tier_id?: string;
+    addon_ids?: string[];
+    catalog_base_price?: number;
+    catalog_addon_total?: number;
+    catalog_total_price?: number;
+    service_name?: string;
+    tier_name?: string;
   }): Promise<InspectorScheduleEntry> {
     const { data, error } = await supabaseAdmin
       .from("inspector_schedule")
@@ -492,6 +516,14 @@ export class AdminOpsService {
         scheduled_time: input.scheduled_time || null,
         special_notes: input.special_notes?.trim() || null,
         invoice_amount: input.invoice_amount ?? 400,
+        service_category_id: input.service_category_id || null,
+        service_tier_id: input.service_tier_id || null,
+        addon_ids: input.addon_ids?.length ? input.addon_ids : [],
+        catalog_base_price: input.catalog_base_price ?? null,
+        catalog_addon_total: input.catalog_addon_total ?? 0,
+        catalog_total_price: input.catalog_total_price ?? null,
+        service_name: input.service_name || null,
+        tier_name: input.tier_name || null,
       })
       .select("*, team_member:inspector_team_members(*)")
       .single();

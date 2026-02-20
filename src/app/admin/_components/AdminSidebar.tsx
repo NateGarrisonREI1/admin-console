@@ -17,22 +17,14 @@ const OVERVIEW: LinkItem[] = [
 
 const OPS: LinkItem[] = [
   { href: "/admin/team", label: "Team" },
-  { href: "/admin/settings/services", label: "Service Catalog" },
+  { href: "/admin/network", label: "My Network" },
   { href: "/admin/schedule", label: "Schedule" },
 ];
 
-const NETWORK: LinkItem[] = [
-  { href: "/admin/network", label: "My Network" },
-];
 
 const BROKER_PLATFORM: LinkItem[] = [
   { href: "/admin/broker-platform", label: "Broker Dashboard" },
   { href: "/admin/brokers", label: "Brokers" },
-];
-
-const SYSTEM: LinkItem[] = [
-  { href: "/admin/refunds", label: "Refunds" },
-  { href: "/admin/auth-logs", label: "Auth Logs" },
 ];
 
 const DASHBOARDS: LinkItem[] = [
@@ -255,21 +247,9 @@ export default function AdminSidebar() {
         </nav>
 
         <Divider />
-        <SectionLabel>Network</SectionLabel>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {NETWORK.map((l) => <NavLink key={l.href} {...l} />)}
-        </nav>
-
-        <Divider />
         <SectionLabel>Broker Platform</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {BROKER_PLATFORM.map((l) => <NavLink key={l.href} {...l} />)}
-        </nav>
-
-        <Divider />
-        <SectionLabel>System</SectionLabel>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {SYSTEM.map((l) => <NavLink key={l.href} {...l} />)}
         </nav>
 
         <Divider />
@@ -279,8 +259,34 @@ export default function AdminSidebar() {
         </nav>
       </div>
 
-      {/* Bottom: Settings */}
+      {/* Bottom: Portal link + Settings */}
       <div style={{ borderTop: "1px solid #334155", paddingTop: 12, marginTop: 12 }}>
+        <Link
+          href="/portal"
+          style={{
+            padding: "6px 12px",
+            borderRadius: 8,
+            textDecoration: "none",
+            fontWeight: 500,
+            fontSize: 12,
+            color: "#64748b",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            marginBottom: 4,
+            transition: "all 0.15s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "#10b981";
+            e.currentTarget.style.background = "rgba(16,185,129,0.06)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "#64748b";
+            e.currentTarget.style.background = "transparent";
+          }}
+        >
+          Switch to Portal →
+        </Link>
         <Link
           href="/admin/settings"
           style={{

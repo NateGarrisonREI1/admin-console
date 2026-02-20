@@ -25,6 +25,15 @@ export type ScheduleJob = {
   status: string;
   invoice_amount: number | null;
   special_notes: string | null;
+  // Catalog fields
+  service_category_id: string | null;
+  service_tier_id: string | null;
+  addon_ids: string[] | null;
+  catalog_base_price: number | null;
+  catalog_addon_total: number | null;
+  catalog_total_price: number | null;
+  service_name: string | null;
+  tier_name: string | null;
   created_at: string;
 };
 
@@ -83,6 +92,14 @@ function unifyHes(row: HesScheduleEntry): ScheduleJob {
     status: row.status,
     invoice_amount: row.invoice_amount,
     special_notes: row.special_notes,
+    service_category_id: row.service_category_id ?? null,
+    service_tier_id: row.service_tier_id ?? null,
+    addon_ids: row.addon_ids ?? null,
+    catalog_base_price: row.catalog_base_price ?? null,
+    catalog_addon_total: row.catalog_addon_total ?? null,
+    catalog_total_price: row.catalog_total_price ?? null,
+    service_name: row.service_name ?? "HES Assessment",
+    tier_name: row.tier_name ?? null,
     created_at: row.created_at,
   };
 }
@@ -106,6 +123,14 @@ function unifyInsp(row: InspectorScheduleEntry): ScheduleJob {
     status: row.status,
     invoice_amount: row.invoice_amount,
     special_notes: row.special_notes,
+    service_category_id: row.service_category_id ?? null,
+    service_tier_id: row.service_tier_id ?? null,
+    addon_ids: row.addon_ids ?? null,
+    catalog_base_price: row.catalog_base_price ?? null,
+    catalog_addon_total: row.catalog_addon_total ?? null,
+    catalog_total_price: row.catalog_total_price ?? null,
+    service_name: row.service_name ?? "Home Inspection",
+    tier_name: row.tier_name ?? null,
     created_at: row.created_at,
   };
 }

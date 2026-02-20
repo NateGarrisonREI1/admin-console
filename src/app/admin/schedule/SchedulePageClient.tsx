@@ -11,10 +11,14 @@ import {
   rescheduleJob,
   archiveScheduleJob,
   deleteScheduleJob,
+  getJobActivityLog,
+  getTeamMembersByType,
 } from "./actions";
 import type { ServiceCatalog } from "../_actions/services";
 import { fetchServiceCatalog } from "../_actions/services";
 import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, type OptionColor } from "@/components/ui/FilterableHeader";
+import ActivityLog from "@/components/ui/ActivityLog";
+import type { ActivityLogEntry } from "@/lib/activityLog";
 const PANEL_WIDTH = 420;
 
 // ─── Design tokens ──────────────────────────────────────────────────
@@ -85,6 +89,70 @@ function typeLabel(type: string): string {
   if (type === "inspector") return "Home Inspection";
   if (type === "leaf_followup") return "LEAF Follow-up";
   return type;
+}
+
+// ─── Calendar Helpers ────────────────────────────────────────────────
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function getMonthGridDays(year: number, month: number): string[] {
+  const first = new Date(year, month, 1);
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(year, month, 1 - offset);
+  const days: string[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  return days;
+}
+
+function getWeekDayDates(anchor: Date): string[] {
+  const day = anchor.getDay();
+  const mon = new Date(anchor);
+  mon.setDate(anchor.getDate() - (day === 0 ? 6 : day - 1));
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon);
+    d.setDate(mon.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+}
+
+function buildGoogleCalendarUrl(job: ScheduleJob): string {
+  const title = `${typeLabel(job.type)} - ${job.customer_name}`;
+  const location = fullAddress(job);
+  const dateStr = job.scheduled_date.replace(/-/g, "");
+  let startDt: string, endDt: string;
+  if (job.scheduled_time) {
+    const ts = job.scheduled_time.replace(":", "") + "00";
+    startDt = `${dateStr}T${ts}`;
+    const [h, m] = job.scheduled_time.split(":").map(Number);
+    endDt = `${dateStr}T${String(Math.min(h + 1, 23)).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
+  } else {
+    startDt = dateStr;
+    endDt = dateStr;
+  }
+  const params = new URLSearchParams({
+    action: "TEMPLATE", text: title, dates: `${startDt}/${endDt}`,
+    location, details: [typeLabel(job.type), `Customer: ${job.customer_name}`,
+      job.customer_phone ? `Phone: ${job.customer_phone}` : "",
+      job.customer_email ? `Email: ${job.customer_email}` : "",
+      job.special_notes ? `Notes: ${job.special_notes}` : "",
+    ].filter(Boolean).join("\n"),
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function monthYearLabel(d: Date): string {
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function weekRangeLabel(dates: string[]): string {
+  if (dates.length < 7) return "";
+  const s = new Date(dates[0] + "T12:00:00");
+  const e = new Date(dates[6] + "T12:00:00");
+  return `${s.toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${e.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
 }
 
 // ─── Status pill colors ─────────────────────────────────────────────
@@ -350,12 +418,10 @@ const modalBtnPrimary: React.CSSProperties = {
 
 function RescheduleModal({
   job,
-  members,
   onClose,
   onDone,
 }: {
   job: ScheduleJob;
-  members: { id: string; name: string; type: MemberType }[];
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -363,17 +429,29 @@ function RescheduleModal({
   const [time, setTime] = useState(job.scheduled_time ?? "");
   const [memberId, setMemberId] = useState(job.team_member_id ?? "");
   const [saving, setSaving] = useState(false);
+  const [typeMembers, setTypeMembers] = useState<{ id: string; name: string }[]>([]);
+  const [membersLoading, setMembersLoading] = useState(true);
 
-  const typeMembers = members.filter((m) => m.type === job.type);
+  useEffect(() => {
+    setMembersLoading(true);
+    getTeamMembersByType(job.type)
+      .then(setTypeMembers)
+      .catch(() => setTypeMembers([]))
+      .finally(() => setMembersLoading(false));
+  }, [job.type]);
 
   async function handleConfirm() {
     if (!date) return;
     setSaving(true);
     try {
+      const newMemberName = typeMembers.find((m) => m.id === memberId)?.name;
       await rescheduleJob(job.id, job.type, {
         scheduled_date: date,
         scheduled_time: time || undefined,
         team_member_id: memberId || undefined,
+        previous_member_id: job.team_member_id ?? undefined,
+        previous_member_name: job.team_member_name ?? undefined,
+        new_member_name: newMemberName,
       });
       onDone();
     } catch (err: any) {
@@ -398,10 +476,11 @@ function RescheduleModal({
           <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>
             Assign To
           </label>
-          <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="admin-input" style={{ fontSize: 13, padding: "9px 12px" }}>
+          <select value={memberId} onChange={(e) => setMemberId(e.target.value)} className="admin-input" style={{ fontSize: 13, padding: "9px 12px" }} disabled={membersLoading}>
             <option value="">Unassigned</option>
             {typeMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+          {membersLoading && <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 4 }}>Loading team members...</div>}
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
@@ -441,22 +520,14 @@ function ScheduleServiceModal({
   const [saving, setSaving] = useState(false);
   const [selectedTierId, setSelectedTierId] = useState("");
   const [selectedAddonIds, setSelectedAddonIds] = useState<Set<string>>(new Set());
-  const [sqFt, setSqFt] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
 
   const hesCat = catalog.find((c) => c.slug === "hes");
   const inspCat = catalog.find((c) => c.slug === "inspection");
   const activeCat = serviceType === "hes" ? hesCat : inspCat;
   const activeTiers = (activeCat?.tiers ?? []).filter((t) => t.is_active);
   const activeAddons = (activeCat?.addons ?? []).filter((a) => a.is_active);
-
-  function handleSqFtChange(val: string) {
-    setSqFt(val);
-    const sqFtNum = parseInt(val, 10);
-    if (!isNaN(sqFtNum) && activeTiers.length > 0) {
-      const match = activeTiers.find((t) => sqFtNum >= (t.sq_ft_min ?? 0) && sqFtNum <= (t.sq_ft_max ?? Infinity));
-      if (match) setSelectedTierId(match.id);
-    }
-  }
+  const catalogEmpty = activeTiers.length === 0;
 
   function toggleAddon(addonId: string) {
     setSelectedAddonIds((prev) => {
@@ -469,17 +540,18 @@ function ScheduleServiceModal({
   const selectedTier = activeTiers.find((t) => t.id === selectedTierId);
   const basePrice = selectedTier?.price ?? 0;
   const addonsTotal = activeAddons.filter((a) => selectedAddonIds.has(a.id)).reduce((sum, a) => sum + a.price, 0);
-  const totalPrice = basePrice + addonsTotal;
+  const totalPrice = catalogEmpty ? (parseFloat(manualPrice) || 0) : basePrice + addonsTotal;
   const typeMembers = members.filter((m) => m.type === serviceType);
 
   function handleTypeSwitch(newType: MemberType) {
-    setServiceType(newType); setMemberId(""); setSelectedTierId(""); setSelectedAddonIds(new Set()); setSqFt("");
+    setServiceType(newType); setMemberId(""); setSelectedTierId(""); setSelectedAddonIds(new Set()); setManualPrice("");
   }
 
   async function handleSubmit() {
     if (!customerName.trim() || !date) return;
     setSaving(true);
     try {
+      const catLabel = serviceType === "hes" ? "HES Assessment" : "Home Inspection";
       await createScheduleJob({
         type: serviceType, team_member_id: memberId || undefined,
         customer_name: customerName.trim(), customer_email: customerEmail.trim() || undefined,
@@ -487,6 +559,14 @@ function ScheduleServiceModal({
         city: city.trim() || undefined, state: state.trim() || undefined, zip: zip.trim() || undefined,
         scheduled_date: date, scheduled_time: time || undefined,
         special_notes: notes.trim() || undefined, invoice_amount: totalPrice > 0 ? totalPrice : undefined,
+        service_category_id: activeCat?.id,
+        service_tier_id: selectedTierId || undefined,
+        addon_ids: selectedAddonIds.size > 0 ? Array.from(selectedAddonIds) : undefined,
+        catalog_base_price: basePrice > 0 ? basePrice : undefined,
+        catalog_addon_total: addonsTotal > 0 ? addonsTotal : undefined,
+        catalog_total_price: totalPrice > 0 ? totalPrice : undefined,
+        service_name: catLabel,
+        tier_name: selectedTier?.name || selectedTier?.size_label || undefined,
       });
       onScheduled();
     } catch (err: any) { alert(err?.message ?? "Failed to schedule service."); } finally { setSaving(false); }
@@ -540,53 +620,60 @@ function ScheduleServiceModal({
         </div>
         <div style={{ height: 1, background: BORDER, margin: "4px 0 16px" }} />
         <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Pricing</div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>Sq Ft (optional)</label>
-          <input type="number" value={sqFt} onChange={(e) => handleSqFtChange(e.target.value)} placeholder="e.g. 2000" className="admin-input" style={{ fontSize: 13, padding: "9px 12px", width: 160 }} />
-        </div>
-        {activeTiers.length > 0 && (
+        {catalogEmpty ? (
           <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Home Size</label>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {activeTiers.map((tier) => (
-                <button key={tier.id} type="button" onClick={() => setSelectedTierId(tier.id)} style={{
-                  padding: "8px 14px", borderRadius: 10,
-                  border: `1px solid ${selectedTierId === tier.id ? "rgba(124,58,237,0.5)" : BORDER}`,
-                  background: selectedTierId === tier.id ? "rgba(124,58,237,0.08)" : "transparent",
-                  color: selectedTierId === tier.id ? "#a78bfa" : TEXT_MUTED,
-                  cursor: "pointer", transition: "all 0.12s", textAlign: "center",
-                }}>
-                  <div style={{ fontWeight: 700, fontSize: 12 }}>{tier.size_label || tier.name}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>${tier.price}</div>
-                </button>
-              ))}
+            <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", marginBottom: 12, fontSize: 12, color: "#f59e0b" }}>
+              Service catalog is empty — using manual entry
             </div>
+            <ModalField label="Invoice Amount ($)" value={manualPrice} onChange={setManualPrice} placeholder="0.00" />
           </div>
-        )}
-        {activeAddons.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Add-On Services</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {activeAddons.map((addon) => {
-                const isSelected = selectedAddonIds.has(addon.id);
-                return (
-                  <button key={addon.id} type="button" onClick={() => toggleAddon(addon.id)} style={{
-                    padding: "5px 12px", borderRadius: 9999, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
-                    transition: "all 0.12s", background: isSelected ? PURPLE : "#334155", color: isSelected ? "#fff" : TEXT_SEC,
-                  }}>{addon.name} ${addon.price}</button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        {selectedTierId && (
-          <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.2)", marginBottom: 14, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-            <span style={{ color: TEXT_MUTED }}>
-              Base: <span style={{ fontWeight: 700, color: TEXT_SEC }}>${basePrice}</span>
-              {addonsTotal > 0 && <>{" + "}Add-Ons: <span style={{ fontWeight: 700, color: TEXT_SEC }}>${addonsTotal}</span></>}
-            </span>
-            <span style={{ fontWeight: 700, color: "#a78bfa", fontSize: 15 }}>Total: ${totalPrice}</span>
-          </div>
+        ) : (
+          <>
+            {activeTiers.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Home Size</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {activeTiers.map((tier) => (
+                    <button key={tier.id} type="button" onClick={() => setSelectedTierId(tier.id)} style={{
+                      padding: "8px 14px", borderRadius: 10,
+                      border: `1px solid ${selectedTierId === tier.id ? "rgba(124,58,237,0.5)" : BORDER}`,
+                      background: selectedTierId === tier.id ? "rgba(124,58,237,0.08)" : "transparent",
+                      color: selectedTierId === tier.id ? "#a78bfa" : TEXT_MUTED,
+                      cursor: "pointer", transition: "all 0.12s", textAlign: "center",
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: 12 }}>{tier.size_label || tier.name}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>${tier.price}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {activeAddons.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 11, color: TEXT_MUTED, fontWeight: 600, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Add-On Services</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {activeAddons.map((addon) => {
+                    const isSelected = selectedAddonIds.has(addon.id);
+                    return (
+                      <button key={addon.id} type="button" onClick={() => toggleAddon(addon.id)} style={{
+                        padding: "5px 12px", borderRadius: 9999, fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                        transition: "all 0.12s", background: isSelected ? PURPLE : "#334155", color: isSelected ? "#fff" : TEXT_SEC,
+                      }}>{addon.name} ${addon.price}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {selectedTierId && (
+              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.2)", marginBottom: 14, display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                <span style={{ color: TEXT_MUTED }}>
+                  Base: <span style={{ fontWeight: 700, color: TEXT_SEC }}>${basePrice}</span>
+                  {addonsTotal > 0 && <>{" + "}Add-Ons: <span style={{ fontWeight: 700, color: TEXT_SEC }}>${addonsTotal}</span></>}
+                </span>
+                <span style={{ fontWeight: 700, color: "#a78bfa", fontSize: 15 }}>Total: ${totalPrice}</span>
+              </div>
+            )}
+          </>
         )}
         <ModalTextarea label="Notes" value={notes} onChange={setNotes} />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 }}>
@@ -620,6 +707,16 @@ function JobDetailContent({
 }) {
   const [notes, setNotes] = useState(job.special_notes ?? "");
   const [busy, setBusy] = useState(false);
+  const [activityEntries, setActivityEntries] = useState<ActivityLogEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+
+  useEffect(() => {
+    setActivityLoading(true);
+    getJobActivityLog(job.id)
+      .then(setActivityEntries)
+      .catch(() => setActivityEntries([]))
+      .finally(() => setActivityLoading(false));
+  }, [job.id]);
 
   const addr = fullAddress(job);
   const mapUrl = makeMapEmbed(job.address, job.city, job.state, job.zip);
@@ -755,6 +852,19 @@ function JobDetailContent({
 
       <div style={{ height: 1, background: BORDER }} />
 
+      {/* Google Calendar */}
+      <div>
+        <a href={buildGoogleCalendarUrl(job)} target="_blank" rel="noreferrer" style={{
+          display: "block", padding: "9px 14px", borderRadius: 8,
+          background: "rgba(66,133,244,0.1)", border: "1px solid rgba(66,133,244,0.25)",
+          color: "#60a5fa", fontSize: 12, fontWeight: 700, textDecoration: "none", textAlign: "center",
+        }}>
+          Add to Google Calendar
+        </a>
+      </div>
+
+      <div style={{ height: 1, background: BORDER }} />
+
       {/* Notes */}
       <div>
         <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 5 }}>Notes</div>
@@ -775,6 +885,13 @@ function JobDetailContent({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {renderActionPills()}
         </div>
+      </div>
+
+      <div style={{ height: 1, background: BORDER }} />
+
+      {/* Activity Log */}
+      <div>
+        <ActivityLog entries={activityEntries} isLoading={activityLoading} collapsible />
       </div>
     </div>
   );
@@ -820,6 +937,20 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const selectedJob = useMemo(() => selectedJobId ? data.jobs.find((j) => j.id === selectedJobId) ?? null : null, [selectedJobId, data.jobs]);
+
+  // Auto-close panel if job was deleted or filtered out of the current view
+  useEffect(() => {
+    if (!selectedJobId) return;
+    const stillInData = data.jobs.some((j) => j.id === selectedJobId);
+    if (!stillInData) { setSelectedJobId(null); }
+  }, [selectedJobId, data.jobs]);
+
+  // Calendar state
+  const [calendarView, setCalendarView] = useState<"month" | "week">("month");
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [syncPopoverOpen, setSyncPopoverOpen] = useState(false);
+  const [feedUrl, setFeedUrl] = useState("/api/calendar/feed");
+  useEffect(() => { setFeedUrl(`${window.location.origin}/api/calendar/feed`); }, []);
 
   // Cancel confirm
   const [cancelTarget, setCancelTarget] = useState<ScheduleJob | null>(null);
@@ -926,6 +1057,41 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
     return jobs;
   }, [data.jobs, dateFilter, timeFilter, typeFilter, assignedFilter, statusFilter, customerSearch, phoneSearch, addressSearch, amountRange, globalSearch, sortColumn, sortDir, today, monday, sunday, monthStart, monthEnd]);
 
+  // Calendar-specific: apply all filters EXCEPT date
+  const calendarFilteredJobs = useMemo(() => {
+    const gq = globalSearch.trim().toLowerCase();
+    return data.jobs.filter((job) => {
+      if (typeFilter.length > 0 && !typeFilter.includes(job.type)) return false;
+      if (assignedFilter.length > 0 && !assignedFilter.includes(job.team_member_id ?? "")) return false;
+      if (statusFilter.length > 0 && !statusFilter.includes(job.status)) return false;
+      if (customerSearch.trim() && !(job.customer_name ?? "").toLowerCase().includes(customerSearch.trim().toLowerCase())) return false;
+      if (gq) {
+        const hay = [job.customer_name, job.customer_phone, job.customer_email, job.address, job.city, job.zip, job.team_member_name]
+          .filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(gq)) return false;
+      }
+      return true;
+    });
+  }, [data.jobs, typeFilter, assignedFilter, statusFilter, customerSearch, globalSearch]);
+
+  const jobsByDate = useMemo(() => {
+    const map = new Map<string, ScheduleJob[]>();
+    for (const job of calendarFilteredJobs) {
+      const arr = map.get(job.scheduled_date) ?? [];
+      arr.push(job);
+      map.set(job.scheduled_date, arr);
+    }
+    return map;
+  }, [calendarFilteredJobs]);
+
+  const monthGridDays = useMemo(() => getMonthGridDays(calendarDate.getFullYear(), calendarDate.getMonth()), [calendarDate]);
+  const weekDays = useMemo(() => getWeekDayDates(calendarDate), [calendarDate]);
+  const currentMonthPrefix = useMemo(() => {
+    const y = calendarDate.getFullYear();
+    const m = String(calendarDate.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  }, [calendarDate]);
+
   // Build active filter chips
   const activeFilters = useMemo(() => {
     const chips: ActiveFilter[] = [];
@@ -975,6 +1141,24 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
     setSortColumn(null);
     setSortDir(null);
   }
+
+  function calendarPrev() {
+    setCalendarDate((prev) => {
+      const d = new Date(prev);
+      if (calendarView === "month") d.setMonth(d.getMonth() - 1);
+      else d.setDate(d.getDate() - 7);
+      return d;
+    });
+  }
+  function calendarNext() {
+    setCalendarDate((prev) => {
+      const d = new Date(prev);
+      if (calendarView === "month") d.setMonth(d.getMonth() + 1);
+      else d.setDate(d.getDate() + 7);
+      return d;
+    });
+  }
+  function calendarToday() { setCalendarDate(new Date()); }
 
   async function handleCancel() {
     if (!cancelTarget || cancelLoading) return;
@@ -1247,10 +1431,160 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
           </div>
         </div>
       ) : (
-        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "60px 24px", textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>&#128197;</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 6 }}>Calendar View</div>
-          <div style={{ fontSize: 13, color: TEXT_MUTED }}>Calendar view is coming soon. Use the List view to manage your schedule.</div>
+        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
+          {/* Calendar Toolbar */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: `1px solid ${BORDER}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button type="button" onClick={calendarPrev} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 6, color: TEXT_MUTED, cursor: "pointer", padding: "4px 10px", fontSize: 16, lineHeight: 1 }}>{"\u2039"}</button>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: TEXT, margin: 0, minWidth: 200, textAlign: "center" }}>
+                {calendarView === "month" ? monthYearLabel(calendarDate) : weekRangeLabel(weekDays)}
+              </h2>
+              <button type="button" onClick={calendarNext} style={{ background: "none", border: `1px solid ${BORDER}`, borderRadius: 6, color: TEXT_MUTED, cursor: "pointer", padding: "4px 10px", fontSize: 16, lineHeight: 1 }}>{"\u203A"}</button>
+              <button type="button" onClick={calendarToday} style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 6, color: EMERALD, cursor: "pointer", padding: "5px 12px", fontSize: 12, fontWeight: 700 }}>Today</button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", gap: 0, background: "#0f172a", border: `1px solid ${BORDER}`, borderRadius: 6, overflow: "hidden" }}>
+                {(["month", "week"] as const).map((v, idx) => (
+                  <button key={v} type="button" onClick={() => setCalendarView(v)} style={{
+                    padding: "5px 14px", border: "none",
+                    borderRight: idx === 0 ? `1px solid ${BORDER}` : "none",
+                    background: calendarView === v ? "rgba(124,58,237,0.12)" : "transparent",
+                    color: calendarView === v ? "#a78bfa" : TEXT_MUTED,
+                    fontSize: 12, fontWeight: 700, cursor: "pointer", textTransform: "capitalize",
+                  }}>{v}</button>
+                ))}
+              </div>
+              <div style={{ position: "relative" }}>
+                <button type="button" onClick={() => setSyncPopoverOpen(!syncPopoverOpen)} style={{
+                  background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.3)",
+                  borderRadius: 6, color: "#60a5fa", cursor: "pointer", padding: "5px 12px", fontSize: 12, fontWeight: 700,
+                }}>Sync</button>
+                {syncPopoverOpen && (
+                  <>
+                    <div onClick={() => setSyncPopoverOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 29 }} />
+                    <div style={{
+                      position: "absolute", right: 0, top: "calc(100% + 8px)", width: 340, zIndex: 30,
+                      background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16,
+                      boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
+                    }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: TEXT, marginBottom: 8 }}>Sync with Google Calendar</div>
+                      <p style={{ fontSize: 12, color: TEXT_MUTED, margin: "0 0 10px", lineHeight: 1.5 }}>
+                        Copy this iCal feed URL and add it in Google Calendar:<br />
+                        <span style={{ color: TEXT_DIM }}>Settings &rarr; Add calendar &rarr; From URL</span>
+                      </p>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <input readOnly value={feedUrl} style={{
+                          flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6,
+                          background: "#0f172a", border: `1px solid ${BORDER}`, color: TEXT_SEC,
+                        }} onClick={(e) => (e.target as HTMLInputElement).select()} />
+                        <button type="button" onClick={() => { navigator.clipboard.writeText(feedUrl); setSyncPopoverOpen(false); setToast("Feed URL copied!"); }} style={{
+                          padding: "6px 12px", borderRadius: 6, border: "none",
+                          background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                        }}>Copy</button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {calendarView === "month" ? (
+            <>
+              {/* Weekday header row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: `1px solid ${BORDER}` }}>
+                {WEEKDAY_LABELS.map((d) => (
+                  <div key={d} style={{ padding: "6px 8px", fontSize: 11, fontWeight: 700, color: TEXT_DIM, textAlign: "center", textTransform: "uppercase", letterSpacing: "0.05em" }}>{d}</div>
+                ))}
+              </div>
+              {/* Month grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+                {monthGridDays.map((dateStr, idx) => {
+                  const dayNum = parseInt(dateStr.slice(8), 10);
+                  const isCurrentMonth = dateStr.startsWith(currentMonthPrefix);
+                  const isToday = dateStr === today;
+                  const dayJobs = jobsByDate.get(dateStr) ?? [];
+                  return (
+                    <div key={dateStr} style={{
+                      minHeight: 94, padding: "4px 5px",
+                      borderRight: (idx % 7) < 6 ? "1px solid rgba(51,65,85,0.25)" : "none",
+                      borderBottom: idx < 35 ? "1px solid rgba(51,65,85,0.25)" : "none",
+                      background: isToday ? "rgba(16,185,129,0.04)" : undefined,
+                    }}>
+                      <div style={{ marginBottom: 3, textAlign: "right", paddingRight: 2 }}>
+                        {isToday ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: EMERALD, color: "#fff", fontSize: 12, fontWeight: 800 }}>{dayNum}</span>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 500, color: isCurrentMonth ? TEXT_SEC : TEXT_DIM }}>{dayNum}</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                        {dayJobs.slice(0, 3).map((job) => {
+                          const badge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
+                          const isSel = selectedJobId === job.id;
+                          return (
+                            <div key={job.id} onClick={() => setSelectedJobId(job.id)} style={{
+                              padding: "1px 4px", borderRadius: 3, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                              background: isSel ? badge.color : badge.bg, color: isSel ? "#fff" : badge.color,
+                              border: `1px solid ${badge.border}`, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              transition: "all 0.1s",
+                            }}>
+                              {job.scheduled_time ? formatTime(job.scheduled_time).split(" ")[0] + " " : ""}{job.customer_name}
+                            </div>
+                          );
+                        })}
+                        {dayJobs.length > 3 && (
+                          <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, paddingLeft: 2 }}>+{dayJobs.length - 3} more</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            /* Week View */
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+              {weekDays.map((dateStr, idx) => {
+                const d = new Date(dateStr + "T12:00:00");
+                const isToday = dateStr === today;
+                const dayJobs = (jobsByDate.get(dateStr) ?? []).sort((a, b) => (a.scheduled_time ?? "99:99").localeCompare(b.scheduled_time ?? "99:99"));
+                return (
+                  <div key={dateStr} style={{ borderRight: idx < 6 ? "1px solid rgba(51,65,85,0.25)" : "none", minHeight: 420 }}>
+                    <div style={{ padding: "8px 10px", borderBottom: `1px solid ${BORDER}`, background: isToday ? "rgba(16,185,129,0.06)" : undefined, textAlign: "center" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase" }}>{WEEKDAY_LABELS[idx]}</div>
+                      <div style={{ marginTop: 4 }}>
+                        {isToday ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: "50%", background: EMERALD, color: "#fff", fontSize: 16, fontWeight: 700 }}>{d.getDate()}</span>
+                        ) : (
+                          <span style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>{d.getDate()}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ padding: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                      {dayJobs.map((job) => {
+                        const badge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
+                        const isSel = selectedJobId === job.id;
+                        return (
+                          <div key={job.id} onClick={() => setSelectedJobId(job.id)} style={{
+                            padding: "5px 7px", borderRadius: 6, cursor: "pointer",
+                            background: isSel ? badge.color : badge.bg, border: `1px solid ${badge.border}`, transition: "all 0.1s",
+                          }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: isSel ? "#fff" : badge.color }}>{formatTime(job.scheduled_time)}</div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: isSel ? "#fff" : TEXT, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.customer_name}</div>
+                            <div style={{ fontSize: 10, color: isSel ? "rgba(255,255,255,0.7)" : TEXT_DIM, marginTop: 1 }}>{typeLabel(job.type)}</div>
+                          </div>
+                        );
+                      })}
+                      {dayJobs.length === 0 && (
+                        <div style={{ fontSize: 11, color: TEXT_DIM, textAlign: "center", padding: "30px 0", opacity: 0.4 }}>{"\u2014"}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1267,7 +1601,6 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
       {rescheduleTarget && (
         <RescheduleModal
           job={rescheduleTarget}
-          members={data.members}
           onClose={() => setRescheduleTarget(null)}
           onDone={() => {
             setRescheduleTarget(null);

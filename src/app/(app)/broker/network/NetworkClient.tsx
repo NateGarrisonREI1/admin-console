@@ -4,8 +4,12 @@
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Broker, BrokerContractor, ProviderType } from "@/types/broker";
-import { addContractor, updateContractor, removeContractor, brokerInviteContractor, resendBrokerInvite } from "./actions";
-import type { PendingInvite } from "./actions";
+import {
+  addContractor, updateContractor, removeContractor,
+  brokerInviteContractor, resendBrokerInvite,
+  searchPlatformUsersForBroker, addPlatformUserToBrokerNetwork,
+} from "./actions";
+import type { PendingInvite, BrowsePlatformUser } from "./actions";
 
 // ─── Provider Tab Config ─────────────────────────────────────────────────────
 
@@ -1229,6 +1233,272 @@ function PendingInvitesSection({ invites, onResend, resendCooldowns }: {
   );
 }
 
+// ─── Browse Filter Constants ─────────────────────────────────────────────────
+
+const BROWSE_SERVICE_AREAS = ["Portland Metro", "Salem", "Eugene", "Bend", "Medford", "Corvallis"];
+const BROWSE_TRADE_OPTIONS = [
+  { value: "hvac", label: "HVAC" },
+  { value: "solar", label: "Solar" },
+  { value: "water_heater", label: "Water Heater" },
+  { value: "electrical", label: "Electrical" },
+  { value: "insulation", label: "Insulation" },
+  { value: "plumbing", label: "Plumbing" },
+];
+
+// ─── Filter Pill ─────────────────────────────────────────────────────────────
+
+function BrowseFilterPill({ label, selected, color, onClick }: {
+  label: string; selected: boolean; color?: string; onClick: () => void;
+}) {
+  const c = color ?? "#10b981";
+  return (
+    <button type="button" onClick={onClick}
+      style={{
+        padding: "4px 11px", borderRadius: 9999, fontSize: 11, fontWeight: 600, cursor: "pointer",
+        background: selected ? `${c}22` : "transparent",
+        color: selected ? c : "#64748b",
+        border: selected ? `1px solid ${c}44` : "1px solid #334155",
+        transition: "all 0.15s", whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ─── Browse Panel (Add from Platform) ────────────────────────────────────────
+
+function getUserDisplayName(u: BrowsePlatformUser): string {
+  return (
+    u.full_name ||
+    [u.first_name, u.last_name].filter(Boolean).join(" ") ||
+    u.email ||
+    "Unknown"
+  );
+}
+
+function BrowsePanel({
+  open,
+  tabConfig,
+  onClose,
+  onAdded,
+}: {
+  open: boolean;
+  tabConfig: TabConfig;
+  onClose: () => void;
+  onAdded: (name: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<BrowsePlatformUser[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
+  const [selectedTrades, setSelectedTrades] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setResults([]);
+      setAddingId(null);
+      setSelectedAreas([]);
+      setSelectedTrades([]);
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      searchPlatformUsersForBroker(query, {
+        areas: selectedAreas.length > 0 ? selectedAreas : undefined,
+        trades: selectedTrades.length > 0 ? selectedTrades : undefined,
+      }).then((users) => {
+        setResults(users);
+        setLoading(false);
+      });
+    }, query ? 300 : 0);
+    return () => clearTimeout(timer);
+  }, [query, open, selectedAreas, selectedTrades]);
+
+  function toggleArea(area: string) {
+    setSelectedAreas((prev) =>
+      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]
+    );
+  }
+
+  function toggleTrade(trade: string) {
+    setSelectedTrades((prev) =>
+      prev.includes(trade) ? prev.filter((t) => t !== trade) : [...prev, trade]
+    );
+  }
+
+  async function handleAdd(user: BrowsePlatformUser) {
+    setAddingId(user.id);
+    const res = await addPlatformUserToBrokerNetwork({
+      userId: user.id,
+      providerType: tabConfig.key,
+    });
+    if (res.success) {
+      setResults((prev) => prev.filter((u) => u.id !== user.id));
+      onAdded(res.name || getUserDisplayName(user));
+    }
+    setAddingId(null);
+  }
+
+  if (!open) return null;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 99990 }}>
+      <button type="button" aria-label="Close" onClick={onClose}
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", border: "none", cursor: "default" }} />
+      <div style={{
+        position: "absolute", right: 0, top: 0, height: "100%", width: "100%", maxWidth: 480,
+        display: "flex", flexDirection: "column", background: "#0f172a", borderLeft: "1px solid #334155",
+        boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
+      }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", borderBottom: "1px solid #334155", padding: "16px 20px", flexShrink: 0 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>Browse Platform</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: "#94a3b8", marginTop: 2 }}>
+              Find {tabConfig.label.toLowerCase()} already on the platform
+            </div>
+          </div>
+          <button type="button" onClick={onClose}
+            style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, background: "transparent", color: "#94a3b8", border: "none", cursor: "pointer", flexShrink: 0 }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#f1f5f9"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; }}
+          >Close</button>
+        </div>
+
+        {/* Filters + Search */}
+        <div style={{ padding: "16px 20px 0", flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* Area filter pills */}
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+              Service Area
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              <BrowseFilterPill label="All Areas" selected={selectedAreas.length === 0} color="#06b6d4"
+                onClick={() => setSelectedAreas([])} />
+              {BROWSE_SERVICE_AREAS.map((area) => (
+                <BrowseFilterPill key={area} label={area} selected={selectedAreas.includes(area)} color="#06b6d4"
+                  onClick={() => toggleArea(area)} />
+              ))}
+            </div>
+          </div>
+
+          {/* Trade filter pills (contractors tab only) */}
+          {tabConfig.showServiceTypes && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>
+                Trade / Service Type
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                <BrowseFilterPill label="All Trades" selected={selectedTrades.length === 0} color={tabConfig.accent}
+                  onClick={() => setSelectedTrades([])} />
+                {BROWSE_TRADE_OPTIONS.map(({ value, label }) => (
+                  <BrowseFilterPill key={value} label={label} selected={selectedTrades.includes(value)} color={tabConfig.accent}
+                    onClick={() => toggleTrade(value)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Search */}
+          <div style={{ position: "relative" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+            </svg>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, company, email..."
+              style={{ ...INPUT_STYLE, padding: "12px 12px 12px 36px" }}
+            />
+          </div>
+        </div>
+
+        {/* Results */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px 20px" }}>
+          {loading ? (
+            <div style={{ padding: "32px 0", textAlign: "center", color: "#475569", fontSize: 13 }}>
+              Searching...
+            </div>
+          ) : results.length === 0 ? (
+            <div style={{ padding: "32px 0", textAlign: "center", color: "#475569", fontSize: 13, lineHeight: 1.6 }}>
+              No matching {tabConfig.label.toLowerCase()} found on the platform.
+              <br />
+              Use <span style={{ color: "#94a3b8", fontWeight: 600 }}>Invite</span> to bring them onboard.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {results.map((user) => {
+                const name = getUserDisplayName(user);
+                const isAdding = addingId === user.id;
+                return (
+                  <div key={user.id} style={{
+                    display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px",
+                    background: "#1e293b", border: "1px solid #334155", borderRadius: 10,
+                    transition: "border-color 0.15s",
+                  }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 9999, background: "#334155",
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      fontSize: 14, fontWeight: 700, color: "#94a3b8", marginTop: 2,
+                    }}>
+                      {name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {user.company_name || name}
+                      </div>
+                      {user.company_name && user.company_name !== name && (
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 1 }}>{name}</div>
+                      )}
+                      {user.email && (
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {user.email}
+                        </div>
+                      )}
+                      {(user.service_types.length > 0 || user.service_areas.length > 0) && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                          {user.service_types.map((st) => (
+                            <ServiceTypePill key={st} label={SERVICE_TYPE_LABELS[st] ?? st} color={tabConfig.accent} />
+                          ))}
+                          {user.service_areas.map((area) => (
+                            <ServiceTypePill key={area} label={area} color="#06b6d4" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => handleAdd(user)} disabled={isAdding}
+                      style={{
+                        padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, flexShrink: 0,
+                        background: isAdding ? "rgba(16,185,129,0.15)" : "transparent",
+                        color: "#10b981",
+                        border: "1px solid rgba(16,185,129,0.4)",
+                        cursor: isAdding ? "not-allowed" : "pointer",
+                        opacity: isAdding ? 0.6 : 1,
+                        transition: "background 0.15s", marginTop: 2,
+                      }}
+                      onMouseEnter={(e) => { if (!isAdding) e.currentTarget.style.background = "rgba(16,185,129,0.12)"; }}
+                      onMouseLeave={(e) => { if (!isAdding) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {isAdding ? "Adding..." : "+ Add"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function NetworkClient({
@@ -1258,6 +1528,9 @@ export default function NetworkClient({
   // Remove dialog state
   const [removeTarget, setRemoveTarget] = useState<BrokerContractor | null>(null);
   const [removePending, startRemoveTransition] = useTransition();
+
+  // Browse panel state
+  const [browseOpen, setBrowseOpen] = useState(false);
 
   // Invite modal state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -1465,9 +1738,10 @@ export default function NetworkClient({
 
         {/* ── Quick Actions ── */}
         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+          {/* Browse platform */}
           <button
             type="button"
-            onClick={openAddModal}
+            onClick={() => setBrowseOpen(true)}
             style={{
               background: `linear-gradient(135deg, ${currentTabConfig.accent}14, ${currentTabConfig.accent}06)`,
               border: `1px solid ${currentTabConfig.accent}44`,
@@ -1479,8 +1753,8 @@ export default function NetworkClient({
               alignItems: "flex-start",
               gap: 16,
               flex: 1,
-              minWidth: 280,
-              maxWidth: 420,
+              minWidth: 260,
+              maxWidth: 340,
               transition: "transform 0.15s, box-shadow 0.15s",
             }}
             onMouseEnter={(e) => {
@@ -1492,31 +1766,69 @@ export default function NetworkClient({
               e.currentTarget.style.boxShadow = "none";
             }}
           >
-            <span
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                background: `${currentTabConfig.accent}1a`,
-                border: `1px solid ${currentTabConfig.accent}44`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <TabIcon type={currentTabConfig.icon} color={currentTabConfig.accent} />
+            <span style={{
+              width: 40, height: 40, borderRadius: 10,
+              background: `${currentTabConfig.accent}1a`, border: `1px solid ${currentTabConfig.accent}44`,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={currentTabConfig.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+              </svg>
             </span>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: currentTabConfig.accent }}>
-                {currentTabConfig.addLabel}
-              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: currentTabConfig.accent }}>Browse Platform</div>
               <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4, lineHeight: 1.4 }}>
-                {currentTabConfig.addDesc}
+                Find {currentTabConfig.label.toLowerCase()} already on the platform
               </div>
             </div>
           </button>
 
+          {/* Manual add */}
+          <button
+            type="button"
+            onClick={openAddModal}
+            style={{
+              background: "linear-gradient(135deg, rgba(148,163,184,0.08), rgba(148,163,184,0.03))",
+              border: "1px solid #33415544",
+              borderRadius: 12,
+              padding: "20px 24px",
+              cursor: "pointer",
+              textAlign: "left",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 16,
+              flex: 1,
+              minWidth: 260,
+              maxWidth: 340,
+              transition: "transform 0.15s, box-shadow 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.1)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            <span style={{
+              width: 40, height: 40, borderRadius: 10,
+              background: "rgba(148,163,184,0.1)", border: "1px solid #33415544",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <TabIcon type={currentTabConfig.icon} color="#94a3b8" />
+            </span>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#94a3b8" }}>
+                {currentTabConfig.addLabel}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4, lineHeight: 1.4 }}>
+                Manually add a {currentTabConfig.label.toLowerCase().replace(/s$/, "")}
+              </div>
+            </div>
+          </button>
+
+          {/* Invite */}
           {activeTab === "contractor" && (
             <button
               type="button"
@@ -1532,8 +1844,8 @@ export default function NetworkClient({
                 alignItems: "flex-start",
                 gap: 16,
                 flex: 1,
-                minWidth: 280,
-                maxWidth: 420,
+                minWidth: 260,
+                maxWidth: 340,
                 transition: "transform 0.15s, box-shadow 0.15s",
               }}
               onMouseEnter={(e) => {
@@ -1934,6 +2246,17 @@ export default function NetworkClient({
           </div>
         </div>
       </div>
+
+      {/* ── Browse Panel ── */}
+      <BrowsePanel
+        open={browseOpen}
+        tabConfig={currentTabConfig}
+        onClose={() => setBrowseOpen(false)}
+        onAdded={(name) => {
+          setInviteSuccess(`${name} added to your network`);
+          router.refresh();
+        }}
+      />
 
       {/* ── Provider Modal ── */}
       <ProviderModal

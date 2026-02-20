@@ -104,6 +104,188 @@ export async function removeContractor(formData: { id: string }) {
   await svc.removeContractor(formData.id);
 }
 
+// ─── Platform User type & search for Browse panel ───────────────────
+
+export type BrowsePlatformUser = {
+  id: string;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  company_name: string | null;
+  service_areas: string[];
+  service_types: string[];
+};
+
+export async function searchPlatformUsersForBroker(
+  query: string,
+  filters?: { areas?: string[]; trades?: string[] },
+): Promise<BrowsePlatformUser[]> {
+  const supabase = await supabaseServer();
+  const { data: userData } = await supabase.auth.getUser();
+  const brokerId = userData?.user?.id;
+  if (!brokerId) return [];
+
+  const admin = supabaseAdmin;
+
+  // Get contractor_user_ids already in this broker's network
+  const svc = new BrokerService();
+  const broker = await svc.getOrCreateBroker(brokerId);
+  const { data: existingRows } = await admin
+    .from("broker_contractors")
+    .select("contractor_user_id")
+    .eq("broker_id", broker.id)
+    .not("contractor_user_id", "is", null);
+  const excludeIds = new Set(
+    (existingRows ?? []).map((r: Record<string, unknown>) => r.contractor_user_id as string)
+  );
+
+  // If area or trade filters are set, pre-filter via contractor_profiles
+  let filteredProfileIds: Set<string> | null = null;
+  const hasAreaFilter = filters?.areas && filters.areas.length > 0;
+  const hasTradeFilter = filters?.trades && filters.trades.length > 0;
+
+  if (hasAreaFilter || hasTradeFilter) {
+    let cpQuery = admin.from("contractor_profiles").select("id");
+    if (hasAreaFilter) cpQuery = cpQuery.overlaps("service_areas", filters!.areas!);
+    if (hasTradeFilter) cpQuery = cpQuery.overlaps("service_types", filters!.trades!);
+    const { data: cpResults } = await cpQuery;
+    filteredProfileIds = new Set(
+      (cpResults ?? []).map((r: Record<string, unknown>) => r.id as string)
+    );
+    if (filteredProfileIds.size === 0) return [];
+  }
+
+  // Query app_profiles — all contractor-role users
+  let q = admin
+    .from("app_profiles")
+    .select("id,full_name,first_name,last_name,email,phone")
+    .eq("role", "contractor")
+    .order("full_name")
+    .limit(50);
+
+  const trimmed = query.trim();
+  if (trimmed) {
+    q = q.or(
+      `full_name.ilike.%${trimmed}%,email.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`
+    );
+  }
+
+  if (filteredProfileIds !== null) {
+    q = q.in("id", Array.from(filteredProfileIds));
+  }
+
+  const { data: results, error } = await q;
+  if (error) {
+    console.error("[searchPlatformUsersForBroker]", error.message);
+    return [];
+  }
+
+  const matchedUsers = (results ?? [])
+    .filter((r) => !excludeIds.has(r.id))
+    .slice(0, 20);
+
+  if (matchedUsers.length === 0) return [];
+
+  // Enrich with contractor_profiles
+  const userIds = matchedUsers.map((u) => u.id);
+  const { data: cpRows } = await admin
+    .from("contractor_profiles")
+    .select("id,company_name,service_areas,service_types")
+    .in("id", userIds);
+
+  const cpMap = new Map(
+    (cpRows ?? []).map((cp: Record<string, unknown>) => [cp.id as string, cp])
+  );
+
+  return matchedUsers.map((r) => {
+    const cp = cpMap.get(r.id) as Record<string, unknown> | undefined;
+    return {
+      id: r.id,
+      full_name: r.full_name,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      email: r.email,
+      phone: r.phone,
+      company_name: (cp?.company_name as string) ?? null,
+      service_areas: Array.isArray(cp?.service_areas) ? cp.service_areas as string[] : [],
+      service_types: Array.isArray(cp?.service_types) ? cp.service_types as string[] : [],
+    };
+  });
+}
+
+// ─── Add platform user to broker network ────────────────────────────
+
+export async function addPlatformUserToBrokerNetwork(input: {
+  userId: string;
+  providerType: ProviderType;
+}): Promise<{ success: boolean; name?: string; error?: string }> {
+  try {
+    const supabase = await supabaseServer();
+    const { data: userData } = await supabase.auth.getUser();
+    const brokerId = userData?.user?.id;
+    if (!brokerId) return { success: false, error: "Not authenticated" };
+
+    const admin = supabaseAdmin;
+
+    // Get broker record
+    const svc = new BrokerService();
+    const broker = await svc.getOrCreateBroker(brokerId);
+
+    // Check duplicate
+    const { data: dup } = await admin
+      .from("broker_contractors")
+      .select("id")
+      .eq("broker_id", broker.id)
+      .eq("contractor_user_id", input.userId)
+      .maybeSingle();
+    if (dup) return { success: false, error: "This user is already in your network." };
+
+    // Fetch profile info
+    const { data: profile, error: profErr } = await admin
+      .from("app_profiles")
+      .select("id,full_name,first_name,last_name,email,phone")
+      .eq("id", input.userId)
+      .single();
+    if (profErr || !profile) return { success: false, error: "User not found." };
+
+    // Fetch contractor_profiles for extra data
+    const { data: cp } = await admin
+      .from("contractor_profiles")
+      .select("company_name,service_areas,service_types")
+      .eq("id", input.userId)
+      .maybeSingle();
+
+    const name =
+      profile.full_name ||
+      [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+      "Unknown";
+
+    // Add to broker_contractors
+    await svc.createContractor({
+      broker_id: broker.id,
+      contractor_name: (cp as Record<string, unknown>)?.company_name as string || name,
+      contractor_email: profile.email || undefined,
+      contractor_phone: profile.phone || undefined,
+      provider_type: input.providerType,
+      service_types: Array.isArray((cp as Record<string, unknown>)?.service_types) ? (cp as Record<string, unknown>).service_types as string[] : [],
+      service_areas: Array.isArray((cp as Record<string, unknown>)?.service_areas) ? (cp as Record<string, unknown>).service_areas as string[] : [],
+    });
+
+    // Also set up user_relationships
+    await admin.from("user_relationships").upsert({
+      user_id: input.userId,
+      related_user_id: brokerId,
+      relationship_type: "in_broker_network",
+    }, { onConflict: "user_id,related_user_id,relationship_type" });
+
+    return { success: true, name };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Unknown error" };
+  }
+}
+
 // ─── Broker invite contractor ───────────────────────────────────────
 
 function isValidEmail(s: string) {

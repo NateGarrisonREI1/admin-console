@@ -165,11 +165,15 @@ export async function fetchJobBoardData(): Promise<{ data: JobBoardData; isAdmin
     let networkPartnerOf: string[] = [];
     if (!isAdmin) {
       // First try matching by contractor_id (for platform users added to network)
-      const { data: networkRows } = await supabaseAdmin
+      const { data: networkRows, error: networkErr } = await supabaseAdmin
         .from("rei_contractor_network")
         .select("id")
         .eq("contractor_id", userId)
         .eq("status", "active");
+
+      if (networkErr) {
+        console.warn("[fetchJobBoardData] rei_contractor_network may not exist:", networkErr.message);
+      }
 
       if (networkRows && networkRows.length > 0) {
         // Contractor is in REI's network — they can see internal_network leads
