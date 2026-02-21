@@ -233,6 +233,106 @@ const TEMPLATES = [
     is_default: true,
   },
 
+  // ─── Report delivery templates ──────────────────────────────────────
+  {
+    template_key: "report_delivery_invoice",
+    subject: "Your {{service_name}} Report & Invoice",
+    html_body: `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:24px 16px;">
+  <div style="background:#0f172a;border-radius:12px;overflow:hidden;">
+    <div style="padding:28px 24px;text-align:center;border-bottom:2px solid #10b981;">
+      <div style="font-size:20px;font-weight:700;color:#10b981;letter-spacing:0.5px;">LEAF ENERGY</div>
+      <p style="color:#64748b;font-size:12px;margin:4px 0 0;">Home Energy Score Program</p>
+    </div>
+    <div style="padding:32px 24px;">
+      <h1 style="color:#f1f5f9;font-size:22px;font-weight:700;margin:0 0 16px;">Your Report & Invoice</h1>
+      <p style="color:#cbd5e1;font-size:15px;line-height:1.6;margin:0 0 24px;">Hi {{customer_name}}, your {{service_name}} report is ready. Please review the invoice below to access your full reports.</p>
+      <div style="text-align:center;margin:0 0 16px;">
+        <a href="{{hes_report_url}}" style="display:inline-block;padding:14px 32px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;width:220px;box-sizing:border-box;">View HES Report</a>
+      </div>
+      {{leaf_section}}
+      <div style="background:rgba(30,41,59,0.8);border:1px solid rgba(51,65,85,0.5);border-radius:12px;padding:20px;margin:24px 0;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="padding:8px 0;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;">Service</td><td style="padding:8px 0;color:#e2e8f0;font-size:14px;font-weight:600;text-align:right;">{{service_name}}</td></tr>
+          <tr><td style="padding:12px 0 6px;color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;border-top:1px solid rgba(51,65,85,0.5);">Amount Due</td><td style="padding:12px 0 6px;color:#10b981;font-size:22px;font-weight:700;text-align:right;border-top:1px solid rgba(51,65,85,0.5);">${"$"}{{amount}}</td></tr>
+        </table>
+      </div>
+      <div style="text-align:center;margin:0 0 24px;">
+        <a href="{{payment_link}}" style="display:inline-block;padding:16px 48px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:18px;">Pay Now</a>
+      </div>
+    </div>
+    <div style="background:rgba(15,23,42,0.8);padding:20px 24px;text-align:center;border-top:1px solid rgba(51,65,85,0.3);">
+      <p style="color:#64748b;font-size:12px;margin:0 0 4px;font-weight:600;">Renewable Energy Incentives</p>
+      <p style="color:#475569;font-size:11px;margin:0;">Questions? <a href="mailto:support@renewableenergyincentives.com" style="color:#64748b;text-decoration:underline;">support@renewableenergyincentives.com</a></p>
+    </div>
+  </div>
+</div>
+</body></html>`,
+    is_default: true,
+  },
+  {
+    template_key: "report_delivery_free",
+    subject: "Your {{service_name}} Report",
+    html_body: `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:24px 16px;">
+  <div style="background:#0f172a;border-radius:12px;overflow:hidden;">
+    <div style="padding:28px 24px;text-align:center;border-bottom:2px solid #10b981;">
+      <div style="font-size:20px;font-weight:700;color:#10b981;letter-spacing:0.5px;">LEAF ENERGY</div>
+      <p style="color:#64748b;font-size:12px;margin:4px 0 0;">Home Energy Score Program</p>
+    </div>
+    <div style="padding:32px 24px;">
+      <h1 style="color:#f1f5f9;font-size:22px;font-weight:700;margin:0 0 16px;">Your Report is Ready</h1>
+      <p style="color:#cbd5e1;font-size:15px;line-height:1.6;margin:0 0 24px;">Hi {{customer_name}}, your {{service_name}} report is complete and ready to view.</p>
+      <div style="text-align:center;margin:0 0 16px;">
+        <a href="{{hes_report_url}}" style="display:inline-block;padding:14px 32px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;width:220px;box-sizing:border-box;">View HES Report</a>
+      </div>
+      {{leaf_section}}
+      <p style="color:#94a3b8;font-size:13px;line-height:1.6;margin:24px 0 0;text-align:center;">These links will remain active. You can access your reports any time.</p>
+    </div>
+    <div style="background:rgba(15,23,42,0.8);padding:20px 24px;text-align:center;border-top:1px solid rgba(51,65,85,0.3);">
+      <p style="color:#64748b;font-size:12px;margin:0 0 4px;font-weight:600;">Renewable Energy Incentives</p>
+      <p style="color:#475569;font-size:11px;margin:0;">Questions? <a href="mailto:support@renewableenergyincentives.com" style="color:#64748b;text-decoration:underline;">support@renewableenergyincentives.com</a></p>
+    </div>
+  </div>
+</div>
+</body></html>`,
+    is_default: true,
+  },
+  {
+    template_key: "report_delivery_broker_sent",
+    subject: "Your Home Energy Report from {{broker_name}}",
+    html_body: `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:24px 16px;">
+  <div style="background:#0f172a;border-radius:12px;overflow:hidden;">
+    <div style="padding:28px 24px;text-align:center;border-bottom:2px solid #10b981;">
+      <div style="font-size:20px;font-weight:700;color:#10b981;letter-spacing:0.5px;">LEAF ENERGY</div>
+      <p style="color:#64748b;font-size:12px;margin:4px 0 0;">Home Energy Score Program</p>
+    </div>
+    <div style="padding:32px 24px;">
+      <h1 style="color:#f1f5f9;font-size:22px;font-weight:700;margin:0 0 16px;">Your Home Energy Report</h1>
+      <p style="color:#cbd5e1;font-size:15px;line-height:1.6;margin:0 0 24px;">Hi {{customer_name}}, {{broker_name}} from <strong style="color:#f1f5f9;">{{broker_company}}</strong> has shared your Home Energy Score report with you.</p>
+      <div style="text-align:center;margin:0 0 16px;">
+        <a href="{{hes_report_url}}" style="display:inline-block;padding:14px 32px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:700;font-size:16px;width:220px;box-sizing:border-box;">View HES Report</a>
+      </div>
+      {{leaf_section}}
+      <p style="color:#94a3b8;font-size:13px;line-height:1.6;margin:24px 0 0;text-align:center;">These links will remain active. You can access your reports any time.</p>
+    </div>
+    <div style="background:rgba(15,23,42,0.8);padding:20px 24px;text-align:center;border-top:1px solid rgba(51,65,85,0.3);">
+      <p style="color:#64748b;font-size:12px;margin:0 0 4px;font-weight:600;">Renewable Energy Incentives</p>
+      <p style="color:#475569;font-size:11px;margin:0;">Questions? <a href="mailto:support@renewableenergyincentives.com" style="color:#64748b;text-decoration:underline;">support@renewableenergyincentives.com</a></p>
+    </div>
+  </div>
+</div>
+</body></html>`,
+    is_default: true,
+  },
+
   // ─── Legacy templates ─────────────────────────────────────────────
   {
     template_key: "receipt",

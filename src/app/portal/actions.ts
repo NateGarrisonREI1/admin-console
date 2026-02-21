@@ -131,6 +131,11 @@ export type PortalScheduleJob = {
   leaf_report_url: string | null;
   field_completed_at: string | null;
   report_ready_at: string | null;
+  // Broker / payer fields (for delivery modal)
+  requested_by: string | null;
+  payer_name: string | null;
+  payer_email: string | null;
+  broker_id: string | null;
 };
 
 // ─── Schedule Queries ───────────────────────────────────────────────
@@ -216,6 +221,10 @@ function mapScheduleRow(
     leaf_report_url: row.leaf_report_url ?? null,
     field_completed_at: row.field_completed_at ?? null,
     report_ready_at: row.report_ready_at ?? null,
+    requested_by: row.requested_by ?? null,
+    payer_name: row.payer_name ?? null,
+    payer_email: row.payer_email ?? null,
+    broker_id: row.broker_id ?? null,
   };
 }
 
@@ -711,4 +720,189 @@ export async function getJobActivity(
   jobId: string
 ): Promise<ActivityLogEntry[]> {
   return fetchJobActivity(jobId);
+}
+
+// ─── Upload HES report (tech portal) ─────────────────────────────
+
+export async function uploadTechHesReport(
+  jobId: string,
+  formData: FormData,
+): Promise<{ error?: string; url?: string }> {
+  try {
+    const { id } = await requirePortalUser();
+    const { data: profile } = await supabaseAdmin
+      .from("app_profiles")
+      .select("full_name, email, role")
+      .eq("id", id)
+      .single();
+
+    // Verify ownership (admins bypass)
+    if (profile?.role !== "admin" && profile?.email) {
+      const { owned } = await verifyJobOwnership(jobId, profile.email);
+      if (!owned) return { error: "Job not assigned to you." };
+    }
+
+    const file = formData.get("file") as File | null;
+    if (!file) return { error: "No file provided" };
+    if (file.size > 25 * 1024 * 1024) return { error: "File too large (max 25MB)" };
+    if (!file.name.toLowerCase().endsWith(".pdf")) return { error: "Only PDF files accepted" };
+
+    // Determine job type
+    const { data: hesCheck } = await supabaseAdmin
+      .from("hes_schedule").select("id").eq("id", jobId).maybeSingle();
+    const jobType = hesCheck ? "hes" : "inspector";
+    const table = hesCheck ? "hes_schedule" : "inspector_schedule";
+
+    const storagePath = `reports/${jobType}/${jobId}/HES-Report.pdf`;
+
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from("job-files")
+      .upload(storagePath, file, { contentType: "application/pdf", upsert: true });
+
+    if (uploadErr) return { error: uploadErr.message };
+
+    const { data: signed } = await supabaseAdmin.storage
+      .from("job-files")
+      .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+
+    const url = signed?.signedUrl ?? "";
+    await supabaseAdmin.from(table).update({ hes_report_url: url }).eq("id", jobId);
+
+    await logJobActivity(
+      jobId,
+      "hes_report_uploaded",
+      "Tech uploaded HES report PDF",
+      { id, name: profile?.full_name ?? "Field Tech", role: "field_tech" },
+      { filename: file.name, size_bytes: file.size },
+      jobType,
+    );
+
+    revalidatePath("/portal/jobs");
+    return { url };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Upload failed" };
+  }
+}
+
+// ─── Send report delivery (tech portal) ───────────────────────────
+
+export async function sendTechReportDelivery(params: {
+  jobId: string;
+  leafTier: "none" | "basic";
+  leafReportUrl: string | null;
+  recipientEmails: string[];
+}): Promise<{ error?: string }> {
+  try {
+    const { id } = await requirePortalUser();
+    const { data: profile } = await supabaseAdmin
+      .from("app_profiles")
+      .select("full_name, email, role")
+      .eq("id", id)
+      .single();
+
+    if (profile?.role !== "admin" && profile?.email) {
+      const { owned } = await verifyJobOwnership(params.jobId, profile.email);
+      if (!owned) return { error: "Job not assigned to you." };
+    }
+
+    // Determine table
+    const { data: hesCheck } = await supabaseAdmin
+      .from("hes_schedule").select("id").eq("id", params.jobId).maybeSingle();
+    const jobType: "hes" | "inspector" = hesCheck ? "hes" : "inspector";
+    const table = hesCheck ? "hes_schedule" : "inspector_schedule";
+
+    const { data: job, error: fetchErr } = await supabaseAdmin
+      .from(table)
+      .select("customer_name, customer_email, address, city, state, zip, payment_status, hes_report_url, leaf_report_url, invoice_amount, broker_id, service_name, tier_name, requested_by, payer_name, payer_email")
+      .eq("id", params.jobId)
+      .single();
+
+    if (fetchErr || !job) return { error: "Job not found" };
+    if (!job.hes_report_url) return { error: "Upload HES report first" };
+    if (params.recipientEmails.length === 0) return { error: "No recipients selected" };
+
+    const fullAddress = [job.address, job.city, job.state, job.zip].filter(Boolean).join(", ");
+    const serviceName = [job.service_name, job.tier_name].filter(Boolean).join(" — ") || (jobType === "inspector" ? "Home Inspection" : "Home Energy Assessment");
+    const leafUrl = params.leafTier === "basic" ? (params.leafReportUrl || job.leaf_report_url || "") : "";
+
+    const {
+      sendReportDeliveryEmail,
+      sendReportDeliveryBrokerEmail,
+      sendReceiptWithReportsEmail,
+    } = await import("@/lib/services/EmailService");
+
+    const customerEmail = job.customer_email;
+    const sendingToCustomer = customerEmail && params.recipientEmails.includes(customerEmail);
+    const brokerEmail = job.payer_email && job.requested_by === "broker" ? job.payer_email : null;
+    const sendingToBroker = brokerEmail && params.recipientEmails.includes(brokerEmail);
+
+    // Send to homeowner — tech variant: payment section is read-only, so we mirror what admin does based on existing payment_status
+    if (sendingToCustomer) {
+      if (job.payment_status === "paid") {
+        const amount = job.invoice_amount ? Number(job.invoice_amount).toFixed(2) : "0.00";
+        await sendReceiptWithReportsEmail({
+          to: customerEmail,
+          customerName: job.customer_name,
+          amount,
+          hesReportUrl: job.hes_report_url,
+          leafReportUrl: leafUrl || `${process.env.NEXT_PUBLIC_APP_URL || ""}/report/${params.jobId}`,
+          serviceName,
+        });
+      } else {
+        // Tech can't invoice — send free delivery
+        await sendReportDeliveryEmail({
+          to: customerEmail,
+          customerName: job.customer_name,
+          address: fullAddress,
+          hesReportUrl: job.hes_report_url,
+          leafReportUrl: leafUrl || `${process.env.NEXT_PUBLIC_APP_URL || ""}/report/${params.jobId}`,
+          serviceName,
+        });
+      }
+    }
+
+    // Send broker copy (HES only)
+    if (sendingToBroker && brokerEmail) {
+      await sendReportDeliveryBrokerEmail({
+        to: brokerEmail,
+        brokerName: job.payer_name || "Broker",
+        address: fullAddress,
+        hesReportUrl: job.hes_report_url,
+        homeownerName: job.customer_name,
+        serviceName,
+      });
+    }
+
+    // Update job
+    const now = new Date().toISOString();
+    const updates: Record<string, unknown> = {
+      reports_sent_at: now,
+      status: "delivered",
+      delivered_by: "assessor",
+      leaf_tier: params.leafTier,
+    };
+    if (params.leafTier === "basic" && leafUrl) {
+      updates.leaf_report_url = leafUrl;
+    }
+
+    await supabaseAdmin.from(table).update(updates).eq("id", params.jobId);
+
+    await logJobActivity(
+      params.jobId,
+      "reports_delivered",
+      "Reports delivered by tech via portal",
+      { id, name: profile?.full_name ?? "Field Tech", role: "field_tech" },
+      {
+        leaf_tier: params.leafTier,
+        leaf_report_url: leafUrl || null,
+        recipients: params.recipientEmails,
+      },
+      jobType,
+    );
+
+    revalidatePath("/portal/jobs");
+    return {};
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Delivery failed" };
+  }
 }

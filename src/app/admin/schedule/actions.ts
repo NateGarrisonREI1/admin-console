@@ -395,6 +395,206 @@ export async function sendReportsAction(
   return {};
 }
 
+// ─── Admin HES Report Upload ────────────────────────────────────────
+
+export async function uploadAdminHesReport(
+  jobId: string,
+  jobType: MemberType,
+  formData: FormData,
+): Promise<{ error?: string; url?: string }> {
+  const file = formData.get("file") as File | null;
+  if (!file) return { error: "No file provided" };
+  if (file.size > 25 * 1024 * 1024) return { error: "File too large (max 25 MB)" };
+  if (!file.name.toLowerCase().endsWith(".pdf")) return { error: "Only PDF files accepted" };
+
+  const table = jobType === "inspector" ? "inspector_schedule" : "hes_schedule";
+
+  const storagePath = `reports/${jobType}/${jobId}/HES-Report.pdf`;
+
+  const { error: uploadErr } = await supabaseAdmin.storage
+    .from("job-files")
+    .upload(storagePath, file, { contentType: "application/pdf", upsert: true });
+
+  if (uploadErr) return { error: uploadErr.message };
+
+  const { data: signed } = await supabaseAdmin.storage
+    .from("job-files")
+    .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+
+  const url = signed?.signedUrl ?? "";
+
+  await supabaseAdmin.from(table).update({ hes_report_url: url }).eq("id", jobId);
+
+  await logJobActivity(
+    jobId,
+    "hes_report_uploaded",
+    "Admin uploaded HES report PDF",
+    { name: "Admin", role: "admin" },
+    { filename: file.name, size_bytes: file.size },
+    jobType,
+  );
+
+  revalidatePath("/admin/schedule");
+  return { url };
+}
+
+// ─── Admin Remove HES Report ────────────────────────────────────────
+
+export async function removeAdminHesReport(
+  jobId: string,
+  jobType: MemberType,
+): Promise<{ error?: string }> {
+  const table = jobType === "inspector" ? "inspector_schedule" : "hes_schedule";
+
+  const storagePath = `reports/${jobType}/${jobId}/HES-Report.pdf`;
+  await supabaseAdmin.storage.from("job-files").remove([storagePath]);
+  await supabaseAdmin.from(table).update({ hes_report_url: null }).eq("id", jobId);
+
+  await logJobActivity(
+    jobId,
+    "hes_report_removed",
+    "Admin removed HES report",
+    { name: "Admin", role: "admin" },
+    {},
+    jobType,
+  );
+
+  revalidatePath("/admin/schedule");
+  return {};
+}
+
+// ─── Report delivery (modal-based) ──────────────────────────────────
+
+export async function sendReportDelivery(params: {
+  jobId: string;
+  jobType: MemberType;
+  leafTier: "none" | "basic";
+  leafReportUrl: string | null;
+  includeInvoice: boolean;
+  invoiceAmount: number | null;
+  includeReceipt: boolean;
+  recipientEmails: string[];
+  senderVariant: "admin" | "tech" | "broker";
+}): Promise<{ error?: string }> {
+  const table = params.jobType === "inspector" ? "inspector_schedule" : "hes_schedule";
+
+  // Fetch job to validate
+  const { data: job, error: fetchErr } = await supabaseAdmin
+    .from(table)
+    .select("customer_name, customer_email, address, city, state, zip, payment_status, hes_report_url, leaf_report_url, invoice_amount, broker_id, service_name, tier_name, requested_by, payer_name, payer_email")
+    .eq("id", params.jobId)
+    .single();
+
+  if (fetchErr || !job) return { error: "Job not found" };
+  if (!job.hes_report_url) return { error: "No HES report — upload before sending" };
+  if (params.recipientEmails.length === 0) return { error: "No recipients selected" };
+
+  const fullAddress = [job.address, job.city, job.state, job.zip].filter(Boolean).join(", ");
+  const serviceName = [job.service_name, job.tier_name].filter(Boolean).join(" — ") || (params.jobType === "inspector" ? "Home Inspection" : "Home Energy Assessment");
+  const leafUrl = params.leafTier === "basic" ? (params.leafReportUrl || job.leaf_report_url || "") : "";
+
+  const {
+    sendReportDeliveryEmail,
+    sendReportDeliveryBrokerEmail,
+    sendReceiptWithReportsEmail,
+    sendInvoiceEmail,
+  } = await import("@/lib/services/EmailService");
+
+  // Determine which emails to send
+  const customerEmail = job.customer_email;
+  const sendingToCustomer = customerEmail && params.recipientEmails.includes(customerEmail);
+  const brokerEmail = job.payer_email && job.requested_by === "broker" ? job.payer_email : null;
+  const sendingToBroker = brokerEmail && params.recipientEmails.includes(brokerEmail);
+
+  // ── Send to homeowner ────────────────────────────────────────
+  if (sendingToCustomer) {
+    if (job.payment_status === "paid") {
+      // Paid → receipt + reports
+      const amount = job.invoice_amount ? Number(job.invoice_amount).toFixed(2) : "0.00";
+      await sendReceiptWithReportsEmail({
+        to: customerEmail,
+        customerName: job.customer_name,
+        amount,
+        hesReportUrl: job.hes_report_url,
+        leafReportUrl: leafUrl || `${process.env.NEXT_PUBLIC_APP_URL || ""}/report/${params.jobId}`,
+        serviceName,
+      });
+    } else if (params.includeInvoice && params.invoiceAmount) {
+      // Unpaid + invoice → send invoice with report link
+      // First create a Stripe link or use placeholder
+      await sendInvoiceEmail({
+        to: customerEmail,
+        customerName: job.customer_name,
+        amount: params.invoiceAmount.toFixed(2),
+        serviceName,
+        paymentLink: `${process.env.NEXT_PUBLIC_APP_URL || ""}/pay/${params.jobId}`,
+      });
+    } else {
+      // Free / complimentary
+      await sendReportDeliveryEmail({
+        to: customerEmail,
+        customerName: job.customer_name,
+        address: fullAddress,
+        hesReportUrl: job.hes_report_url,
+        leafReportUrl: leafUrl || `${process.env.NEXT_PUBLIC_APP_URL || ""}/report/${params.jobId}`,
+        serviceName,
+      });
+    }
+  }
+
+  // ── Send broker copy (HES only, no LEAF) ────────────────────
+  if (sendingToBroker && brokerEmail) {
+    await sendReportDeliveryBrokerEmail({
+      to: brokerEmail,
+      brokerName: job.payer_name || "Broker",
+      address: fullAddress,
+      hesReportUrl: job.hes_report_url,
+      homeownerName: job.customer_name,
+      serviceName,
+    });
+  }
+
+  // ── Update job record ────────────────────────────────────────
+  const now = new Date().toISOString();
+  const updates: Record<string, unknown> = {
+    reports_sent_at: now,
+    status: "delivered",
+    delivered_by: params.senderVariant === "tech" ? "assessor" : params.senderVariant,
+    leaf_tier: params.leafTier,
+  };
+  if (params.leafTier === "basic" && leafUrl) {
+    updates.leaf_report_url = leafUrl;
+  }
+  if (params.includeInvoice && params.invoiceAmount) {
+    updates.invoice_amount = params.invoiceAmount;
+    updates.payment_status = "invoiced";
+    updates.invoice_sent_at = now;
+  }
+
+  await supabaseAdmin.from(table).update(updates).eq("id", params.jobId);
+
+  // ── Activity log ─────────────────────────────────────────────
+  await logJobActivity(
+    params.jobId,
+    "reports_delivered",
+    "Reports delivered via delivery modal",
+    { name: "Admin", role: params.senderVariant },
+    {
+      leaf_tier: params.leafTier,
+      leaf_report_url: leafUrl || null,
+      include_invoice: params.includeInvoice,
+      invoice_amount: params.invoiceAmount,
+      recipients: params.recipientEmails,
+      sender_variant: params.senderVariant,
+    },
+    params.jobType
+  );
+
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/team");
+  return {};
+}
+
 // ─── Activity Log ──────────────────────────────────────────────────
 
 export async function getJobActivityLog(

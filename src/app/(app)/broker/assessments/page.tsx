@@ -1,11 +1,14 @@
 // src/app/(app)/broker/assessments/page.tsx
 export const dynamic = "force-dynamic";
 
-import { fetchAssessments } from "./actions";
+import { fetchAssessments, fetchBrokerScheduleJobs } from "./actions";
 import AssessmentsClient from "./AssessmentsClient";
 
 export default async function AssessmentsPage() {
-  const data = await fetchAssessments();
+  const [data, oonJobs] = await Promise.all([
+    fetchAssessments(),
+    fetchBrokerScheduleJobs(),
+  ]);
 
   if (!data) {
     return (
@@ -34,5 +37,5 @@ export default async function AssessmentsPage() {
     );
   }
 
-  return <AssessmentsClient broker={data.broker} assessments={data.assessments} />;
+  return <AssessmentsClient broker={data.broker} assessments={data.assessments} outOfNetworkJobs={oonJobs} />;
 }

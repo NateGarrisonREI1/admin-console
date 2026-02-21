@@ -19,7 +19,7 @@ type EmailPayload = {
   html: string;
 };
 
-async function sendEmail(payload: EmailPayload) {
+export async function sendEmail(payload: EmailPayload) {
   if (!process.env.SENDGRID_API_KEY) {
     console.log("[EmailService] No SENDGRID_API_KEY set, logging email:", {
       to: payload.to,
@@ -90,7 +90,7 @@ async function sendEmailWithAttachments(payload: {
 // DB template helper
 // ──────────────────────────────────────────
 
-async function getTemplateHtml(
+export async function getTemplateHtml(
   templateKey: string,
   variables: Record<string, string>
 ): Promise<{ subject: string; html: string } | null> {

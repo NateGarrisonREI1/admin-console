@@ -24,9 +24,13 @@ import {
   updateJobStatus,
   addJobNote,
   getJobActivity,
+  uploadTechHesReport,
+  sendTechReportDelivery,
   type PortalJobDetail,
 } from "../../actions";
 import type { ActivityLogEntry } from "@/lib/activityLog";
+import ReportDeliveryModal from "@/components/ui/ReportDeliveryModal";
+import type { SendReportDeliveryParams } from "@/components/ui/ReportDeliveryModal";
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -271,6 +275,11 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
   const [paidAmount, setPaidAmount] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollStartRef = useRef<number>(0);
+
+  // Report delivery modal state
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [hesUploading, setHesUploading] = useState(false);
+  const hesFileRef = useRef<HTMLInputElement>(null);
 
   // Send Payment Link modal state
   const [showShareModal, setShowShareModal] = useState(false);
@@ -1278,6 +1287,110 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
                 )}
               </div>
             )}
+
+            {/* ── HES Report Upload / View ── */}
+            <div style={{
+              padding: "10px 14px", borderRadius: 8,
+              background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.3)",
+            }}>
+              <div style={{ fontSize: 10, color: "#475569", fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>
+                HES Report
+              </div>
+              {job.hes_report_url ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#10b981", fontSize: 13, fontWeight: 600 }}>✅ Uploaded</span>
+                  <a
+                    href={job.hes_report_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}
+                  >
+                    Preview
+                  </a>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    ref={hesFileRef}
+                    type="file"
+                    accept=".pdf"
+                    style={{ display: "none" }}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setHesUploading(true);
+                      const fd = new FormData();
+                      fd.append("file", file);
+                      const result = await uploadTechHesReport(jobId, fd);
+                      if (result.error) {
+                        setToast(result.error);
+                      } else {
+                        setToast("HES report uploaded");
+                        loadJob();
+                      }
+                      setHesUploading(false);
+                      if (hesFileRef.current) hesFileRef.current.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => hesFileRef.current?.click()}
+                    disabled={hesUploading}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "8px 14px", borderRadius: 8,
+                      background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.2)",
+                      color: "#60a5fa", fontSize: 13, fontWeight: 600,
+                      cursor: hesUploading ? "wait" : "pointer",
+                      opacity: hesUploading ? 0.6 : 1,
+                    }}
+                  >
+                    {hesUploading ? "Uploading..." : "📄 Upload HES Report PDF"}
+                  </button>
+                  <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
+                    .pdf files up to 25MB
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Send Reports button ── */}
+            {job.status !== "delivered" && (
+              <button
+                type="button"
+                disabled={!job.hes_report_url || job.payment_status !== "paid"}
+                onClick={() => setShowDeliveryModal(true)}
+                title={
+                  !job.hes_report_url
+                    ? "Upload HES report first"
+                    : job.payment_status !== "paid"
+                    ? "Payment must be received first"
+                    : "Send reports to homeowner"
+                }
+                style={{
+                  width: "100%",
+                  padding: "12px 0",
+                  borderRadius: 8,
+                  border: "none",
+                  background: job.hes_report_url && job.payment_status === "paid" ? "#10b981" : "rgba(51,65,85,0.5)",
+                  color: job.hes_report_url && job.payment_status === "paid" ? "#fff" : "#64748b",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: job.hes_report_url && job.payment_status === "paid" ? "pointer" : "not-allowed",
+                  opacity: job.hes_report_url && job.payment_status === "paid" ? 1 : 0.5,
+                  transition: "all 0.15s",
+                }}
+              >
+                Send Reports
+              </button>
+            )}
+
+            {/* Delivery confirmation */}
+            {job.reports_sent_at && (
+              <div style={{ fontSize: 12, color: "#10b981", fontWeight: 600 }}>
+                Reports sent {formatTimestamp(job.reports_sent_at)}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1503,6 +1616,51 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
           .qr-code { width: 180px !important; height: 180px !important; }
         }
       `}</style>
+
+      {/* Report Delivery Modal (tech variant) */}
+      {showDeliveryModal && job && (
+        <ReportDeliveryModal
+          variant="tech"
+          job={{
+            id: job.id,
+            type: job.type,
+            customer_name: job.customer_name,
+            customer_email: job.customer_email,
+            address: job.address,
+            city: job.city,
+            state: job.state,
+            zip: job.zip,
+            service_name: job.service_name,
+            tier_name: job.tier_name,
+            hes_report_url: job.hes_report_url,
+            leaf_report_url: job.leaf_report_url,
+            payment_status: job.payment_status,
+            invoice_amount: job.invoice_amount,
+            reports_sent_at: job.reports_sent_at,
+            invoice_sent_at: job.invoice_sent_at,
+            requested_by: job.requested_by,
+            payer_name: job.payer_name,
+            payer_email: job.payer_email,
+            broker_id: job.broker_id,
+          }}
+          onClose={() => setShowDeliveryModal(false)}
+          onSend={async (p: SendReportDeliveryParams) => {
+            const result = await sendTechReportDelivery({
+              jobId: job.id,
+              leafTier: p.leafTier,
+              leafReportUrl: p.leafReportUrl,
+              recipientEmails: p.recipientEmails,
+            });
+            if (!result.error) {
+              setShowDeliveryModal(false);
+              showToast("Reports sent successfully");
+              loadJob();
+              loadActivity();
+            }
+            return result;
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -16,6 +16,9 @@ import {
   updateJobCustomerInfo,
   updateJobField,
   confirmPendingJob,
+  sendReportDelivery,
+  uploadAdminHesReport,
+  removeAdminHesReport,
 } from "./actions";
 import type { ServiceCatalog } from "../_actions/services";
 import { fetchServiceCatalog } from "../_actions/services";
@@ -26,6 +29,8 @@ import { useIsMobile, useIsSmallMobile } from "@/lib/useMediaQuery";
 import { PlusIcon, AdjustmentsHorizontalIcon, ChevronDownIcon, PencilIcon, CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import StatusProgressBar from "@/components/ui/StatusProgressBar";
 import TimePicker from "@/components/ui/TimePicker";
+import ReportDeliveryModal from "@/components/ui/ReportDeliveryModal";
+import type { SendReportDeliveryParams } from "@/components/ui/ReportDeliveryModal";
 const PANEL_WIDTH = 420;
 
 // ─── Design tokens ──────────────────────────────────────────────────
@@ -543,8 +548,10 @@ function ScheduleMobileCard({
         background: "rgba(30,41,59,0.5)",
         borderRadius: 12,
         padding: 16,
-        border: isSelected ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(51,65,85,0.5)",
-        borderLeft: job.status === "pending" && !isSelected ? "4px solid rgba(245,158,11,0.6)" : undefined,
+        borderTop: isSelected ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(51,65,85,0.5)",
+        borderRight: isSelected ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(51,65,85,0.5)",
+        borderBottom: isSelected ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(51,65,85,0.5)",
+        borderLeft: job.status === "pending" && !isSelected ? "4px solid rgba(245,158,11,0.6)" : isSelected ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(51,65,85,0.5)",
         marginBottom: 12,
         cursor: "pointer",
       }}
@@ -1215,6 +1222,7 @@ function JobDetailContent({
   onRescheduleRequest,
   onArchiveRequest,
   onDeleteRequest,
+  onSendReports,
 }: {
   job: ScheduleJob;
   members: { id: string; name: string; type: MemberType }[];
@@ -1223,9 +1231,53 @@ function JobDetailContent({
   onRescheduleRequest: (job: ScheduleJob) => void;
   onArchiveRequest: (job: ScheduleJob) => void;
   onDeleteRequest: (job: ScheduleJob) => void;
+  onSendReports: (job: ScheduleJob) => void;
 }) {
   const [notes, setNotes] = useState(job.special_notes ?? "");
   const [busy, setBusy] = useState(false);
+
+  // HES report upload state
+  const hesFileRef = useRef<HTMLInputElement>(null);
+  const [hesUploading, setHesUploading] = useState(false);
+  const [hesRemoving, setHesRemoving] = useState(false);
+  const [showPasteUrl, setShowPasteUrl] = useState(false);
+  const [pasteUrlDraft, setPasteUrlDraft] = useState("");
+  const [localHesUrl, setLocalHesUrl] = useState(job.hes_report_url ?? "");
+
+  useEffect(() => { setLocalHesUrl(job.hes_report_url ?? ""); }, [job.hes_report_url]);
+
+  async function handleHesUpload(file: File) {
+    setHesUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await uploadAdminHesReport(job.id, job.type, fd);
+      if (res.error) { alert(res.error); return; }
+      if (res.url) setLocalHesUrl(res.url);
+      onStatusUpdated("HES report uploaded.");
+    } catch { alert("Upload failed"); } finally { setHesUploading(false); }
+  }
+
+  async function handleHesRemove() {
+    if (!confirm("Remove the HES report PDF?")) return;
+    setHesRemoving(true);
+    try {
+      const res = await removeAdminHesReport(job.id, job.type);
+      if (res.error) { alert(res.error); return; }
+      setLocalHesUrl("");
+      onStatusUpdated("HES report removed.");
+    } catch { alert("Remove failed"); } finally { setHesRemoving(false); }
+  }
+
+  async function handlePasteUrlSave() {
+    const url = pasteUrlDraft.trim();
+    if (!url) return;
+    await updateJobField(job.id, job.type, "hes_report_url", url);
+    setLocalHesUrl(url);
+    setShowPasteUrl(false);
+    setPasteUrlDraft("");
+    onStatusUpdated("HES report URL saved.");
+  }
 
   // Pending job confirmation state
   const [confirmDate, setConfirmDate] = useState(job.scheduled_date ?? "");
@@ -1675,18 +1727,61 @@ function JobDetailContent({
           </div>
 
           {/* HES Report */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: 8, background: "rgba(30,41,59,0.5)", border: `1px solid ${BORDER}` }}>
-            <div>
-              <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>HES Report</div>
-              {job.hes_report_url ? (
-                <a href={job.hes_report_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>
-                  View Report
-                </a>
-              ) : (
-                <span style={{ fontSize: 12, color: TEXT_DIM }}>Not uploaded</span>
-              )}
-            </div>
-            <PayerField label="" value={job.hes_report_url} jobId={job.id} jobType={job.type} field="hes_report_url" onSaved={onStatusUpdated} compact />
+          <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(30,41,59,0.5)", border: `1px solid ${BORDER}` }}>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 6 }}>HES Report</div>
+            <input ref={hesFileRef} type="file" accept=".pdf" style={{ display: "none" }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleHesUpload(f); e.target.value = ""; }} />
+            {localHesUrl ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ color: EMERALD, fontSize: 13 }}>&#10003;</span>
+                  <span style={{ fontSize: 12, color: TEXT_SEC, fontWeight: 600 }}>Uploaded</span>
+                  <a href={localHesUrl} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", fontWeight: 600, marginLeft: "auto" }}>
+                    Preview
+                  </a>
+                  <button type="button" disabled={hesRemoving}
+                    onClick={handleHesRemove}
+                    style={{ fontSize: 11, color: "#f87171", background: "none", border: "none", cursor: "pointer", fontWeight: 600, padding: 0, opacity: hesRemoving ? 0.5 : 1 }}>
+                    {hesRemoving ? "Removing…" : "Remove"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <button type="button" disabled={hesUploading}
+                  onClick={() => hesFileRef.current?.click()}
+                  style={{
+                    width: "100%", padding: "8px 0", borderRadius: 6,
+                    border: "1px dashed rgba(100,116,139,0.5)", background: "rgba(30,41,59,0.3)",
+                    color: hesUploading ? TEXT_DIM : "#60a5fa", fontSize: 12, fontWeight: 600,
+                    cursor: hesUploading ? "wait" : "pointer",
+                  }}>
+                  {hesUploading ? "Uploading…" : "Upload PDF"}
+                </button>
+                {!showPasteUrl ? (
+                  <button type="button" onClick={() => setShowPasteUrl(true)}
+                    style={{ fontSize: 11, color: TEXT_DIM, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0 }}>
+                    or paste URL
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <input value={pasteUrlDraft} onChange={(e) => setPasteUrlDraft(e.target.value)}
+                      placeholder="https://…" autoFocus className="admin-input"
+                      style={{ fontSize: 12, padding: "4px 8px", flex: 1, minWidth: 0 }}
+                      onKeyDown={(e) => { if (e.key === "Enter") handlePasteUrlSave(); if (e.key === "Escape") { setShowPasteUrl(false); setPasteUrlDraft(""); } }} />
+                    <button type="button" onClick={handlePasteUrlSave}
+                      style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 6, padding: "3px 5px", cursor: "pointer", display: "flex" }}>
+                      <CheckIcon style={{ width: 14, height: 14, color: "#10b981" }} />
+                    </button>
+                    <button type="button" onClick={() => { setShowPasteUrl(false); setPasteUrlDraft(""); }}
+                      style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 6, padding: "3px 5px", cursor: "pointer", display: "flex" }}>
+                      <XMarkIcon style={{ width: 14, height: 14, color: "#f87171" }} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* LEAF Report */}
@@ -1707,6 +1802,28 @@ function JobDetailContent({
               Reports sent {new Date(job.reports_sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
             </div>
           )}
+
+          {/* Send Reports button */}
+          <button
+            type="button"
+            disabled={!localHesUrl || job.payment_status !== "paid"}
+            onClick={() => onSendReports({ ...job, hes_report_url: localHesUrl || null })}
+            style={{
+              width: "100%",
+              padding: "10px 0",
+              borderRadius: 8,
+              border: "none",
+              background: localHesUrl && job.payment_status === "paid" ? EMERALD : BORDER,
+              color: localHesUrl && job.payment_status === "paid" ? "#fff" : TEXT_DIM,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: localHesUrl && job.payment_status === "paid" ? "pointer" : "not-allowed",
+              opacity: localHesUrl && job.payment_status === "paid" ? 1 : 0.5,
+              transition: "background 0.15s",
+            }}
+          >
+            {job.reports_sent_at ? "Resend Reports" : "Send Reports"}
+          </button>
         </div>
       </div>
 
@@ -1871,6 +1988,9 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<ScheduleJob | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  // Report delivery modal
+  const [deliveryTarget, setDeliveryTarget] = useState<ScheduleJob | null>(null);
 
   async function openScheduleModal() {
     if (!catalogLoaded) {
@@ -2885,6 +3005,55 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
         </ModalOverlay>
       )}
 
+      {/* Report Delivery Modal */}
+      {deliveryTarget && (
+        <ReportDeliveryModal
+          variant="admin"
+          job={{
+            id: deliveryTarget.id,
+            type: deliveryTarget.type,
+            customer_name: deliveryTarget.customer_name,
+            customer_email: deliveryTarget.customer_email,
+            address: deliveryTarget.address,
+            city: deliveryTarget.city,
+            state: deliveryTarget.state,
+            zip: deliveryTarget.zip,
+            service_name: deliveryTarget.service_name,
+            tier_name: deliveryTarget.tier_name,
+            hes_report_url: deliveryTarget.hes_report_url,
+            leaf_report_url: deliveryTarget.leaf_report_url,
+            payment_status: deliveryTarget.payment_status,
+            invoice_amount: deliveryTarget.invoice_amount,
+            reports_sent_at: deliveryTarget.reports_sent_at,
+            invoice_sent_at: deliveryTarget.invoice_sent_at,
+            requested_by: deliveryTarget.requested_by,
+            payer_name: deliveryTarget.payer_name,
+            payer_email: deliveryTarget.payer_email,
+            broker_id: deliveryTarget.broker_id,
+          }}
+          onClose={() => setDeliveryTarget(null)}
+          onSend={async (p: SendReportDeliveryParams) => {
+            const result = await sendReportDelivery({
+              jobId: deliveryTarget.id,
+              jobType: deliveryTarget.type,
+              leafTier: p.leafTier,
+              leafReportUrl: p.leafReportUrl,
+              includeInvoice: p.includeInvoice,
+              invoiceAmount: p.invoiceAmount,
+              includeReceipt: p.includeReceipt,
+              recipientEmails: p.recipientEmails,
+              senderVariant: "admin",
+            });
+            if (!result.error) {
+              setDeliveryTarget(null);
+              setToast("Reports sent successfully");
+              handleRefresh();
+            }
+            return result;
+          }}
+        />
+      )}
+
       {/* Toast */}
       {toast && <Toast message={toast} onDone={clearToast} />}
     </div>
@@ -2943,6 +3112,7 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
               onRescheduleRequest={(j) => setRescheduleTarget(j)}
               onArchiveRequest={(j) => setArchiveTarget(j)}
               onDeleteRequest={(j) => setDeleteTarget(j)}
+              onSendReports={(j) => setDeliveryTarget(j)}
             />
           </div>
         )}

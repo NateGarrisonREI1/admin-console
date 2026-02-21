@@ -49,6 +49,8 @@ export type ScheduleJob = {
   field_completed_at: string | null;
   report_ready_at: string | null;
   invoice_sent_at: string | null;
+  delivered_by: string | null;
+  leaf_tier: string | null;
 };
 
 export type SchedulePageData = {
@@ -128,6 +130,8 @@ function unifyHes(row: HesScheduleEntry): ScheduleJob {
     field_completed_at: (row as any).field_completed_at ?? null,
     report_ready_at: (row as any).report_ready_at ?? null,
     invoice_sent_at: (row as any).invoice_sent_at ?? null,
+    delivered_by: (row as any).delivered_by ?? null,
+    leaf_tier: (row as any).leaf_tier ?? null,
   };
 }
 
@@ -172,6 +176,8 @@ function unifyInsp(row: InspectorScheduleEntry): ScheduleJob {
     field_completed_at: (row as any).field_completed_at ?? null,
     report_ready_at: (row as any).report_ready_at ?? null,
     invoice_sent_at: (row as any).invoice_sent_at ?? null,
+    delivered_by: (row as any).delivered_by ?? null,
+    leaf_tier: (row as any).leaf_tier ?? null,
   };
 }
 

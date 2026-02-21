@@ -3,7 +3,9 @@
 import { useState, useTransition, useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import type { Broker, BrokerAssessment } from "@/types/broker";
-import { createAssessment } from "./actions";
+import { createAssessment, logOutOfNetworkJob, uploadHesReport, removeHesReport, sendBrokerDelivery } from "./actions";
+import type { BrokerScheduleJob } from "./actions";
+import BrokerDeliveryPanel from "@/components/ui/BrokerDeliveryPanel";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -1231,20 +1233,367 @@ function NewAssessmentModal({
 }
 
 // ─────────────────────────────────────────────────────────
+// Out-of-Network Job Card
+// ─────────────────────────────────────────────────────────
+
+function OutOfNetworkJobCard({ job }: { job: BrokerScheduleJob }) {
+  const isDelivered = job.status === "delivered";
+  const address = [job.address, job.city, job.state, job.zip].filter(Boolean).join(", ");
+
+  return (
+    <div
+      style={{
+        background: "#1e293b",
+        border: "1px solid #334155",
+        borderRadius: 12,
+        overflow: "hidden",
+      }}
+    >
+      {/* Card header */}
+      <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+        {/* Top row: badge + date */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {isDelivered ? (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "3px 10px", borderRadius: 9999,
+              background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)",
+              color: "#f59e0b", fontSize: 11, fontWeight: 700,
+            }}>
+              🟡 SELF-MANAGED
+            </span>
+          ) : (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "3px 10px", borderRadius: 9999,
+              background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.25)",
+              color: "#f59e0b", fontSize: 11, fontWeight: 700,
+            }}>
+              ⚠️ OUT-OF-NETWORK
+            </span>
+          )}
+          <span style={{ fontSize: 12, color: "#64748b" }}>
+            {fmtDate(job.scheduled_date)}
+          </span>
+        </div>
+
+        {/* Address & service */}
+        {address && (
+          <div style={{ fontSize: 13, color: "#cbd5e1", fontWeight: 600 }}>
+            📍 {address}
+          </div>
+        )}
+        <div style={{ fontSize: 13, color: "#94a3b8" }}>
+          🏠 {job.service_name || (job.type === "inspector" ? "Home Inspection" : "HES Assessment")}
+        </div>
+
+        {/* Customer */}
+        <div style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 600 }}>
+          {job.customer_name}
+          {job.customer_email && (
+            <span style={{ color: "#64748b", fontWeight: 400, marginLeft: 6 }}>{job.customer_email}</span>
+          )}
+        </div>
+
+        {/* Assessor */}
+        {job.external_assessor_name && (
+          <div style={{ fontSize: 12, color: "#64748b" }}>
+            Assessor: {job.external_assessor_name}
+            {job.external_assessor_company && ` (${job.external_assessor_company})`}
+            <span style={{ color: "#475569" }}> — not in REI network</span>
+          </div>
+        )}
+
+        {/* LEAF + Leads status (pending) */}
+        {!isDelivered && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: "#f59e0b" }}>
+              🌿 LEAF: ⚠️ Awaiting your delivery
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              📊 Leads: Inactive until LEAF is sent
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Delivery panel */}
+      <div style={{ padding: "0 16px 16px" }}>
+        <BrokerDeliveryPanel
+          job={job}
+          onUpload={uploadHesReport}
+          onRemoveReport={removeHesReport}
+          onSend={sendBrokerDelivery}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Log Out-of-Network Job Modal
+// ─────────────────────────────────────────────────────────
+
+function LogOutOfNetworkJobModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [serviceType, setServiceType] = useState<"hes" | "inspector">("hes");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("OR");
+  const [zip, setZip] = useState("");
+  const [dateCompleted, setDateCompleted] = useState(new Date().toISOString().slice(0, 10));
+  const [assessorName, setAssessorName] = useState("");
+  const [assessorCompany, setAssessorCompany] = useState("");
+  const [assessorEmail, setAssessorEmail] = useState("");
+
+  const [submitting, startTransition] = useTransition();
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !submitting) onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, submitting]);
+
+  function handleOverlayClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target === overlayRef.current && !submitting) onClose();
+  }
+
+  function handleSubmit() {
+    if (!customerName.trim()) { setError("Customer name is required."); return; }
+    if (!address.trim()) { setError("Address is required."); return; }
+    if (!city.trim()) { setError("City is required."); return; }
+    if (!assessorName.trim()) { setError("Assessor name is required."); return; }
+
+    setError("");
+    startTransition(async () => {
+      try {
+        const result = await logOutOfNetworkJob({
+          serviceType,
+          customer_name: customerName.trim(),
+          customer_email: customerEmail.trim() || undefined,
+          customer_phone: customerPhone.trim() || undefined,
+          address: address.trim(),
+          city: city.trim(),
+          state,
+          zip: zip.trim(),
+          scheduled_date: dateCompleted,
+          external_assessor_name: assessorName.trim(),
+          external_assessor_company: assessorCompany.trim() || undefined,
+          external_assessor_email: assessorEmail.trim() || undefined,
+        });
+        if (result.error) throw new Error(result.error);
+        setSuccess(true);
+        setTimeout(() => onCreated(), 900);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to log job.");
+      }
+    });
+  }
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={handleOverlayClick}
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        background: "rgba(0,0,0,0.65)",
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+      }}
+    >
+      <div style={{
+        background: "#0f172a", border: "1px solid #334155", borderRadius: 16,
+        width: "100%", maxWidth: 560, maxHeight: "90vh", overflow: "hidden",
+        display: "flex", flexDirection: "column",
+        boxShadow: "0 30px 80px rgba(0,0,0,0.55)",
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "18px 20px", borderBottom: "1px solid #334155",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#f1f5f9" }}>
+              Log Out-of-Network Job
+            </div>
+            <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>
+              Record a job done by an assessor outside the REI network
+            </div>
+          </div>
+          <button
+            type="button" onClick={onClose} disabled={submitting}
+            style={{
+              background: "transparent", border: "none", color: "#64748b",
+              fontSize: 22, cursor: "pointer", lineHeight: 1, padding: 4,
+              opacity: submitting ? 0.5 : 1,
+            }}
+            aria-label="Close modal"
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{
+          padding: 20, overflowY: "auto", flex: 1,
+          display: "flex", flexDirection: "column", gap: 14,
+        }}>
+          {success ? (
+            <div style={{
+              padding: 20, borderRadius: 10,
+              background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)",
+              color: "#10b981", fontWeight: 700, fontSize: 14, textAlign: "center",
+            }}>
+              Job logged! You can now upload the HES report and deliver.
+            </div>
+          ) : (
+            <>
+              {/* Service type */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Service Type
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                {(["hes", "inspector"] as const).map((t) => (
+                  <label key={t} style={{
+                    flex: 1, display: "flex", alignItems: "center", gap: 8,
+                    padding: "10px 14px", borderRadius: 8, cursor: "pointer",
+                    background: serviceType === t ? "rgba(16,185,129,0.06)" : "transparent",
+                    border: `1px solid ${serviceType === t ? "rgba(16,185,129,0.2)" : "#334155"}`,
+                  }}>
+                    <input
+                      type="radio" name="serviceType"
+                      checked={serviceType === t}
+                      onChange={() => setServiceType(t)}
+                      style={{ accentColor: "#10b981" }}
+                    />
+                    <span style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 600 }}>
+                      {t === "hes" ? "HES Assessment" : "Home Inspection"}
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              {/* Homeowner */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 4 }}>
+                Homeowner
+              </div>
+              <FormField label="Name" required>
+                <input className="admin-input" type="text" placeholder="Jane Smith" value={customerName} onChange={(e) => setCustomerName(e.target.value)} autoFocus />
+              </FormField>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FormField label="Email">
+                  <input className="admin-input" type="email" placeholder="jane@email.com" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} />
+                </FormField>
+                <FormField label="Phone">
+                  <input className="admin-input" type="tel" placeholder="(503) 555-0100" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+                </FormField>
+              </div>
+
+              {/* Property */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 4 }}>
+                Property Address
+              </div>
+              <FormField label="Street" required>
+                <input className="admin-input" type="text" placeholder="123 Main St" value={address} onChange={(e) => setAddress(e.target.value)} />
+              </FormField>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 12 }}>
+                <FormField label="City" required>
+                  <input className="admin-input" type="text" placeholder="Portland" value={city} onChange={(e) => setCity(e.target.value)} />
+                </FormField>
+                <FormField label="State">
+                  <select className="admin-select" value={state} onChange={(e) => setState(e.target.value)}>
+                    {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="ZIP">
+                  <input className="admin-input" type="text" placeholder="97201" maxLength={10} value={zip} onChange={(e) => setZip(e.target.value)} />
+                </FormField>
+              </div>
+
+              {/* Date */}
+              <FormField label="Date Completed" required>
+                <input className="admin-input" type="date" value={dateCompleted} onChange={(e) => setDateCompleted(e.target.value)} />
+              </FormField>
+
+              {/* External assessor */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 4 }}>
+                External Assessor
+              </div>
+              <FormField label="Assessor Name" required>
+                <input className="admin-input" type="text" placeholder="Joe's Energy" value={assessorName} onChange={(e) => setAssessorName(e.target.value)} />
+              </FormField>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <FormField label="Company">
+                  <input className="admin-input" type="text" placeholder="Energy Co." value={assessorCompany} onChange={(e) => setAssessorCompany(e.target.value)} />
+                </FormField>
+                <FormField label="Email">
+                  <input className="admin-input" type="email" placeholder="joe@energy.com" value={assessorEmail} onChange={(e) => setAssessorEmail(e.target.value)} />
+                </FormField>
+              </div>
+
+              {error && (
+                <div style={{
+                  fontSize: 13, color: "#f87171", fontWeight: 600,
+                  padding: "8px 12px", borderRadius: 8,
+                  background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.20)",
+                }}>
+                  {error}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!success && (
+          <div style={{
+            padding: "14px 20px", borderTop: "1px solid #334155",
+            display: "flex", gap: 10, justifyContent: "flex-end",
+          }}>
+            <button type="button" onClick={onClose} className="admin-btn-secondary" disabled={submitting} style={{ opacity: submitting ? 0.6 : 1 }}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleSubmit} className="admin-btn-primary" disabled={submitting} style={{ opacity: submitting ? 0.6 : 1 }}>
+              {submitting ? "Creating..." : "Log Job"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
 // Main Client Component
 // ─────────────────────────────────────────────────────────
 
 export default function AssessmentsClient({
   broker,
   assessments: initialAssessments,
+  outOfNetworkJobs: initialOonJobs,
 }: {
   broker: Broker;
   assessments: BrokerAssessment[];
+  outOfNetworkJobs: BrokerScheduleJob[];
 }) {
   const [assessments, setAssessments] = useState<BrokerAssessment[]>(initialAssessments);
+  const [oonJobs] = useState<BrokerScheduleJob[]>(initialOonJobs);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showOonModal, setShowOonModal] = useState(false);
 
   const filterOptions: { key: StatusFilter; label: string }[] = [
     { key: "all", label: "All" },
@@ -1315,59 +1664,94 @@ export default function AssessmentsClient({
           </p>
         </div>
 
-        {/* ── Quick Action ── */}
-        <button
-          type="button"
-          onClick={() => setShowNewModal(true)}
-          style={{
-            background: "linear-gradient(135deg, rgba(16,185,129,0.09), rgba(16,185,129,0.03))",
-            border: "1px solid rgba(16,185,129,0.27)",
-            borderRadius: 12,
-            padding: "20px 24px",
-            cursor: "pointer",
-            textAlign: "left",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: 16,
-            width: "100%",
-            maxWidth: 420,
-            transition: "transform 0.15s, box-shadow 0.15s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = "translateY(-2px)";
-            e.currentTarget.style.boxShadow = "0 8px 24px rgba(16,185,129,0.13)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = "translateY(0)";
-            e.currentTarget.style.boxShadow = "none";
-          }}
-        >
-          <span
+        {/* ── Quick Actions ── */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setShowNewModal(true)}
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 10,
-              background: "rgba(16,185,129,0.13)",
+              background: "linear-gradient(135deg, rgba(16,185,129,0.09), rgba(16,185,129,0.03))",
               border: "1px solid rgba(16,185,129,0.27)",
+              borderRadius: 12,
+              padding: "16px 20px",
+              cursor: "pointer",
+              textAlign: "left",
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
+              alignItems: "flex-start",
+              gap: 12,
+              flex: "1 1 280px",
+              maxWidth: 380,
+              transition: "transform 0.15s, box-shadow 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 8px 24px rgba(16,185,129,0.13)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "none";
             }}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M10 3v14M3 10h14" stroke="#10b981" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </span>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#10b981" }}>
-              + New Assessment
+            <span style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: "rgba(16,185,129,0.13)", border: "1px solid rgba(16,185,129,0.27)",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path d="M10 3v14M3 10h14" stroke="#10b981" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#10b981" }}>+ New Assessment</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, lineHeight: 1.4 }}>
+                Send an assessment link to a homeowner
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4, lineHeight: 1.4 }}>
-              Send an assessment link to a homeowner customer
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowOonModal(true)}
+            style={{
+              background: "linear-gradient(135deg, rgba(245,158,11,0.09), rgba(245,158,11,0.03))",
+              border: "1px solid rgba(245,158,11,0.27)",
+              borderRadius: 12,
+              padding: "16px 20px",
+              cursor: "pointer",
+              textAlign: "left",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 12,
+              flex: "1 1 280px",
+              maxWidth: 380,
+              transition: "transform 0.15s, box-shadow 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 8px 24px rgba(245,158,11,0.13)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
+          >
+            <span style={{
+              width: 36, height: 36, borderRadius: 9,
+              background: "rgba(245,158,11,0.13)", border: "1px solid rgba(245,158,11,0.27)",
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+                <path d="M10 3v14M3 10h14" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#f59e0b" }}>Log Out-of-Network Job</div>
+              <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3, lineHeight: 1.4 }}>
+                Record a job done outside the REI network
+              </div>
             </div>
-          </div>
-        </button>
+          </button>
+        </div>
 
         {/* KPI summary strip */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -1394,6 +1778,23 @@ export default function AssessmentsClient({
             />
           )}
         </div>
+
+        {/* ── Out-of-Network Jobs ── */}
+        {oonJobs.length > 0 && (
+          <div>
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: "#64748b",
+              textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10,
+            }}>
+              Out-of-Network Jobs ({oonJobs.length})
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {oonJobs.map((j) => (
+                <OutOfNetworkJobCard key={j.id} job={j} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filter bar */}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1481,6 +1882,14 @@ export default function AssessmentsClient({
         <NewAssessmentModal
           onClose={() => setShowNewModal(false)}
           onCreated={handleCreated}
+        />
+      )}
+
+      {/* Log Out-of-Network Job Modal */}
+      {showOonModal && (
+        <LogOutOfNetworkJobModal
+          onClose={() => setShowOonModal(false)}
+          onCreated={() => { setShowOonModal(false); window.location.reload(); }}
         />
       )}
     </>

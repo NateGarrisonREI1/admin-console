@@ -39,6 +39,9 @@ const TEMPLATE_META: Record<string, TemplateMeta> = {
   payment_receipt:         { name: "Receipt — With Reports",       description: "Combined receipt + report delivery after invoice payment", group: "job_workflow", order: 5 },
   report_delivery:         { name: "Report Delivery",              description: "Delivers report + LEAF link to homeowner",                group: "job_workflow", order: 6 },
   report_delivery_broker:  { name: "Report Delivery (Broker)",     description: "Delivers report to broker for RMLS",                      group: "job_workflow", order: 7 },
+  report_delivery_invoice: { name: "Report + Invoice",             description: "Report delivery with payment invoice attached",            group: "job_workflow", order: 8 },
+  report_delivery_free:    { name: "Report Delivery (Free)",       description: "Report sent free — comp, warranty, or no charge",          group: "job_workflow", order: 9 },
+  report_delivery_broker_sent: { name: "Report (Broker-Sent)",     description: "Broker sends report to homeowner (out-of-network job)",    group: "job_workflow", order: 10 },
 
   // Marketplace
   payment_confirmation:    { name: "Payment Confirmation",         description: "Lead purchase confirmation",                              group: "marketplace", order: 1 },
@@ -118,6 +121,27 @@ const TEMPLATE_VARIABLES: Record<string, EmailTemplateVariable[]> = {
     { key: "amount", label: "Amount", sample: "299.00" },
     { key: "hes_report_url", label: "HES Report URL", sample: "https://leafenergy.app/reports/hes/abc123" },
     { key: "leaf_report_url", label: "LEAF Report URL", sample: "https://leafenergy.app/report/abc123" },
+  ],
+  report_delivery_invoice: [
+    { key: "customer_name", label: "Customer Name", sample: "Jane Smith" },
+    { key: "service_name", label: "Service Name", sample: "Home Energy Assessment" },
+    { key: "hes_report_url", label: "HES Report URL", sample: "https://leafenergy.app/reports/hes/abc123" },
+    { key: "leaf_section", label: "LEAF Section", sample: "" },
+    { key: "payment_link", label: "Payment Link", sample: "https://checkout.stripe.com/example" },
+    { key: "amount", label: "Amount", sample: "299.00" },
+  ],
+  report_delivery_free: [
+    { key: "customer_name", label: "Customer Name", sample: "Jane Smith" },
+    { key: "service_name", label: "Service Name", sample: "Home Energy Assessment" },
+    { key: "hes_report_url", label: "HES Report URL", sample: "https://leafenergy.app/reports/hes/abc123" },
+    { key: "leaf_section", label: "LEAF Section", sample: "" },
+  ],
+  report_delivery_broker_sent: [
+    { key: "customer_name", label: "Customer Name", sample: "Jane Smith" },
+    { key: "broker_name", label: "Broker Name", sample: "Marcus Webb" },
+    { key: "broker_company", label: "Broker Company", sample: "Keller Williams Realty" },
+    { key: "hes_report_url", label: "HES Report URL", sample: "https://leafenergy.app/reports/hes/abc123" },
+    { key: "leaf_section", label: "LEAF Section", sample: "" },
   ],
 };
 
