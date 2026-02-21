@@ -25,6 +25,9 @@ export interface Broker {
   commission_split_percent: number;
   branding_primary_color: string | null;
   branding_accent_color: string | null;
+  referral_code: string | null;
+  referral_link_visits: number;
+  referral_link_conversions: number;
   created_at: string;
   updated_at: string;
 }
@@ -48,9 +51,15 @@ export interface BrokerContractor {
   contractor_name: string;
   contractor_email: string | null;
   contractor_phone: string | null;
+  company_name: string | null;
+  website: string | null;
   provider_type: ProviderType;
   service_types: string[];
   service_areas: string[];
+  is_preferred: boolean;
+  leads_routed: number;
+  leads_completed: number;
+  avg_response_hours: number | null;
   lead_cost_override: number | null;
   commission_split_override: number | null;
   status: BrokerContractorStatus;
@@ -64,9 +73,12 @@ export interface BrokerContractorInsert {
   contractor_name: string;
   contractor_email?: string;
   contractor_phone?: string;
+  company_name?: string;
+  website?: string;
   provider_type?: ProviderType;
   service_types?: string[];
   service_areas?: string[];
+  is_preferred?: boolean;
   lead_cost_override?: number;
   commission_split_override?: number;
   notes?: string;

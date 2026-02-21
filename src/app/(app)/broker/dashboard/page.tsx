@@ -20,7 +20,7 @@ export default async function BrokerDashboardPage() {
         <div
           style={{
             background: "#1e293b",
-            border: "1px solid #ef4444",
+            border: "1px solid rgba(239,68,68,0.3)",
             borderRadius: 12,
             padding: "20px 28px",
             color: "#fca5a5",
@@ -36,11 +36,11 @@ export default async function BrokerDashboardPage() {
 
   return (
     <BrokerDashboardClient
-      broker={data.broker}
+      brokerName={data.brokerName}
       kpis={data.kpis}
-      contractors={data.contractors}
-      recentLeads={data.recentLeads}
-      topContractors={data.topContractors}
+      urgentTasks={data.urgentTasks}
+      recentActivity={data.recentActivity}
+      quickStats={data.quickStats}
     />
   );
 }

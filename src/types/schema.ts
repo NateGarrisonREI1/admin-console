@@ -145,6 +145,10 @@ export type LeafReportData = {
   performance_data?: Record<string, unknown>;
 };
 
+export type ExclusivityStatus = "exclusive" | "available" | "expired" | "none";
+export type LeadSourceType = "manual" | "leaf_cta" | "campaign" | "referral";
+export type ConversionStatus = "pending" | "in_progress" | "completed" | "failed";
+
 export type SystemLead = {
   id: string;
   homeowner_id: string | null;
@@ -165,6 +169,22 @@ export type SystemLead = {
   purchased_by_contractor_id: string | null;
   purchased_date: string | null;
   contacted_status: ContactedStatus;
+  // Exclusivity & routing
+  exclusivity_status: ExclusivityStatus;
+  exclusive_broker_id: string | null;
+  exclusivity_expires_at: string | null;
+  claimed_by_broker_id: string | null;
+  claimed_at: string | null;
+  routed_to_contractor_id: string | null;
+  routed_at: string | null;
+  // Source tracking
+  source_type: LeadSourceType;
+  source_leaf_session_id: string | null;
+  source_leaf_finding: string | null;
+  source_job_id: string | null;
+  // Revenue & conversion
+  revenue_split: Record<string, unknown> | null;
+  conversion_status: ConversionStatus;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -187,6 +207,48 @@ export type SystemLeadInsert = {
   status?: SystemLeadStatus;
   posted_date?: string | null;
   expiration_date?: string | null;
+  // Exclusivity & routing
+  exclusivity_status?: ExclusivityStatus;
+  exclusive_broker_id?: string | null;
+  exclusivity_expires_at?: string | null;
+  claimed_by_broker_id?: string | null;
+  claimed_at?: string | null;
+  routed_to_contractor_id?: string | null;
+  routed_at?: string | null;
+  // Source tracking
+  source_type?: LeadSourceType;
+  source_leaf_session_id?: string | null;
+  source_leaf_finding?: string | null;
+  source_job_id?: string | null;
+  // Revenue & conversion
+  revenue_split?: Record<string, unknown> | null;
+  conversion_status?: ConversionStatus;
+};
+
+// ─── Lead routing history ─────────────────────────
+
+export type LeadRoutingAction =
+  | "created"
+  | "exclusive_assigned"
+  | "claimed"
+  | "routed"
+  | "dismissed"
+  | "exclusivity_expired"
+  | "posted_open"
+  | "sold"
+  | "converted"
+  | "expired";
+
+export type LeadRoutingActorType = "system" | "broker" | "contractor" | "admin";
+
+export type LeadRoutingHistory = {
+  id: string;
+  lead_id: string;
+  action: LeadRoutingAction;
+  actor_type: LeadRoutingActorType | null;
+  actor_id: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
 };
 
 // ──────────────────────────────────────────

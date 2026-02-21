@@ -14,9 +14,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       className="admin-root"
       style={{
         display: "flex",
-        minHeight: "100vh",
+        height: "100vh",
         maxWidth: "100%",
-        overflowX: "hidden",
+        overflow: "hidden",
       }}
     >
       <AdminSidebar />
@@ -26,6 +26,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           flex: 1,
           minWidth: 0,
           maxWidth: "100%",
+          height: "100vh",
+          overflowY: "auto",
           display: "flex",
           flexDirection: "column",
         }}

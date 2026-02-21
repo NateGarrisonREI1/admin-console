@@ -15,20 +15,34 @@ export default async function BrokerLayout({ children }: { children: React.React
     return <>{children}</>;
   }
 
-  // Get role from app_profiles
+  // Get role + onboarding status from app_profiles
   const { data: profile } = await supabaseAdmin
     .from("app_profiles")
-    .select("role, onboarding_complete")
+    .select("role, onboarding_complete, full_name, email")
     .eq("id", userId)
     .single();
 
   const role = (profile?.role as string) ?? "broker";
   const onboardingComplete = !!(profile as Record<string, unknown> | null)?.onboarding_complete;
 
+  // Try to get broker company name for sidebar
+  let brokerName = (profile as Record<string, unknown> | null)?.full_name as string | undefined;
+  const brokerEmail = (profile as Record<string, unknown> | null)?.email as string | undefined;
+
+  // If broker, get company name from brokers table
+  if (role === "broker") {
+    const { data: broker } = await supabaseAdmin
+      .from("brokers")
+      .select("company_name")
+      .eq("user_id", userId)
+      .single();
+    if (broker?.company_name) brokerName = broker.company_name;
+  }
+
   // Admin users: skip all onboarding checks, render normal layout
   if (role === "admin") {
     return (
-      <BrokerLayoutShell>
+      <BrokerLayoutShell brokerName={brokerName} brokerEmail={brokerEmail}>
         {children}
       </BrokerLayoutShell>
     );
@@ -42,17 +56,25 @@ export default async function BrokerLayout({ children }: { children: React.React
 
   // Everyone else: normal layout
   return (
-    <BrokerLayoutShell>
+    <BrokerLayoutShell brokerName={brokerName} brokerEmail={brokerEmail}>
       {children}
     </BrokerLayoutShell>
   );
 }
 
-function BrokerLayoutShell({ children }: { children: React.ReactNode }) {
+function BrokerLayoutShell({
+  children,
+  brokerName,
+  brokerEmail,
+}: {
+  children: React.ReactNode;
+  brokerName?: string;
+  brokerEmail?: string;
+}) {
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#0f172a" }}>
-      <BrokerSidebar />
-      <main style={{ flex: 1, minWidth: 0, maxWidth: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#0f172a" }}>
+      <BrokerSidebar brokerName={brokerName} brokerEmail={brokerEmail} />
+      <main style={{ flex: 1, minWidth: 0, maxWidth: "100%", height: "100vh", overflowY: "auto", display: "flex", flexDirection: "column" }}>
         <header
           style={{
             background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
@@ -77,7 +99,7 @@ function BrokerLayoutShell({ children }: { children: React.ReactNode }) {
               }}
             />
             <span style={{ fontWeight: 700, fontSize: 14, color: "#f1f5f9" }}>
-              Broker Console
+              Broker Portal
             </span>
           </div>
 

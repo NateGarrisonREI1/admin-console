@@ -1,1094 +1,942 @@
+// src/app/(app)/broker/leads/LeadsClient.tsx
 "use client";
 
-import { CSSProperties, useMemo, useState, useTransition, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import type { Broker, BrokerLead, BrokerAssessment, BrokerContractor, ManualLeadType } from "@/types/broker";
-import {
-  postLead,
-  updateLead,
-  markLeadClosed,
-  deleteLead,
-} from "./actions";
+import { useState, useMemo } from "react";
+import Link from "next/link";
+import SidePanel from "@/components/ui/SidePanel";
+import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, type OptionColor } from "@/components/ui/FilterableHeader";
+import { AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import type { BrokerMarketplaceData, BrokerMarketplaceLead } from "./actions";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Design tokens ──────────────────────────────────────────────────
+const CARD = "#1e293b";
+const BG = "#0f172a";
+const BORDER = "#334155";
+const TEXT = "#f1f5f9";
+const TEXT_SEC = "#cbd5e1";
+const TEXT_DIM = "#64748b";
+const TEXT_MUTED = "#94a3b8";
+const EMERALD = "#10b981";
 
-const LEAD_TYPE_OPTIONS: { value: ManualLeadType; label: string; accent: string }[] = [
-  { value: "hes_assessment", label: "HES Assessment", accent: "#10b981" },
-  { value: "home_inspection", label: "Home Inspection", accent: "#f59e0b" },
+const SYSTEM_TYPE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  hvac: { bg: "rgba(239,68,68,0.15)", text: "#ef4444", label: "HVAC" },
+  solar: { bg: "rgba(234,179,8,0.15)", text: "#eab308", label: "Solar" },
+  water_heater: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "Water Heater" },
+  electrical: { bg: "rgba(168,85,247,0.15)", text: "#a855f7", label: "Electrical" },
+  plumbing: { bg: "rgba(236,72,153,0.15)", text: "#ec4899", label: "Plumbing" },
+  general_handyman: { bg: "rgba(148,163,184,0.15)", text: "#94a3b8", label: "Handyman" },
+  hes_assessment: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "HES Assessment" },
+  home_inspection: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Home Inspection" },
+  leaf_followup: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "LEAF Follow-up" },
+};
+
+const SERVICE_TYPES = [
+  { value: "all", label: "All Types" },
+  { value: "hvac", label: "HVAC" },
+  { value: "solar", label: "Solar" },
+  { value: "water_heater", label: "Water Heater" },
+  { value: "electrical", label: "Electrical" },
+  { value: "plumbing", label: "Plumbing" },
+  { value: "general_handyman", label: "Handyman" },
+  { value: "hes_assessment", label: "HES Assessment" },
+  { value: "home_inspection", label: "Home Inspection" },
+  { value: "leaf_followup", label: "LEAF Follow-up" },
 ];
 
-const LEAD_TYPE_LABELS: Record<string, string> = {
-  system_lead: "System Lead",
-  hes_assessment: "HES Assessment",
-  home_inspection: "Home Inspection",
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  available: { label: "Available", color: EMERALD, bg: "rgba(16,185,129,0.12)" },
+  purchased: { label: "Sold", color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+  assigned: { label: "Assigned", color: "#a78bfa", bg: "rgba(167,139,250,0.12)" },
+  expired: { label: "Expired", color: TEXT_MUTED, bg: "rgba(148,163,184,0.1)" },
+  archived: { label: "Archived", color: TEXT_DIM, bg: "rgba(100,116,139,0.1)" },
 };
 
-const LEAD_TYPE_COLORS: Record<string, { bg: string; bd: string; tx: string }> = {
-  system_lead: { bg: "rgba(139,92,246,0.12)", bd: "rgba(139,92,246,0.35)", tx: "#8b5cf6" },
-  hes_assessment: { bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.35)", tx: "#10b981" },
-  home_inspection: { bg: "rgba(245,158,11,0.12)", bd: "rgba(245,158,11,0.35)", tx: "#f59e0b" },
+const PAGE_SIZE = 25;
+
+const TYPE_OPTIONS = SERVICE_TYPES.filter((s) => s.value !== "all");
+
+const STATUS_OPTIONS = [
+  { value: "available", label: "Available" },
+  { value: "purchased", label: "Sold" },
+  { value: "assigned", label: "Assigned" },
+  { value: "expired", label: "Expired" },
+];
+
+const LEAF_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
+
+const ROUTING_OPTIONS = [
+  { value: "open_market", label: "Open Market" },
+  { value: "internal_network", label: "Network" },
+  { value: "exclusive", label: "Exclusive" },
+];
+
+const ROUTING_BADGE_CONFIG: Record<string, { bg: string; text: string; label: string }> = {
+  open_market: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Open Market" },
+  internal_network: { bg: "rgba(59,130,246,0.15)", text: "#3b82f6", label: "Network" },
+  exclusive: { bg: "rgba(168,85,247,0.15)", text: "#a855f7", label: "Exclusive" },
 };
 
-const STATUS_COLORS: Record<string, { bg: string; bd: string; tx: string }> = {
-  active: { bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.30)", tx: "#10b981" },
-  sold: { bg: "rgba(6,182,212,0.12)", bd: "rgba(6,182,212,0.30)", tx: "#06b6d4" },
-  closed: { bg: "rgba(16,185,129,0.12)", bd: "rgba(16,185,129,0.30)", tx: "#10b981" },
-  expired: { bg: "rgba(148,163,184,0.12)", bd: "rgba(148,163,184,0.30)", tx: "#94a3b8" },
-  in_progress: { bg: "rgba(251,191,36,0.12)", bd: "rgba(251,191,36,0.30)", tx: "#fbbf24" },
-  lost: { bg: "rgba(248,113,113,0.12)", bd: "rgba(248,113,113,0.30)", tx: "#f87171" },
+const MARKETPLACE_TYPE_COLORS: Record<string, OptionColor> = {
+  hvac:              { bg: "rgba(239,68,68,0.2)", text: "#f87171", border: "rgba(239,68,68,0.3)", activeBg: "#ef4444", activeText: "#fff" },
+  solar:             { bg: "rgba(234,179,8,0.2)", text: "#fbbf24", border: "rgba(234,179,8,0.3)", activeBg: "#eab308", activeText: "#fff" },
+  water_heater:      { bg: "rgba(59,130,246,0.2)", text: "#60a5fa", border: "rgba(59,130,246,0.3)", activeBg: "#3b82f6", activeText: "#fff" },
+  electrical:        { bg: "rgba(168,85,247,0.2)", text: "#c084fc", border: "rgba(168,85,247,0.3)", activeBg: "#a855f7", activeText: "#fff" },
+  plumbing:          { bg: "rgba(236,72,153,0.2)", text: "#f472b6", border: "rgba(236,72,153,0.3)", activeBg: "#ec4899", activeText: "#fff" },
+  general_handyman:  { bg: "rgba(100,116,139,0.2)", text: "#94a3b8", border: "rgba(100,116,139,0.3)", activeBg: "#64748b", activeText: "#fff" },
+  hes_assessment:    { bg: "rgba(16,185,129,0.2)", text: "#34d399", border: "rgba(16,185,129,0.3)", activeBg: "#10b981", activeText: "#fff" },
+  home_inspection:   { bg: "rgba(245,158,11,0.2)", text: "#fbbf24", border: "rgba(245,158,11,0.3)", activeBg: "#f59e0b", activeText: "#fff" },
+  leaf_followup:     { bg: "rgba(59,130,246,0.2)", text: "#60a5fa", border: "rgba(59,130,246,0.3)", activeBg: "#3b82f6", activeText: "#fff" },
 };
 
-const INPUT_STYLE: CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #334155",
-  background: "#1e293b",
-  color: "#f1f5f9",
-  outline: "none",
-  fontSize: 13,
-  fontWeight: 600,
-  boxSizing: "border-box",
-};
+// ─── Helpers ────────────────────────────────────────────────────────
 
-const LABEL_STYLE: CSSProperties = {
-  display: "block",
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#64748b",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  marginBottom: 6,
-};
+function money(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtDate(iso?: string | null): string {
+function fmtDate(iso: string | null): string {
   if (!iso) return "\u2014";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "\u2014";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function fmtMoney(amount?: number | null): string {
-  if (amount == null || !Number.isFinite(amount)) return "\u2014";
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(amount);
-}
+// ─── Main Component ─────────────────────────────────────────────────
 
-function assessmentAddress(a?: BrokerAssessment | null): string {
-  if (!a) return "\u2014";
-  const parts = [a.address, a.city, a.state, a.zip].filter(Boolean);
-  return parts.join(", ") || a.customer_name || "\u2014";
-}
+export default function LeadsClient({ data }: { data: BrokerMarketplaceData }) {
+  // Column filter state
+  const [leadSearch, setLeadSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [areaFilter, setAreaFilter] = useState<string[]>([]);
+  const [priceRange, setPriceRange] = useState<{ min?: string; max?: string }>({});
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [leafFilter, setLeafFilter] = useState<string[]>([]);
+  const [routingFilter, setRoutingFilter] = useState<string[]>([]);
+  const [buyerFilter, setBuyerFilter] = useState<string[]>([]);
+  const [createdDateFilter, setCreatedDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({});
+  const [soldDateFilter, setSoldDateFilter] = useState<{ preset?: string; from?: string; to?: string }>({});
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+  // Sort state
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>(null);
 
-function StatusBadge({ status }: { status: string }) {
-  const tone = STATUS_COLORS[status] ?? { bg: "rgba(51,65,85,0.5)", bd: "#475569", tx: "#cbd5e1" };
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "4px 10px",
-        borderRadius: 999,
-        border: `1px solid ${tone.bd}`,
-        background: tone.bg,
-        color: tone.tx,
-        fontSize: 11,
-        fontWeight: 700,
-        textTransform: "capitalize",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {status.replace("_", " ")}
-    </span>
-  );
-}
+  // Column popover state
+  const [openColumn, setOpenColumn] = useState<string | null>(null);
 
-function LeadTypeBadge({ leadType }: { leadType: string }) {
-  const tone = LEAD_TYPE_COLORS[leadType] ?? LEAD_TYPE_COLORS.system_lead;
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "3px 10px",
-        borderRadius: 999,
-        border: `1px solid ${tone.bd}`,
-        background: tone.bg,
-        color: tone.tx,
-        fontSize: 11,
-        fontWeight: 700,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {LEAD_TYPE_LABELS[leadType] ?? leadType}
-    </span>
-  );
-}
+  const [page, setPage] = useState(1);
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={LABEL_STYLE}>{label}</label>
-      {children}
-    </div>
-  );
-}
+  // Side panel
+  const [selectedLead, setSelectedLead] = useState<BrokerMarketplaceLead | null>(null);
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
 
-// ─── Edit Lead Modal ──────────────────────────────────────────────────────────
+  // Collapsible sections
+  const [revenueOpen, setRevenueOpen] = useState(true);
+  const [leadsOpen, setLeadsOpen] = useState(true);
 
-type EditModalProps = {
-  lead: BrokerLead;
-  onClose: () => void;
-  onSaved: () => void;
-};
-
-function EditLeadModal({ lead, onClose, onSaved }: EditModalProps) {
-  const [isPending, startTransition] = useTransition();
-  const [price, setPrice] = useState(String(lead.price));
-  const [expirationDate, setExpirationDate] = useState(
-    lead.expiration_date ? lead.expiration_date.slice(0, 10) : ""
-  );
-  const [notes, setNotes] = useState(lead.notes ?? "");
-  const [error, setError] = useState("");
-
-  function handleSave() {
-    const priceNum = parseFloat(price);
-    if (!Number.isFinite(priceNum) || priceNum <= 0) {
-      setError("Price must be a positive number.");
-      return;
+  // Derived option lists
+  const areaOptions = useMemo(() => data.areas.map((a) => ({ value: a, label: a })), [data.areas]);
+  const buyerOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const l of data.leads) {
+      if (l.buyer_id && l.buyer_name) seen.set(l.buyer_id, l.buyer_name);
     }
-    setError("");
-    startTransition(async () => {
-      try {
-        await updateLead(lead.id, {
-          price: priceNum,
-          expiration_date: expirationDate ? new Date(expirationDate).toISOString() : undefined,
-          notes: notes.trim() || undefined,
-        });
-        onSaved();
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to save.");
-      }
-    });
+    return [...seen.entries()].map(([id, name]) => ({ value: id, label: name }));
+  }, [data.leads]);
+
+  function handleSort(col: string) {
+    return (dir: SortDir) => {
+      if (dir === null) { setSortColumn(null); setSortDir(null); }
+      else { setSortColumn(col); setSortDir(dir); }
+    };
   }
 
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 99990, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <button
-        type="button"
-        aria-label="Close modal"
-        onClick={() => !isPending && onClose()}
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)", border: "none", cursor: "default" }}
-      />
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          maxWidth: 480,
-          borderRadius: 20,
-          background: "#0f172a",
-          border: "1px solid #334155",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.55)",
-          overflow: "hidden",
-        }}
-      >
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #334155" }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "#f1f5f9" }}>Edit Lead</div>
-          <div style={{ marginTop: 4, fontSize: 13, color: "#94a3b8" }}>
-            {assessmentAddress(lead.assessment)} &mdash; {LEAD_TYPE_LABELS[lead.lead_type] ?? lead.system_type}
-          </div>
-        </div>
-
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-          <Field label="Price (USD)">
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: "#64748b", fontSize: 14 }}>$</span>
-              <input value={price} onChange={(e) => setPrice(e.target.value)} className="admin-input" style={INPUT_STYLE} placeholder="0" type="number" min="1" />
-            </div>
-          </Field>
-
-          <Field label="Expiration Date">
-            <input type="date" value={expirationDate} onChange={(e) => setExpirationDate(e.target.value)} className="admin-input" style={INPUT_STYLE} />
-          </Field>
-
-          <Field label="Notes (optional)">
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="admin-input" style={{ ...INPUT_STYLE, height: 88, resize: "vertical" }} placeholder="Internal notes..." />
-          </Field>
-
-          {error && (
-            <div style={{ fontSize: 13, color: "#f87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 10, padding: "8px 12px" }}>
-              {error}
-            </div>
-          )}
-        </div>
-
-        <div style={{ padding: "16px 20px", borderTop: "1px solid #334155", display: "flex", gap: 12 }}>
-          <button
-            type="button"
-            onClick={() => !isPending && onClose()}
-            disabled={isPending}
-            style={{ flex: 1, padding: "12px 16px", borderRadius: 10, fontSize: 14, fontWeight: 600, background: "#334155", color: "#cbd5e1", border: "1px solid #475569", cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.5 : 1 }}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isPending}
-            style={{ flex: 1, padding: "12px 16px", borderRadius: 10, fontSize: 14, fontWeight: 700, background: isPending ? "#10b98166" : "#10b981", color: "#fff", border: "none", cursor: isPending ? "not-allowed" : "pointer", opacity: isPending ? 0.7 : 1 }}
-          >
-            {isPending ? "Saving\u2026" : "Save Changes"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Post Lead Modal ──────────────────────────────────────────────────────────
-
-type PostLeadModalProps = {
-  brokerId: string;
-  assessments: BrokerAssessment[];
-  providers: BrokerContractor[];
-  onClose: () => void;
-  onPosted: () => void;
-};
-
-function PostLeadModal({ brokerId, assessments, providers, onClose, onPosted }: PostLeadModalProps) {
-  const [isPending, startTransition] = useTransition();
-  const [leadType, setLeadType] = useState<ManualLeadType>("hes_assessment");
-  const [assessmentId, setAssessmentId] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [address, setAddress] = useState("");
-  const [price, setPrice] = useState("");
-  const [postMode, setPostMode] = useState<"network" | "assigned">("network");
-  const [assignedProviderId, setAssignedProviderId] = useState("");
-  const [description, setDescription] = useState("");
-  const [error, setError] = useState("");
-
-  // Auto-fill from assessment when HES
-  const selectedAssessment = assessments.find((a) => a.id === assessmentId) ?? null;
-
-  useEffect(() => {
-    if (selectedAssessment) {
-      setCustomerName(selectedAssessment.customer_name || "");
-      setAddress(assessmentAddress(selectedAssessment));
-    }
-  }, [selectedAssessment]);
-
-  // Reset form when switching lead type
-  useEffect(() => {
-    setAssessmentId("");
-    setCustomerName("");
-    setAddress("");
-    setPrice(leadType === "hes_assessment" ? "20" : "35");
-    setPostMode("network");
-    setAssignedProviderId("");
-    setDescription("");
-    setError("");
-  }, [leadType]);
-
-  // Filter providers for current lead type
-  const matchingProviders = providers.filter((p) =>
-    leadType === "hes_assessment" ? p.provider_type === "hes_assessor" : p.provider_type === "inspector"
-  );
-
-  const currentLeadConfig = LEAD_TYPE_OPTIONS.find((o) => o.value === leadType)!;
-
-  function handlePost() {
-    if (!customerName.trim()) {
-      setError("Customer name is required.");
-      return;
-    }
-    const priceNum = parseFloat(price);
-    if (!Number.isFinite(priceNum) || priceNum <= 0) {
-      setError("Price must be a positive number.");
-      return;
-    }
-    if (postMode === "assigned" && !assignedProviderId) {
-      setError("Please select a provider to assign this lead to.");
-      return;
-    }
-    setError("");
-
-    startTransition(async () => {
-      try {
-        await postLead({
-          broker_id: brokerId,
-          assessment_id: assessmentId || undefined,
-          lead_type: leadType,
-          system_type: leadType,
-          price: priceNum,
-          visibility: postMode === "assigned" ? "network" : "public",
-          assigned_to_provider_id: postMode === "assigned" ? assignedProviderId : undefined,
-          description: description.trim() || undefined,
-          notes: [
-            customerName.trim() ? `Customer: ${customerName.trim()}` : "",
-            address.trim() ? `Address: ${address.trim()}` : "",
-          ]
-            .filter(Boolean)
-            .join("\n") || undefined,
-        });
-        onPosted();
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to post lead.");
-      }
-    });
+  function openPanel(lead: BrokerMarketplaceLead) {
+    setSelectedLead(lead);
+    setSidePanelOpen(true);
   }
 
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 99990, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <button
-        type="button"
-        aria-label="Close modal"
-        onClick={() => !isPending && onClose()}
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)", border: "none", cursor: "default" }}
-      />
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          maxWidth: 520,
-          borderRadius: 20,
-          background: "#0f172a",
-          border: "1px solid #334155",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.55)",
-          overflow: "hidden",
-          maxHeight: "90vh",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* Header */}
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #334155", flexShrink: 0 }}>
-          <div style={{ fontSize: 17, fontWeight: 800, color: "#f1f5f9" }}>
-            Post Manual Lead
-          </div>
-          <div style={{ marginTop: 4, fontSize: 13, color: "#94a3b8" }}>
-            Post an HES assessment or home inspection lead to your network.
-          </div>
-        </div>
-
-        {/* Scrollable body */}
-        <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16, overflowY: "auto", flex: 1 }}>
-          {/* Lead Type Selector */}
-          <Field label="Lead Type">
-            <div style={{ display: "flex", gap: 8 }}>
-              {LEAD_TYPE_OPTIONS.map((opt) => {
-                const selected = leadType === opt.value;
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setLeadType(opt.value)}
-                    style={{
-                      flex: 1,
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      fontSize: 13,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      background: selected ? `${opt.accent}1a` : "#1e293b",
-                      color: selected ? opt.accent : "#64748b",
-                      border: selected ? `2px solid ${opt.accent}` : "1px solid #334155",
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-
-          {/* Assessment link (HES only) */}
-          {leadType === "hes_assessment" && assessments.length > 0 && (
-            <Field label="Link to Assessment (optional)">
-              <select
-                value={assessmentId}
-                onChange={(e) => setAssessmentId(e.target.value)}
-                className="admin-select"
-                style={INPUT_STYLE}
-              >
-                <option value="">&mdash; No Assessment &mdash;</option>
-                {assessments.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.customer_name}
-                    {a.address ? ` \u2014 ${a.address}` : ""}
-                    {a.city ? `, ${a.city}` : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-
-          {/* Customer Name */}
-          <Field label="Customer Name">
-            <input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              className="admin-input"
-              style={INPUT_STYLE}
-              placeholder="Homeowner name"
-            />
-          </Field>
-
-          {/* Address */}
-          <Field label="Address">
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="admin-input"
-              style={INPUT_STYLE}
-              placeholder="Property address"
-            />
-          </Field>
-
-          {/* Price */}
-          <Field label={leadType === "hes_assessment" ? "Assessment Cost (USD)" : "Inspection Cost (USD)"}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ color: "#64748b", fontSize: 14, fontWeight: 700 }}>$</span>
-              <input
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                className="admin-input"
-                style={INPUT_STYLE}
-                placeholder={leadType === "hes_assessment" ? "20" : "35"}
-                type="number"
-                min="1"
-              />
-            </div>
-            <div style={{ marginTop: 4, fontSize: 11, color: "#475569" }}>
-              {leadType === "hes_assessment" ? "Suggested: $20\u2013$30" : "Suggested: $30\u2013$50"}
-            </div>
-          </Field>
-
-          {/* Post Visibility */}
-          <Field label="Post Visibility">
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {/* Network option */}
-              <button
-                type="button"
-                onClick={() => {
-                  setPostMode("network");
-                  setAssignedProviderId("");
-                }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "all 0.15s",
-                  background: postMode === "network" ? `${currentLeadConfig.accent}12` : "#1e293b",
-                  border: postMode === "network" ? `2px solid ${currentLeadConfig.accent}` : "1px solid #334155",
-                }}
-              >
-                <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    border: postMode === "network" ? `2px solid ${currentLeadConfig.accent}` : "2px solid #475569",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  {postMode === "network" && (
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: currentLeadConfig.accent }} />
-                  )}
-                </span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: postMode === "network" ? currentLeadConfig.accent : "#cbd5e1" }}>
-                    Post to Network
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                    Any matching {leadType === "hes_assessment" ? "HES assessor" : "home inspector"} can purchase this lead
-                  </div>
-                </div>
-              </button>
-
-              {/* Assigned option */}
-              <button
-                type="button"
-                onClick={() => setPostMode("assigned")}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "all 0.15s",
-                  background: postMode === "assigned" ? `${currentLeadConfig.accent}12` : "#1e293b",
-                  border: postMode === "assigned" ? `2px solid ${currentLeadConfig.accent}` : "1px solid #334155",
-                }}
-              >
-                <span
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: 9,
-                    border: postMode === "assigned" ? `2px solid ${currentLeadConfig.accent}` : "2px solid #475569",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  {postMode === "assigned" && (
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: currentLeadConfig.accent }} />
-                  )}
-                </span>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: postMode === "assigned" ? currentLeadConfig.accent : "#cbd5e1" }}>
-                    Assign to Specific Provider
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                    Only the assigned provider can see and purchase this lead
-                  </div>
-                </div>
-              </button>
-
-              {/* Provider dropdown (when assigned) */}
-              {postMode === "assigned" && (
-                <div style={{ marginTop: 4, paddingLeft: 30 }}>
-                  {matchingProviders.length === 0 ? (
-                    <div style={{ fontSize: 12, color: "#64748b", padding: "8px 0" }}>
-                      No {leadType === "hes_assessment" ? "HES assessors" : "home inspectors"} in your network yet.
-                      Add them in the Network page first.
-                    </div>
-                  ) : (
-                    <select
-                      value={assignedProviderId}
-                      onChange={(e) => setAssignedProviderId(e.target.value)}
-                      className="admin-select"
-                      style={INPUT_STYLE}
-                    >
-                      <option value="">&mdash; Select provider &mdash;</option>
-                      {matchingProviders.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.contractor_name}
-                          {p.lead_cost_override != null ? ` ($${p.lead_cost_override})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              )}
-            </div>
-          </Field>
-
-          {/* Description */}
-          <Field label="Description (optional)">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="admin-input"
-              style={{ ...INPUT_STYLE, height: 80, resize: "vertical" }}
-              placeholder="Any additional notes about this lead..."
-            />
-          </Field>
-
-          {error && (
-            <div style={{ fontSize: 13, color: "#f87171", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.25)", borderRadius: 10, padding: "8px 12px" }}>
-              {error}
-            </div>
-          )}
-        </div>
-
-        {/* Footer — large visible buttons */}
-        <div style={{ padding: "16px 20px", borderTop: "1px solid #334155", flexShrink: 0 }}>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button
-              type="button"
-              onClick={() => !isPending && onClose()}
-              disabled={isPending}
-              style={{
-                flex: 1,
-                padding: "12px 16px",
-                borderRadius: 10,
-                fontSize: 14,
-                fontWeight: 600,
-                background: "#334155",
-                color: "#cbd5e1",
-                border: "1px solid #475569",
-                cursor: isPending ? "not-allowed" : "pointer",
-                opacity: isPending ? 0.5 : 1,
-                transition: "background 0.15s",
-              }}
-              onMouseEnter={(e) => { if (!isPending) e.currentTarget.style.background = "#3d4f68"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#334155"; }}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handlePost}
-              disabled={isPending}
-              style={{
-                flex: 1,
-                padding: "12px 16px",
-                borderRadius: 10,
-                fontSize: 14,
-                fontWeight: 700,
-                background: isPending ? "#10b98166" : "#10b981",
-                color: "#fff",
-                border: "none",
-                cursor: isPending ? "not-allowed" : "pointer",
-                opacity: isPending ? 0.7 : 1,
-                transition: "background 0.15s, opacity 0.15s",
-              }}
-            >
-              {isPending ? "Posting\u2026" : "Post Lead"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Component ──────────────────────────────────────────────────────────
-
-type Props = {
-  broker: Broker;
-  leads: BrokerLead[];
-  assessments: BrokerAssessment[];
-  providers: BrokerContractor[];
-};
-
-export default function LeadsClient({ broker, leads, assessments, providers }: Props) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  // Modals
-  const [showPostModal, setShowPostModal] = useState(false);
-  const [editLead, setEditLead] = useState<BrokerLead | null>(null);
-
-  // Filters
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-
-  function refresh() {
-    router.refresh();
+  function closePanel() {
+    setSidePanelOpen(false);
+    setTimeout(() => setSelectedLead(null), 300);
   }
 
-  async function handleMarkClosed(lead: BrokerLead) {
-    if (!confirm(`Mark this lead as closed and calculate commission?`)) return;
-    startTransition(async () => {
-      try {
-        await markLeadClosed(lead.id, broker.id);
-        refresh();
-      } catch (e: unknown) {
-        alert(e instanceof Error ? e.message : "Failed to mark closed.");
-      }
-    });
-  }
-
-  async function handleRepost(lead: BrokerLead) {
-    if (!confirm("Repost this lead as active?")) return;
-    startTransition(async () => {
-      try {
-        await updateLead(lead.id, {
-          status: "active",
-          expiration_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        } as any);
-        refresh();
-      } catch (e: unknown) {
-        alert(e instanceof Error ? e.message : "Failed to repost lead.");
-      }
-    });
-  }
-
-  async function handleDelete(lead: BrokerLead) {
-    if (!confirm("Remove this lead permanently? This cannot be undone.")) return;
-    startTransition(async () => {
-      try {
-        await deleteLead(lead.id);
-        refresh();
-      } catch (e: unknown) {
-        alert(e instanceof Error ? e.message : "Failed to delete lead.");
-      }
-    });
+  function matchDateFilter(iso: string | null, filter: { preset?: string; from?: string; to?: string }): boolean {
+    if (!filter.preset && !filter.from && !filter.to) return true;
+    if (!iso) return false;
+    const d = iso.slice(0, 10);
+    if (filter.preset === "today") {
+      return d === new Date().toISOString().slice(0, 10);
+    }
+    if (filter.preset === "this_week") {
+      const now = new Date();
+      const day = now.getDay();
+      const mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      return d >= mon.toISOString().slice(0, 10) && d <= sun.toISOString().slice(0, 10);
+    }
+    if (filter.preset === "this_month") {
+      const now = new Date();
+      const ms = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      const me = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10);
+      return d >= ms && d <= me;
+    }
+    if (filter.from && d < filter.from) return false;
+    if (filter.to && d > filter.to) return false;
+    return true;
   }
 
   const filtered = useMemo(() => {
-    return leads.filter((l) => {
-      if (typeFilter !== "all" && (l.lead_type ?? "system_lead") !== typeFilter) return false;
-      if (statusFilter !== "all" && l.status !== statusFilter) return false;
+    const gq = globalSearch.trim().toLowerCase();
+    let leads = data.leads.filter((l) => {
+      if (leadSearch.trim()) {
+        const q = leadSearch.trim().toLowerCase();
+        const hay = [l.title, l.city, l.zip, l.homeowner_name].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (typeFilter.length > 0 && !typeFilter.includes(l.system_type)) return false;
+      if (areaFilter.length > 0 && !areaFilter.includes(l.area ?? "")) return false;
+      if (statusFilter.length > 0 && !statusFilter.includes(l.status)) return false;
+      if (leafFilter.length > 0) {
+        const val = l.has_leaf ? "yes" : "no";
+        if (!leafFilter.includes(val)) return false;
+      }
+      if (routingFilter.length > 0 && !routingFilter.includes(l.routing_channel ?? "open_market")) return false;
+      if (buyerFilter.length > 0 && !buyerFilter.includes(l.buyer_id ?? "")) return false;
+      if (priceRange.min && l.price < parseFloat(priceRange.min)) return false;
+      if (priceRange.max && l.price > parseFloat(priceRange.max)) return false;
+      if (!matchDateFilter(l.created_at, createdDateFilter)) return false;
+      if (!matchDateFilter(l.purchased_date, soldDateFilter)) return false;
+      if (gq) {
+        const hay = [l.title, l.homeowner_name, l.city, l.zip, l.buyer_name].filter(Boolean).join(" ").toLowerCase();
+        if (!hay.includes(gq)) return false;
+      }
       return true;
     });
-  }, [leads, typeFilter, statusFilter]);
+
+    if (sortColumn && sortDir) {
+      leads = [...leads].sort((a, b) => {
+        let cmp = 0;
+        switch (sortColumn) {
+          case "price": cmp = a.price - b.price; break;
+          case "created": cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); break;
+          case "sold": {
+            const at = a.purchased_date ? new Date(a.purchased_date).getTime() : 0;
+            const bt = b.purchased_date ? new Date(b.purchased_date).getTime() : 0;
+            cmp = at - bt; break;
+          }
+          default: break;
+        }
+        return sortDir === "desc" ? -cmp : cmp;
+      });
+    } else {
+      leads = [...leads].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+    return leads;
+  }, [data.leads, leadSearch, typeFilter, areaFilter, statusFilter, leafFilter, routingFilter, buyerFilter, priceRange, createdDateFilter, soldDateFilter, globalSearch, sortColumn, sortDir]);
+
+  // Active filter chips
+  const activeFilters = useMemo(() => {
+    const chips: ActiveFilter[] = [];
+    if (leadSearch.trim()) chips.push({ key: "lead", label: "Lead", value: leadSearch, onClear: () => setLeadSearch("") });
+    if (typeFilter.length > 0) {
+      const labels = typeFilter.map((v) => TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "type", label: "Type", value: labels, onClear: () => setTypeFilter([]) });
+    }
+    if (areaFilter.length > 0) {
+      chips.push({ key: "area", label: "Area", value: areaFilter.join(", "), onClear: () => setAreaFilter([]) });
+    }
+    if (priceRange.min || priceRange.max) {
+      chips.push({ key: "price", label: "Price", value: `$${priceRange.min ?? "0"} \u2013 $${priceRange.max ?? "\u221E"}`, onClear: () => setPriceRange({}) });
+    }
+    if (statusFilter.length > 0) {
+      const labels = statusFilter.map((v) => STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "status", label: "Status", value: labels, onClear: () => setStatusFilter([]) });
+    }
+    if (leafFilter.length > 0) {
+      chips.push({ key: "leaf", label: "LEAF", value: leafFilter.map((v) => v === "yes" ? "Yes" : "No").join(", "), onClear: () => setLeafFilter([]) });
+    }
+    if (routingFilter.length > 0) {
+      const labels = routingFilter.map((v) => ROUTING_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "routing", label: "Routing", value: labels, onClear: () => setRoutingFilter([]) });
+    }
+    if (buyerFilter.length > 0) {
+      const labels = buyerFilter.map((v) => buyerOptions.find((o) => o.value === v)?.label ?? v).join(", ");
+      chips.push({ key: "buyer", label: "Buyer", value: labels, onClear: () => setBuyerFilter([]) });
+    }
+    if (createdDateFilter.preset) {
+      const presetLabels: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month" };
+      chips.push({ key: "created", label: "Created", value: presetLabels[createdDateFilter.preset] ?? createdDateFilter.preset, onClear: () => setCreatedDateFilter({}) });
+    } else if (createdDateFilter.from || createdDateFilter.to) {
+      chips.push({ key: "created", label: "Created", value: `${createdDateFilter.from ?? "\u2026"} \u2192 ${createdDateFilter.to ?? "\u2026"}`, onClear: () => setCreatedDateFilter({}) });
+    }
+    if (soldDateFilter.preset) {
+      const presetLabels: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month" };
+      chips.push({ key: "sold", label: "Sold", value: presetLabels[soldDateFilter.preset] ?? soldDateFilter.preset, onClear: () => setSoldDateFilter({}) });
+    } else if (soldDateFilter.from || soldDateFilter.to) {
+      chips.push({ key: "sold", label: "Sold", value: `${soldDateFilter.from ?? "\u2026"} \u2192 ${soldDateFilter.to ?? "\u2026"}`, onClear: () => setSoldDateFilter({}) });
+    }
+    if (globalSearch.trim()) chips.push({ key: "search", label: "Search", value: globalSearch, onClear: () => setGlobalSearch("") });
+    return chips;
+  }, [leadSearch, typeFilter, areaFilter, priceRange, statusFilter, leafFilter, routingFilter, buyerFilter, createdDateFilter, soldDateFilter, globalSearch, buyerOptions]);
+
+  function clearAllFilters() {
+    setLeadSearch(""); setTypeFilter([]); setAreaFilter([]);
+    setPriceRange({}); setStatusFilter([]); setLeafFilter([]);
+    setRoutingFilter([]); setBuyerFilter([]);
+    setCreatedDateFilter({}); setSoldDateFilter({});
+    setGlobalSearch(""); setSortColumn(null); setSortDir(null);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
+  // Revenue computations
+  const revenueData = useMemo(() => {
+    const soldLeads = data.leads.filter((l) => l.status === "purchased");
+    const totalRevenue = soldLeads.reduce((s, l) => s + l.price, 0);
+    const reiRevenue = Math.round(totalRevenue * 30) / 100;
+    const myEarnings = Math.round(totalRevenue * 68.6) / 100;
+
+    const byType = new Map<string, number>();
+    for (const l of soldLeads) {
+      byType.set(l.system_type, (byType.get(l.system_type) ?? 0) + l.price);
+    }
+
+    return { totalRevenue, reiRevenue, myEarnings, byType };
+  }, [data.leads]);
+
+  const { stats } = data;
+  const statCards = [
+    { label: "My Leads", value: String(stats.total), color: TEXT },
+    { label: "Available", value: String(stats.available), color: EMERALD },
+    { label: "Sold", value: String(stats.sold), color: "#10b981" },
+    { label: "Expired", value: String(stats.expired), color: TEXT_MUTED },
+    { label: "Total Revenue", value: money(stats.totalRevenue), color: "#f59e0b" },
+    { label: "My Earnings", value: money(stats.brokerEarnings), color: "#3b82f6" },
+  ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18, padding: 24, minHeight: "100%" }}>
+    <div style={{ padding: 28 }}>
       {/* Header */}
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em", color: "#f1f5f9", margin: 0 }}>
-          Leads Marketplace
-        </h1>
-        <p style={{ marginTop: 4, fontSize: 13, color: "#64748b", margin: "4px 0 0", fontWeight: 500 }}>
-          Post manual leads (HES assessments and home inspections) for your provider network.
-        </p>
-      </div>
-
-      {/* Quick Action */}
-      <button
-        type="button"
-        onClick={() => setShowPostModal(true)}
-        style={{
-          background: "linear-gradient(135deg, rgba(16,185,129,0.09), rgba(16,185,129,0.03))",
-          border: "1px solid rgba(16,185,129,0.27)",
-          borderRadius: 12,
-          padding: "20px 24px",
-          cursor: "pointer",
-          textAlign: "left",
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 16,
-          width: "100%",
-          maxWidth: 420,
-          transition: "transform 0.15s, box-shadow 0.15s",
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(16,185,129,0.13)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "none"; }}
-      >
-        <span
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            background: "rgba(16,185,129,0.13)",
-            border: "1px solid rgba(16,185,129,0.27)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 3v14M3 10h14" stroke="#10b981" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#10b981" }}>+ Post Manual Lead</div>
-          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4, lineHeight: 1.4 }}>
-            Post an HES assessment or home inspection lead to your provider network
-          </div>
+          <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>Marketplace</h1>
+          <p style={{ color: TEXT_DIM, fontSize: 13, margin: "4px 0 0", fontWeight: 500 }}>Your leads from LEAF reports and campaigns</p>
         </div>
-      </button>
-
-      {/* Filter Bar */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: 10,
-          padding: "12px 16px",
-          borderRadius: 14,
-          border: "1px solid #334155",
-          background: "#1e293b",
-        }}
-      >
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#64748b", marginRight: 4 }}>
-          Filter:
-        </div>
-
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="admin-select"
+        <Link
+          href="/broker/request"
           style={{
-            padding: "7px 12px",
-            borderRadius: 10,
-            border: "1px solid #334155",
-            background: "#0f172a",
-            color: "#cbd5e1",
-            fontSize: 13,
-            fontWeight: 600,
-            outline: "none",
-            cursor: "pointer",
+            display: "inline-flex", alignItems: "center", gap: 6,
+            padding: "9px 18px", borderRadius: 8, textDecoration: "none",
+            background: EMERALD, color: "#fff", fontSize: 13, fontWeight: 700,
+            border: "1px solid rgba(16,185,129,0.5)", transition: "all 0.15s ease",
           }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "#059669"; e.currentTarget.style.boxShadow = "0 0 12px rgba(16,185,129,0.3)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = EMERALD; e.currentTarget.style.boxShadow = "none"; }}
         >
-          <option value="all">All Types</option>
-          <option value="hes_assessment">HES Assessment</option>
-          <option value="home_inspection">Home Inspection</option>
-          <option value="system_lead">System Lead</option>
-        </select>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="admin-select"
-          style={{
-            padding: "7px 12px",
-            borderRadius: 10,
-            border: "1px solid #334155",
-            background: "#0f172a",
-            color: "#cbd5e1",
-            fontSize: 13,
-            fontWeight: 600,
-            outline: "none",
-            cursor: "pointer",
-          }}
-        >
-          <option value="all">All Statuses</option>
-          <option value="active">Active</option>
-          <option value="sold">Sold</option>
-          <option value="in_progress">In Progress</option>
-          <option value="closed">Closed</option>
-          <option value="expired">Expired</option>
-          <option value="lost">Lost</option>
-        </select>
-
-        <div style={{ marginLeft: "auto", fontSize: 13, color: "#64748b", fontWeight: 600 }}>
-          Showing{" "}
-          <span style={{ color: "#cbd5e1", fontWeight: 800 }}>{filtered.length}</span>{" "}
-          lead{filtered.length !== 1 ? "s" : ""}
-          {filtered.length !== leads.length && (
-            <span style={{ color: "#475569" }}> of {leads.length}</span>
-          )}
-        </div>
+          + New Request
+        </Link>
       </div>
 
-      {/* Table */}
-      <div style={{ border: "1px solid #334155", background: "#1e293b", borderRadius: 16, overflow: "hidden" }}>
-        {/* Table Header */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "2fr 130px 110px 130px 160px 130px 180px",
-            gap: 12,
-            padding: "10px 16px",
-            fontSize: 11,
-            fontWeight: 800,
-            color: "#64748b",
-            borderBottom: "1px solid #334155",
-            background: "#1e293b",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
-          <div>Customer / Address</div>
-          <div>Lead Type</div>
-          <div>Price</div>
-          <div>Status</div>
-          <div>Assigned To</div>
-          <div>Posted</div>
-          <div style={{ textAlign: "right" }}>Actions</div>
-        </div>
-
-        {/* Table Body */}
-        {filtered.length === 0 ? (
-          <div style={{ padding: "48px 24px", textAlign: "center", color: "#64748b", fontSize: 14 }}>
-            {leads.length === 0
-              ? 'No leads posted yet. Click "+ Post Manual Lead" to get started.'
-              : "No leads match your current filters."}
+      {/* Stats */}
+      <div className="admin-kpi-grid-6" style={{ marginBottom: 20 }}>
+        {statCards.map((s) => (
+          <div key={s.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>{s.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: s.color, marginTop: 2 }}>{s.value}</div>
           </div>
-        ) : (
-          filtered.map((lead, idx) => {
-            const address = assessmentAddress(lead.assessment);
-            const assignedName = lead.assigned_provider?.contractor_name ?? null;
-            const buyerName = lead.contractor?.contractor_name ?? null;
-            const displayProvider = assignedName || buyerName;
-            const isLast = idx === filtered.length - 1;
+        ))}
+      </div>
 
-            return (
-              <div
-                key={lead.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 130px 110px 130px 160px 130px 180px",
-                  gap: 12,
-                  padding: "14px 16px",
-                  borderBottom: isLast ? "none" : "1px solid rgba(51,65,85,0.5)",
-                  alignItems: "center",
-                  transition: "background 0.1s",
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = "rgba(30,41,59,0.6)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-              >
-                {/* Customer / Address */}
-                <div>
-                  <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 13, lineHeight: 1.3 }}>
-                    {address}
-                  </div>
-                  {lead.expiration_date && (
-                    <div style={{ marginTop: 3, fontSize: 11, color: "#64748b" }}>
-                      Expires {fmtDate(lead.expiration_date)}
-                    </div>
-                  )}
-                  {lead.broker_commission != null && lead.status === "closed" && (
-                    <div style={{ marginTop: 3, fontSize: 11, fontWeight: 700, color: "#10b981" }}>
-                      Commission: {fmtMoney(lead.broker_commission)}
-                    </div>
-                  )}
-                </div>
-
-                {/* Lead Type */}
-                <div>
-                  <LeadTypeBadge leadType={lead.lead_type ?? "system_lead"} />
-                </div>
-
-                {/* Price */}
-                <div style={{ fontSize: 14, fontWeight: 800, color: "#06b6d4" }}>
-                  {fmtMoney(lead.price)}
-                </div>
-
-                {/* Status */}
-                <div>
-                  <StatusBadge status={lead.status} />
-                </div>
-
-                {/* Assigned To */}
-                <div style={{ fontSize: 13, color: displayProvider ? "#cbd5e1" : "#475569", fontWeight: displayProvider ? 600 : 400 }}>
-                  {displayProvider ?? "\u2014"}
-                  {assignedName && !buyerName && (
-                    <div style={{ fontSize: 10, color: "#64748b", marginTop: 2 }}>assigned</div>
-                  )}
-                  {buyerName && (
-                    <div style={{ fontSize: 10, color: "#06b6d4", marginTop: 2 }}>purchased</div>
-                  )}
-                </div>
-
-                {/* Posted Date */}
-                <div style={{ fontSize: 12, color: "#64748b" }}>
-                  {fmtDate(lead.created_at)}
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
-                  {(lead.status === "active" || lead.status === "in_progress") && (
-                    <ActionButton onClick={() => setEditLead(lead)} disabled={isPending} variant="secondary">
-                      Edit
-                    </ActionButton>
-                  )}
-                  {lead.status === "sold" && (
-                    <ActionButton onClick={() => handleMarkClosed(lead)} disabled={isPending} variant="primary">
-                      Mark Closed
-                    </ActionButton>
-                  )}
-                  {(lead.status === "expired" || lead.status === "lost") && (
-                    <ActionButton onClick={() => handleRepost(lead)} disabled={isPending} variant="secondary">
-                      Repost
-                    </ActionButton>
-                  )}
-                  <ActionButton onClick={() => handleDelete(lead)} disabled={isPending} variant="danger">
-                    Remove
-                  </ActionButton>
-                </div>
+      {/* Revenue Section (collapsible) */}
+      <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, marginBottom: 20, overflow: "hidden" }}>
+        <button type="button" onClick={() => setRevenueOpen(!revenueOpen)}
+          style={{
+            width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer",
+          }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Revenue</span>
+          <span style={{ fontSize: 12, color: TEXT_DIM, transition: "transform 0.15s", transform: revenueOpen ? "rotate(180deg)" : "rotate(0)" }}>{"\u25BC"}</span>
+        </button>
+        {revenueOpen && (
+          <div style={{ padding: "0 18px 18px" }}>
+            {/* Revenue Cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 18 }}>
+              <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Total Revenue</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b", marginTop: 2 }}>{money(revenueData.totalRevenue)}</div>
               </div>
-            );
-          })
+              <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>REI Cut (30%)</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: EMERALD, marginTop: 2 }}>{money(revenueData.reiRevenue)}</div>
+              </div>
+              <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>My Earnings (68.6%)</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#3b82f6", marginTop: 2 }}>{money(revenueData.myEarnings)}</div>
+              </div>
+            </div>
+
+            {/* Revenue by Service Type */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Revenue by Service Type</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {SERVICE_TYPES.filter((s) => s.value !== "all").map((st) => {
+                  const amt = revenueData.byType.get(st.value) ?? 0;
+                  const stc = SYSTEM_TYPE_COLORS[st.value];
+                  const maxAmt = Math.max(...[...revenueData.byType.values()], 1);
+                  const pct = Math.round((amt / maxAmt) * 100);
+                  return (
+                    <div key={st.value} style={{ flex: "1 1 140px", minWidth: 140, background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: stc?.text ?? TEXT_MUTED, marginBottom: 4 }}>{st.label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: amt > 0 ? TEXT : TEXT_DIM }}>{money(amt)}</div>
+                      <div style={{ height: 4, borderRadius: 2, background: BORDER, marginTop: 6 }}>
+                        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 2, background: stc?.text ?? TEXT_MUTED, transition: "width 0.3s" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Recent Transactions */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Recent Transactions</div>
+              {data.transactions.length === 0 ? (
+                <div style={{ padding: 20, textAlign: "center", fontSize: 13, color: TEXT_DIM, background: BG, border: `1px solid ${BORDER}`, borderRadius: 8 }}>
+                  No transactions recorded yet
+                </div>
+              ) : (
+                <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr>
+                        {["Lead", "Contractor", "Amount", "REI Take", "My Take", "Date"].map((h) => (
+                          <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${BORDER}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.transactions.map((tx) => (
+                        <tr key={tx.id} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 600, color: TEXT }}>{tx.lead_title || "\u2014"}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_SEC }}>{tx.contractor_name || "\u2014"}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: TEXT }}>{money(tx.total_amount)}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: EMERALD }}>{money(tx.rei_amount)}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#3b82f6" }}>{money(tx.poster_amount)}</td>
+                          <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_DIM }}>{fmtDate(tx.created_at)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Empty state */}
-      {leads.length === 0 && (
-        <div style={{ borderRadius: 16, border: "1px dashed #334155", padding: "48px 24px", textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.4 }}>&#9741;</div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
-            No Leads Yet
-          </div>
-          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 20 }}>
-            Post your first manual lead to start assigning work to your provider network.
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowPostModal(true)}
-            style={{
-              padding: "12px 24px",
-              borderRadius: 12,
-              background: "#10b981",
-              color: "#fff",
-              fontWeight: 700,
-              fontSize: 14,
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            + Post Manual Lead
-          </button>
-        </div>
-      )}
+      {/* Leads Section (collapsible) */}
+      <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, marginBottom: 20, overflow: "hidden" }}>
+        <button type="button" onClick={() => setLeadsOpen(!leadsOpen)}
+          style={{
+            width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer",
+          }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Leads</span>
+          <span style={{ fontSize: 12, color: TEXT_DIM, transition: "transform 0.15s", transform: leadsOpen ? "rotate(180deg)" : "rotate(0)" }}>{"\u25BC"}</span>
+        </button>
+        {leadsOpen && (
+          <div style={{ padding: "0 18px 18px" }}>
+            {/* Search + Count */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <span style={{ fontSize: 12, color: TEXT_DIM }}>
+                Showing <span style={{ fontWeight: 700, color: TEXT_SEC }}>{filtered.length}</span> lead{filtered.length !== 1 ? "s" : ""}
+              </span>
+              <input type="text" value={globalSearch} onChange={(e) => { setGlobalSearch(e.target.value); setPage(1); }}
+                placeholder="Search title, city, zip, name\u2026"
+                className="admin-input"
+                style={{ maxWidth: 300, fontSize: 13, padding: "7px 12px" }} />
+            </div>
 
-      {/* Post Lead Modal */}
-      {showPostModal && (
-        <PostLeadModal
-          brokerId={broker.id}
-          assessments={assessments}
-          providers={providers}
-          onClose={() => setShowPostModal(false)}
-          onPosted={() => { setShowPostModal(false); refresh(); }}
-        />
-      )}
+            {/* Mobile Filter Toggle */}
+            <div className="admin-mobile-filter-toggle">
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen((p) => !p)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 14px", borderRadius: 8,
+                  border: `1px solid ${activeFilters.length > 0 ? "rgba(16,185,129,0.30)" : BORDER}`,
+                  background: CARD, cursor: "pointer",
+                }}
+              >
+                <AdjustmentsHorizontalIcon style={{ width: 18, height: 18, color: activeFilters.length > 0 ? EMERALD : TEXT_MUTED }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: activeFilters.length > 0 ? EMERALD : TEXT }}>Filters</span>
+                {activeFilters.length > 0 && (
+                  <span style={{
+                    padding: "1px 7px", borderRadius: 9999, fontSize: 11, fontWeight: 700,
+                    background: "rgba(16,185,129,0.15)", color: EMERALD,
+                  }}>{activeFilters.length}</span>
+                )}
+                <ChevronDownIcon style={{
+                  width: 16, height: 16, marginLeft: "auto",
+                  color: TEXT_MUTED, transition: "transform 0.15s",
+                  transform: mobileFiltersOpen ? "rotate(180deg)" : "rotate(0)",
+                }} />
+              </button>
+              {mobileFiltersOpen && (
+                <div style={{
+                  marginTop: 8, padding: 14, borderRadius: 10,
+                  background: CARD, border: `1px solid ${BORDER}`,
+                  display: "flex", flexDirection: "column", gap: 12,
+                }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Type</label>
+                    <select
+                      value={typeFilter.length === 1 ? typeFilter[0] : ""}
+                      onChange={(e) => { setTypeFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Types</option>
+                      {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Status</label>
+                    <select
+                      value={statusFilter.length === 1 ? statusFilter[0] : ""}
+                      onChange={(e) => { setStatusFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Statuses</option>
+                      {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Area</label>
+                    <select
+                      value={areaFilter.length === 1 ? areaFilter[0] : ""}
+                      onChange={(e) => { setAreaFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Areas</option>
+                      {areaOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, display: "block" }}>Routing</label>
+                    <select
+                      value={routingFilter.length === 1 ? routingFilter[0] : ""}
+                      onChange={(e) => { setRoutingFilter(e.target.value ? [e.target.value] : []); setPage(1); }}
+                      className="admin-select" style={{ fontSize: 13 }}
+                    >
+                      <option value="">All Routing</option>
+                      {ROUTING_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
 
-      {/* Edit Lead Modal */}
-      {editLead && (
-        <EditLeadModal
-          lead={editLead}
-          onClose={() => setEditLead(null)}
-          onSaved={() => { setEditLead(null); refresh(); }}
-        />
-      )}
+            {/* Active Filter Chips */}
+            <div style={{ marginBottom: activeFilters.length > 0 ? 12 : 0 }}>
+              <ActiveFilterBar filters={activeFilters} onClearAll={clearAllFilters} />
+            </div>
+
+            {/* Table */}
+            <div className="admin-table-desktop" style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
+              <table className="admin-table" style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+                <thead>
+                  <tr>
+                    <FilterableHeader
+                      label="Lead" filterType="search"
+                      filterValue={leadSearch} onFilterChange={(v) => { setLeadSearch(v as string); setPage(1); }}
+                      isOpen={openColumn === "lead"} onOpen={() => setOpenColumn("lead")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Type" filterType="multi-select" width={110}
+                      options={TYPE_OPTIONS}
+                      optionColors={MARKETPLACE_TYPE_COLORS}
+                      filterValue={typeFilter} onFilterChange={(v) => { setTypeFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "type"} onOpen={() => setOpenColumn("type")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Area" filterType="multi-select" width={100}
+                      options={areaOptions}
+                      filterValue={areaFilter} onFilterChange={(v) => { setAreaFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "area"} onOpen={() => setOpenColumn("area")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Price" filterType="range" width={90}
+                      filterValue={priceRange} onFilterChange={(v) => { setPriceRange(v as { min?: string; max?: string }); setPage(1); }}
+                      sortable sortDir={sortColumn === "price" ? sortDir : null} onSortChange={handleSort("price")}
+                      isOpen={openColumn === "price"} onOpen={() => setOpenColumn("price")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Status" filterType="multi-select" width={90}
+                      options={STATUS_OPTIONS}
+                      filterValue={statusFilter} onFilterChange={(v) => { setStatusFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "status"} onOpen={() => setOpenColumn("status")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="LEAF" filterType="multi-select" width={60}
+                      options={LEAF_OPTIONS}
+                      filterValue={leafFilter} onFilterChange={(v) => { setLeafFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "leaf"} onOpen={() => setOpenColumn("leaf")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Routing" filterType="multi-select" width={90}
+                      options={ROUTING_OPTIONS}
+                      filterValue={routingFilter} onFilterChange={(v) => { setRoutingFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "routing"} onOpen={() => setOpenColumn("routing")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Buyer" filterType="multi-select" width={100}
+                      options={buyerOptions}
+                      filterValue={buyerFilter} onFilterChange={(v) => { setBuyerFilter(v as string[]); setPage(1); }}
+                      isOpen={openColumn === "buyer"} onOpen={() => setOpenColumn("buyer")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Created" filterType="date-range" width={100}
+                      filterValue={createdDateFilter} onFilterChange={(v) => { setCreatedDateFilter(v as { preset?: string; from?: string; to?: string }); setPage(1); }}
+                      sortable sortDir={sortColumn === "created" ? sortDir : null} onSortChange={handleSort("created")}
+                      isOpen={openColumn === "created"} onOpen={() => setOpenColumn("created")} onClose={() => setOpenColumn(null)}
+                    />
+                    <FilterableHeader
+                      label="Sold" filterType="date-range" width={100}
+                      filterValue={soldDateFilter} onFilterChange={(v) => { setSoldDateFilter(v as { preset?: string; from?: string; to?: string }); setPage(1); }}
+                      sortable sortDir={sortColumn === "sold" ? sortDir : null} onSortChange={handleSort("sold")}
+                      isOpen={openColumn === "sold"} onOpen={() => setOpenColumn("sold")} onClose={() => setOpenColumn(null)}
+                    />
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.length === 0 ? (
+                    <tr><td colSpan={10} style={{ padding: 48, textAlign: "center" }}>
+                      <div style={{ fontSize: 14, color: TEXT_DIM, fontWeight: 600 }}>No leads match your filters</div>
+                    </td></tr>
+                  ) : paged.map((lead) => (
+                    <LeadRow key={lead.id} lead={lead} onRowClick={() => openPanel(lead)} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="admin-card-mobile">
+              {paged.length === 0 ? (
+                <div style={{ padding: 48, textAlign: "center", fontSize: 14, color: TEXT_DIM, fontWeight: 600 }}>
+                  No leads match your filters
+                </div>
+              ) : paged.map((lead) => (
+                <LeadMobileCard key={lead.id} lead={lead} onClick={() => openPanel(lead)} />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 16 }}>
+                <PagBtn disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>{"\u2190"} Prev</PagBtn>
+                <span style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 600 }}>
+                  Page {safePage} of {totalPages}
+                </span>
+                <PagBtn disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>Next {"\u2192"}</PagBtn>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Lead Detail Side Panel */}
+      <SidePanel
+        isOpen={sidePanelOpen}
+        onClose={closePanel}
+        title={selectedLead?.title || selectedLead?.homeowner_name || "Lead Details"}
+        width="w-2/5"
+      >
+        {selectedLead && (
+          <LeadDetailPanel lead={selectedLead} />
+        )}
+      </SidePanel>
     </div>
   );
 }
 
-// ─── Action Button Helper ────────────────────────────────────────────────────
+// ─── Pagination Button ──────────────────────────────────────────────
 
-function ActionButton({
-  onClick,
-  disabled,
-  variant,
-  children,
-}: {
-  onClick: () => void;
-  disabled: boolean;
-  variant: "primary" | "secondary" | "danger";
-  children: React.ReactNode;
-}) {
-  const styles: Record<string, CSSProperties> = {
-    primary: { border: "1px solid rgba(16,185,129,0.30)", background: "rgba(16,185,129,0.12)", color: "#10b981" },
-    secondary: { border: "1px solid #334155", background: "transparent", color: "#94a3b8" },
-    danger: { border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.08)", color: "#ef4444" },
-  };
-
-  const classNames: Record<string, string> = {
-    primary: "admin-btn-primary",
-    secondary: "admin-btn-secondary",
-    danger: "admin-btn-danger",
-  };
-
+function PagBtn({ children, disabled, onClick }: { children: React.ReactNode; disabled: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={classNames[variant]}
+    <button type="button" disabled={disabled} onClick={onClick}
       style={{
-        ...styles[variant],
-        padding: "6px 12px",
-        borderRadius: 8,
-        fontWeight: 700,
-        fontSize: 12,
-        cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.5 : 1,
-        whiteSpace: "nowrap",
-      }}
-    >
+        padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+        border: `1px solid ${BORDER}`, background: "transparent",
+        color: disabled ? TEXT_DIM : TEXT_SEC, cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1, transition: "all 0.15s",
+      }}>
       {children}
     </button>
+  );
+}
+
+// ─── Lead Table Row ─────────────────────────────────────────────────
+
+function LeadRow({ lead, onRowClick }: { lead: BrokerMarketplaceLead; onRowClick: () => void }) {
+  const stc = SYSTEM_TYPE_COLORS[lead.system_type] ?? { bg: "rgba(148,163,184,0.15)", text: TEXT_MUTED, label: lead.system_type };
+  const sc = STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.available;
+  const isMuted = lead.status === "expired" || lead.status === "archived";
+  const textColor = isMuted ? TEXT_DIM : TEXT_SEC;
+
+  return (
+    <tr
+      style={{
+        borderBottom: `1px solid ${BORDER}`,
+        borderLeft: lead.status === "purchased" ? `3px solid ${EMERALD}` : "3px solid transparent",
+        transition: "background 0.1s ease",
+        cursor: "pointer",
+      }}
+      onClick={onRowClick}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+    >
+      <td style={{ padding: "10px 14px" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: isMuted ? TEXT_DIM : TEXT }}>
+          {lead.title || lead.homeowner_name || "\u2014"}
+        </div>
+        <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 1 }}>
+          {[lead.city, lead.state].filter(Boolean).join(", ") || lead.zip}
+        </div>
+      </td>
+      <td style={{ padding: "10px 14px" }}>
+        <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: stc.bg, color: stc.text }}>
+          {stc.label}
+        </span>
+      </td>
+      <td style={{ padding: "10px 14px", fontSize: 12, color: textColor }}>{lead.area || "\u2014"}</td>
+      <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: isMuted ? TEXT_DIM : TEXT }}>{money(lead.price)}</td>
+      <td style={{ padding: "10px 14px" }}>
+        <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>
+          {sc.label}
+        </span>
+      </td>
+      <td style={{ padding: "10px 14px", textAlign: "center" }}>
+        {lead.has_leaf ? (
+          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: EMERALD }} title="Has LEAF report" />
+        ) : (
+          <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#334155" }} title="No LEAF" />
+        )}
+      </td>
+      <td style={{ padding: "10px 14px" }}>
+        {(() => {
+          const rc = lead.routing_channel ?? "open_market";
+          const cfg = ROUTING_BADGE_CONFIG[rc];
+          if (!cfg) return <span style={{ fontSize: 12, color: TEXT_DIM }}>{"\u2014"}</span>;
+          return (
+            <span style={{ display: "inline-block", padding: "3px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700, background: cfg.bg, color: cfg.text }}>
+              {cfg.label}{lead.is_free_assignment ? " (Free)" : ""}
+            </span>
+          );
+        })()}
+      </td>
+      <td style={{ padding: "10px 14px", fontSize: 12, color: textColor }}>{lead.buyer_name || "\u2014"}</td>
+      <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_DIM }}>{fmtDate(lead.created_at)}</td>
+      <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_DIM }}>{fmtDate(lead.purchased_date)}</td>
+    </tr>
+  );
+}
+
+// ─── Mobile Card ────────────────────────────────────────────────────
+
+function LeadMobileCard({ lead, onClick }: { lead: BrokerMarketplaceLead; onClick: () => void }) {
+  const stc = SYSTEM_TYPE_COLORS[lead.system_type] ?? { bg: "rgba(148,163,184,0.15)", text: TEXT_MUTED, label: lead.system_type };
+  const sc = STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.available;
+  const isMuted = lead.status === "expired" || lead.status === "archived";
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: "rgba(30,41,59,0.5)",
+        borderRadius: 12,
+        padding: 16,
+        border: lead.status === "purchased" ? "1px solid rgba(16,185,129,0.4)" : "1px solid rgba(51,65,85,0.5)",
+        marginBottom: 12,
+        cursor: "pointer",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: isMuted ? TEXT_DIM : TEXT }}>
+          {lead.title || lead.homeowner_name || "\u2014"}
+        </div>
+        <span style={{ fontSize: 14, fontWeight: 700, color: isMuted ? TEXT_DIM : TEXT }}>{money(lead.price)}</span>
+      </div>
+      <div style={{ fontSize: 12, color: TEXT_DIM, marginBottom: 8 }}>
+        {[lead.city, lead.state].filter(Boolean).join(", ") || lead.zip || "\u2014"}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: stc.bg, color: stc.text }}>
+          {stc.label}
+        </span>
+        <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>
+          {sc.label}
+        </span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: TEXT_DIM }}>{fmtDate(lead.created_at)}</span>
+        {lead.has_leaf && (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: EMERALD, display: "inline-block" }} />
+            <span style={{ fontSize: 10, color: EMERALD, fontWeight: 600 }}>LEAF</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Lead Detail Panel ──────────────────────────────────────────────
+
+function LeadDetailPanel({ lead }: { lead: BrokerMarketplaceLead }) {
+  const stc = SYSTEM_TYPE_COLORS[lead.system_type] ?? { bg: "rgba(148,163,184,0.15)", text: TEXT_MUTED, label: lead.system_type };
+  const sc = STATUS_CONFIG[lead.status] ?? STATUS_CONFIG.available;
+  const leaf = lead.leaf_report_data;
+  const hasLeaf = lead.has_leaf && leaf && Object.keys(leaf).length > 0;
+
+  const sectionStyle: React.CSSProperties = {
+    background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.5)",
+    borderRadius: 8, padding: 16, marginBottom: 16,
+  };
+  const sectionTitle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase",
+    letterSpacing: "0.06em", marginBottom: 10,
+  };
+  const fieldLabel: React.CSSProperties = { fontSize: 11, color: TEXT_DIM, fontWeight: 600 };
+  const fieldValue: React.CSSProperties = { fontSize: 13, color: TEXT_SEC, marginTop: 2 };
+
+  const totalAmt = lead.price;
+  const reiAmt = Math.round(totalAmt * 30) / 100;
+  const serviceFee = Math.round(totalAmt * 2) / 100;
+  const myAmt = Math.round(totalAmt * 68.6) / 100;
+
+  return (
+    <div>
+      {/* Status & Type badges */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>{sc.label}</span>
+        <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: stc.bg, color: stc.text }}>{stc.label}</span>
+        {lead.routing_channel && ROUTING_BADGE_CONFIG[lead.routing_channel] && (
+          <span style={{
+            padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700,
+            background: ROUTING_BADGE_CONFIG[lead.routing_channel].bg,
+            color: ROUTING_BADGE_CONFIG[lead.routing_channel].text,
+          }}>
+            {ROUTING_BADGE_CONFIG[lead.routing_channel].label}
+            {lead.is_free_assignment ? " (Free)" : ""}
+          </span>
+        )}
+        {lead.has_leaf && <span style={{ padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: "rgba(16,185,129,0.12)", color: EMERALD }}>LEAF</span>}
+      </div>
+
+      {/* Lead Info */}
+      <div style={sectionStyle}>
+        <div style={sectionTitle}>Lead Info</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div><div style={fieldLabel}>Price</div><div style={{ ...fieldValue, fontWeight: 700, color: TEXT }}>{money(lead.price)}</div></div>
+          <div><div style={fieldLabel}>Created</div><div style={fieldValue}>{fmtDate(lead.created_at)}</div></div>
+          {lead.expiration_date && <div><div style={fieldLabel}>Expires</div><div style={fieldValue}>{fmtDate(lead.expiration_date)}</div></div>}
+        </div>
+        {lead.description && (
+          <div style={{ marginTop: 12 }}>
+            <div style={fieldLabel}>Description</div>
+            <div style={{ ...fieldValue, lineHeight: 1.5 }}>{lead.description}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Property */}
+      <div style={sectionStyle}>
+        <div style={sectionTitle}>Property</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {lead.address && <div style={{ gridColumn: "span 2" }}><div style={fieldLabel}>Address</div><div style={fieldValue}>{[lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ")}</div></div>}
+          {!lead.address && lead.city && <div><div style={fieldLabel}>City / Area</div><div style={fieldValue}>{[lead.city, lead.state].filter(Boolean).join(", ")}</div></div>}
+          {lead.home_type && <div><div style={fieldLabel}>Property Type</div><div style={fieldValue}>{lead.home_type}</div></div>}
+          {lead.home_sqft != null && <div><div style={fieldLabel}>Square Footage</div><div style={fieldValue}>{lead.home_sqft.toLocaleString()} sqft</div></div>}
+          {lead.home_year_built != null && <div><div style={fieldLabel}>Year Built</div><div style={fieldValue}>{lead.home_year_built}</div></div>}
+          {lead.beds != null && <div><div style={fieldLabel}>Bedrooms</div><div style={fieldValue}>{lead.beds}</div></div>}
+          {lead.baths != null && <div><div style={fieldLabel}>Bathrooms</div><div style={fieldValue}>{lead.baths}</div></div>}
+        </div>
+      </div>
+
+      {/* Homeowner */}
+      <div style={sectionStyle}>
+        <div style={sectionTitle}>Homeowner</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div><div style={fieldLabel}>Name</div><div style={fieldValue}>{lead.homeowner_name || "\u2014"}</div></div>
+          <div><div style={fieldLabel}>Phone</div><div style={fieldValue}>
+            {lead.homeowner_phone ? (
+              <a href={`tel:${lead.homeowner_phone}`} style={{ color: TEXT_SEC, textDecoration: "none" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = EMERALD; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_SEC; }}>
+                {lead.homeowner_phone}
+              </a>
+            ) : "\u2014"}
+          </div></div>
+          <div><div style={fieldLabel}>Email</div><div style={fieldValue}>
+            {lead.homeowner_email ? (
+              <a href={`mailto:${lead.homeowner_email}`} style={{ color: TEXT_SEC, textDecoration: "none" }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = EMERALD; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = TEXT_SEC; }}>
+                {lead.homeowner_email}
+              </a>
+            ) : "\u2014"}
+          </div></div>
+          {lead.best_contact_time && <div><div style={fieldLabel}>Best Time</div><div style={fieldValue}>{lead.best_contact_time}</div></div>}
+        </div>
+      </div>
+
+      {/* LEAF */}
+      {hasLeaf && (
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>LEAF Energy Assessment</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {leaf!.current_system != null && <div><div style={fieldLabel}>Current System</div><div style={fieldValue}>{String(leaf!.current_system)}</div></div>}
+            {leaf!.system_age != null && <div><div style={fieldLabel}>System Age</div><div style={fieldValue}>{String(leaf!.system_age)} years</div></div>}
+            {leaf!.efficiency != null && <div><div style={fieldLabel}>Efficiency</div><div style={fieldValue}>{String(leaf!.efficiency)}</div></div>}
+            {leaf!.recommendation != null && <div><div style={fieldLabel}>Recommendation</div><div style={{ ...fieldValue, color: EMERALD }}>{String(leaf!.recommendation)}</div></div>}
+            {leaf!.estimated_cost != null && <div><div style={fieldLabel}>Estimated Cost</div><div style={fieldValue}>{String(leaf!.estimated_cost)}</div></div>}
+            {leaf!.annual_savings != null && <div><div style={fieldLabel}>Annual Savings</div><div style={{ ...fieldValue, color: EMERALD }}>{String(leaf!.annual_savings)}</div></div>}
+            {leaf!.payback_years != null && <div><div style={fieldLabel}>Payback</div><div style={fieldValue}>{String(leaf!.payback_years)} years</div></div>}
+            {leaf!.priority != null && <div><div style={fieldLabel}>Priority</div><div style={{
+              ...fieldValue,
+              color: String(leaf!.priority) === "Urgent" ? "#ef4444" : String(leaf!.priority) === "High" ? "#f59e0b" : EMERALD,
+            }}>{String(leaf!.priority)}</div></div>}
+          </div>
+        </div>
+      )}
+
+      {/* Purchase info (sold) */}
+      {lead.status === "purchased" && (
+        <div style={sectionStyle}>
+          <div style={sectionTitle}>Purchase Info</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div><div style={fieldLabel}>Buyer</div><div style={fieldValue}>{lead.buyer_name || "\u2014"}</div></div>
+            <div><div style={fieldLabel}>Purchase Date</div><div style={fieldValue}>{fmtDate(lead.purchased_date)}</div></div>
+          </div>
+          <div style={sectionTitle}>Revenue Split</div>
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10,
+            background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: 12,
+          }}>
+            <div><div style={fieldLabel}>Total</div><div style={{ ...fieldValue, fontWeight: 700, color: TEXT }}>{money(totalAmt)}</div></div>
+            <div><div style={fieldLabel}>REI (30%)</div><div style={{ ...fieldValue, fontWeight: 700, color: EMERALD }}>{money(reiAmt)}</div></div>
+            <div><div style={fieldLabel}>My Earnings (68.6%)</div><div style={{ ...fieldValue, fontWeight: 700, color: "#3b82f6" }}>{money(myAmt)}</div></div>
+            <div><div style={fieldLabel}>Service Fee (2%)</div><div style={{ ...fieldValue, fontWeight: 700, color: TEXT_MUTED }}>{money(serviceFee)}</div></div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
