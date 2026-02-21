@@ -15,6 +15,7 @@ type LinkItem = { href: string; label: string };
 const OVERVIEW: LinkItem[] = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/marketplace", label: "Marketplace" },
+  { href: "/admin/revenue", label: "Revenue" },
 ];
 
 const OPS: LinkItem[] = [

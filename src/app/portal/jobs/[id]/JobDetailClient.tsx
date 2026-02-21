@@ -78,6 +78,70 @@ function stripePaymentUrl(paymentId: string | null, isTest: boolean): string | n
   return `${base}/${paymentId}`;
 }
 
+// ─── Workflow progress bar ───────────────────────────────────────────
+
+function normalizeStatus(status: string): string {
+  if (status === "in_progress") return "on_site";
+  if (status === "completed") return "delivered";
+  if (status === "rescheduled") return "scheduled";
+  return status;
+}
+
+const WORKFLOW_STAGES = [
+  { key: "pending", label: "Pending" },
+  { key: "scheduled", label: "Scheduled" },
+  { key: "en_route", label: "En Route" },
+  { key: "on_site", label: "On Site" },
+  { key: "field_complete", label: "Field Done" },
+  { key: "report_ready", label: "Report Ready" },
+  { key: "delivered", label: "Delivered" },
+] as const;
+
+function WorkflowProgressBar({ status }: { status: string }) {
+  const normalized = normalizeStatus(status);
+  const currentIdx = WORKFLOW_STAGES.findIndex((s) => s.key === normalized);
+  if (status === "cancelled" || status === "archived") return null;
+
+  return (
+    <div style={{ padding: "12px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+        {WORKFLOW_STAGES.map((stage, i) => {
+          const isDone = i < currentIdx;
+          const isCurrent = i === currentIdx;
+          const dotColor = isDone || isCurrent ? "#10b981" : "#334155";
+          const lineColor = isDone ? "#10b981" : "#334155";
+          return (
+            <div key={stage.key} style={{ display: "contents" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: "0 0 auto" }}>
+                <div style={{
+                  width: isCurrent ? 12 : 8,
+                  height: isCurrent ? 12 : 8,
+                  borderRadius: "50%",
+                  background: dotColor,
+                  border: isCurrent ? "2px solid rgba(16,185,129,0.4)" : "none",
+                  transition: "all 0.2s",
+                }} />
+                <div style={{
+                  fontSize: 8,
+                  fontWeight: isCurrent ? 700 : 500,
+                  color: isCurrent ? "#10b981" : isDone ? "#94a3b8" : "#475569",
+                  marginTop: 4,
+                  whiteSpace: "nowrap",
+                }}>
+                  {stage.label}
+                </div>
+              </div>
+              {i < WORKFLOW_STAGES.length - 1 && (
+                <div style={{ flex: 1, height: 2, background: lineColor, marginBottom: 16, minWidth: 6, transition: "background 0.2s" }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Status transition config ───────────────────────────────────────
 
 type StatusAction = {
@@ -131,14 +195,23 @@ const STATUS_ACTIONS: Record<string, StatusAction> = {
     color: "#10b981",
   },
   on_site: {
-    nextStatus: "in_progress",
-    label: "Start Job",
-    icon: "wrench",
+    nextStatus: "field_complete",
+    label: "Field Work Done",
+    icon: "check",
     bg: "rgba(245,158,11,0.15)",
     border: "rgba(245,158,11,0.4)",
     color: "#f59e0b",
   },
-  // in_progress → handled by payment flow, not a direct status action
+  // Legacy: in_progress can also transition
+  in_progress: {
+    nextStatus: "field_complete",
+    label: "Field Work Done",
+    icon: "check",
+    bg: "rgba(245,158,11,0.15)",
+    border: "rgba(245,158,11,0.4)",
+    color: "#f59e0b",
+  },
+  // field_complete → payment collection, then admin handles report_ready/delivered
 };
 
 const STATUS_DISPLAY: Record<string, { bg: string; text: string; label: string }> = {
@@ -148,6 +221,10 @@ const STATUS_DISPLAY: Record<string, { bg: string; text: string; label: string }
   rescheduled: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "Rescheduled" },
   en_route: { bg: "rgba(59,130,246,0.15)", text: "#60a5fa", label: "En Route" },
   on_site: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "On Site" },
+  field_complete: { bg: "rgba(217,119,6,0.15)", text: "#fbbf24", label: "Field Complete" },
+  report_ready: { bg: "rgba(8,145,178,0.15)", text: "#22d3ee", label: "Report Ready" },
+  delivered: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "Delivered" },
+  // Legacy
   in_progress: { bg: "rgba(245,158,11,0.15)", text: "#f59e0b", label: "In Progress" },
   completed: { bg: "rgba(16,185,129,0.15)", text: "#10b981", label: "Completed" },
   paid: { bg: "rgba(16,185,129,0.20)", text: "#34d399", label: "Paid" },
@@ -453,19 +530,22 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
 
   const addr = fullAddress(job);
   const statusAction = STATUS_ACTIONS[job.status];
-  const statusDisplay = (job.status === "completed" && job.payment_status === "paid")
+  const statusDisplay = ((job.status === "completed" || job.status === "delivered") && job.payment_status === "paid")
     ? STATUS_DISPLAY.paid
     : (STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending);
   const borderColor = SERVICE_BORDER[job.type] ?? "#10b981";
   const serviceLine = [job.service_name, job.tier_name].filter(Boolean).join(" — ");
   const price = job.catalog_total_price ?? job.invoice_amount;
   const isTestMode = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_test_");
-  const isInProgress = job.status === "in_progress";
-  const isCompleted = job.status === "completed";
+  const isFieldComplete = job.status === "field_complete";
+  const isInProgress = job.status === "in_progress"; // Legacy
+  const isCompleted = job.status === "completed" || job.status === "delivered";
+  const isReportReady = job.status === "report_ready";
   const isPaid = job.payment_status === "paid";
   const receiptUrl = job.receipt_url || stripePaymentUrl(job.payment_id, !!isTestMode);
   const stripeUrl = stripePaymentUrl(job.payment_id, !!isTestMode);
-  const showSendPaymentLink = (isInProgress || (isCompleted && !isPaid));
+  const showCollectPayment = isFieldComplete || isInProgress;
+  const showSendPaymentLink = (showCollectPayment || isReportReady || (isCompleted && !isPaid));
 
   // ─── Payment Overlay ──────────────────────────────────────────────
 
@@ -865,6 +945,9 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
         </div>
       </div>
 
+      {/* Workflow Progress Bar */}
+      <WorkflowProgressBar status={job.status} />
+
       {/* Primary Action Button — standard transitions */}
       {statusAction && (
         <button
@@ -896,7 +979,7 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
       )}
 
       {/* Complete Job button — triggers payment flow */}
-      {isInProgress && (
+      {showCollectPayment && (
         <button
           type="button"
           onClick={handleCompleteJobTap}
@@ -1055,8 +1138,8 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
         </div>
       )}
 
-      {/* Completed Summary Card */}
-      {isCompleted && (
+      {/* Completed / Delivered Summary Card */}
+      {(isCompleted || isReportReady) && (
         <div
           style={{
             background: "rgba(16,185,129,0.06)",
@@ -1084,7 +1167,7 @@ export default function JobDetailClient({ jobId }: { jobId: string }) {
             </div>
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#10b981" }}>
-                Job Completed
+                {job.status === "delivered" ? "Reports Delivered" : job.status === "report_ready" ? "Report Ready" : "Job Completed"}
               </div>
               {job.job_completed_at && (
                 <div style={{ fontSize: 12, color: "#64748b" }}>

@@ -261,6 +261,16 @@ input.thumb-bounce::-moz-range-thumb {
   z-index: 999999 !important;
 }
 
+/* Hide number input spinners globally */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 .admin-input[type="file"] {
   width: 100%;
 }

@@ -126,6 +126,11 @@ export type PortalScheduleJob = {
   payment_status: string | null;
   payment_id: string | null;
   receipt_url: string | null;
+  // Workflow fields
+  hes_report_url: string | null;
+  leaf_report_url: string | null;
+  field_completed_at: string | null;
+  report_ready_at: string | null;
 };
 
 // ─── Schedule Queries ───────────────────────────────────────────────
@@ -207,6 +212,10 @@ function mapScheduleRow(
     payment_status: row.payment_status ?? null,
     payment_id: row.payment_id ?? null,
     receipt_url: row.receipt_url ?? null,
+    hes_report_url: row.hes_report_url ?? null,
+    leaf_report_url: row.leaf_report_url ?? null,
+    field_completed_at: row.field_completed_at ?? null,
+    report_ready_at: row.report_ready_at ?? null,
   };
 }
 
@@ -413,6 +422,8 @@ export type PortalJobDetail = PortalScheduleJob & {
   leaf_delivery_status: string | null;
   stripe_checkout_session_id: string | null;
   checkout_url: string | null;
+  reports_sent_at: string | null;
+  invoice_sent_at: string | null;
 };
 
 // ─── Fetch all tech jobs (for Jobs list page) ─────────────────────
@@ -434,9 +445,9 @@ export async function fetchTechJobs(
   const statusFilter = filter === "upcoming"
     ? ["scheduled", "pending", "confirmed", "rescheduled"]
     : filter === "in_progress"
-    ? ["en_route", "on_site", "in_progress"]
+    ? ["en_route", "on_site", "field_complete", "report_ready", "in_progress"]
     : filter === "completed"
-    ? ["completed"]
+    ? ["delivered", "completed"]
     : null;
 
   async function queryTable(table: string, ids: string[], type: "hes" | "inspector") {
@@ -511,6 +522,8 @@ export async function fetchJobDetail(
       leaf_delivery_status: hesRow.leaf_delivery_status ?? null,
       stripe_checkout_session_id: hesRow.stripe_checkout_session_id ?? null,
       checkout_url: hesRow.checkout_url ?? null,
+      reports_sent_at: hesRow.reports_sent_at ?? null,
+      invoice_sent_at: hesRow.invoice_sent_at ?? null,
     };
   }
 
@@ -532,6 +545,8 @@ export async function fetchJobDetail(
       leaf_delivery_status: inspRow.leaf_delivery_status ?? null,
       stripe_checkout_session_id: inspRow.stripe_checkout_session_id ?? null,
       checkout_url: inspRow.checkout_url ?? null,
+      reports_sent_at: inspRow.reports_sent_at ?? null,
+      invoice_sent_at: inspRow.invoice_sent_at ?? null,
     };
   }
 
@@ -543,6 +558,8 @@ export async function fetchJobDetail(
 const FIELD_STATUS_TRANSITIONS: Record<string, { status: string; timestamp_col: string }> = {
   en_route: { status: "en_route", timestamp_col: "tech_en_route_at" },
   on_site: { status: "on_site", timestamp_col: "tech_arrived_at" },
+  field_complete: { status: "field_complete", timestamp_col: "field_completed_at" },
+  // Legacy transitions (backward compat)
   in_progress: { status: "in_progress", timestamp_col: "job_started_at" },
   completed: { status: "completed", timestamp_col: "job_completed_at" },
 };
@@ -592,6 +609,9 @@ export async function updateJobStatus(
     const statusLabels: Record<string, string> = {
       en_route: "Tech en route",
       on_site: "Tech arrived on site",
+      field_complete: "Field work completed",
+      report_ready: "Report ready",
+      delivered: "Reports delivered",
       in_progress: "Job started",
       completed: "Job completed",
     };
@@ -604,6 +624,33 @@ export async function updateJobStatus(
       undefined,
       jobType
     );
+
+    // Send "assessor en route" email to customer (non-blocking)
+    if (newStatus === "en_route") {
+      try {
+        const table = hesRow ? "hes_schedule" : "inspector_schedule";
+        const { data: jobRow } = await supabaseAdmin
+          .from(table)
+          .select("customer_email, customer_name, service_name, tier_name")
+          .eq("id", jobId)
+          .single();
+
+        if (jobRow?.customer_email) {
+          const techName = profile?.full_name ?? "Your assessor";
+          const svcName = [jobRow.service_name, jobRow.tier_name].filter(Boolean).join(" — ")
+            || (hesRow ? "Home Energy Assessment" : "Home Inspection");
+          const { sendAssessorEnRouteEmail } = await import("@/lib/services/EmailService");
+          await sendAssessorEnRouteEmail({
+            to: jobRow.customer_email,
+            customerName: jobRow.customer_name ?? "Homeowner",
+            techName,
+            serviceName: svcName,
+          });
+        }
+      } catch (emailErr) {
+        console.error("[updateJobStatus] en_route email error (non-blocking):", emailErr);
+      }
+    }
 
     revalidatePath("/portal/jobs");
     revalidatePath("/portal/schedule");

@@ -34,8 +34,21 @@ export type ScheduleJob = {
   catalog_total_price: number | null;
   service_name: string | null;
   tier_name: string | null;
+  home_sqft_range: string | null;
   payment_status: string | null;
   created_at: string;
+  // Workflow fields
+  payer_type: string | null;
+  payer_email: string | null;
+  payer_name: string | null;
+  requested_by: string | null;
+  broker_id: string | null;
+  hes_report_url: string | null;
+  leaf_report_url: string | null;
+  reports_sent_at: string | null;
+  field_completed_at: string | null;
+  report_ready_at: string | null;
+  invoice_sent_at: string | null;
 };
 
 export type SchedulePageData = {
@@ -101,8 +114,20 @@ function unifyHes(row: HesScheduleEntry): ScheduleJob {
     catalog_total_price: row.catalog_total_price ?? null,
     service_name: row.service_name ?? "HES Assessment",
     tier_name: row.tier_name ?? null,
+    home_sqft_range: (row as any).home_sqft_range ?? null,
     payment_status: row.payment_status ?? null,
     created_at: row.created_at,
+    payer_type: (row as any).payer_type ?? null,
+    payer_email: (row as any).payer_email ?? null,
+    payer_name: (row as any).payer_name ?? null,
+    requested_by: (row as any).requested_by ?? null,
+    broker_id: (row as any).broker_id ?? null,
+    hes_report_url: (row as any).hes_report_url ?? null,
+    leaf_report_url: (row as any).leaf_report_url ?? null,
+    reports_sent_at: (row as any).reports_sent_at ?? null,
+    field_completed_at: (row as any).field_completed_at ?? null,
+    report_ready_at: (row as any).report_ready_at ?? null,
+    invoice_sent_at: (row as any).invoice_sent_at ?? null,
   };
 }
 
@@ -133,8 +158,20 @@ function unifyInsp(row: InspectorScheduleEntry): ScheduleJob {
     catalog_total_price: row.catalog_total_price ?? null,
     service_name: row.service_name ?? "Home Inspection",
     tier_name: row.tier_name ?? null,
+    home_sqft_range: (row as any).home_sqft_range ?? null,
     payment_status: row.payment_status ?? null,
     created_at: row.created_at,
+    payer_type: (row as any).payer_type ?? null,
+    payer_email: (row as any).payer_email ?? null,
+    payer_name: (row as any).payer_name ?? null,
+    requested_by: (row as any).requested_by ?? null,
+    broker_id: (row as any).broker_id ?? null,
+    hes_report_url: (row as any).hes_report_url ?? null,
+    leaf_report_url: (row as any).leaf_report_url ?? null,
+    reports_sent_at: (row as any).reports_sent_at ?? null,
+    field_completed_at: (row as any).field_completed_at ?? null,
+    report_ready_at: (row as any).report_ready_at ?? null,
+    invoice_sent_at: (row as any).invoice_sent_at ?? null,
   };
 }
 
@@ -167,9 +204,9 @@ export async function fetchScheduleData(): Promise<SchedulePageData> {
   const stats = {
     todayJobs: jobs.filter((j) => j.scheduled_date === today).length,
     thisWeek: jobs.filter((j) => j.scheduled_date >= monday && j.scheduled_date <= sunday).length,
-    pendingRequests: jobs.filter((j) => j.status === "pending" || j.status === "scheduled").length,
+    pendingRequests: jobs.filter((j) => j.status === "pending").length,
     completedThisMonth: jobs.filter(
-      (j) => j.status === "completed" && j.scheduled_date >= monthStart && j.scheduled_date <= monthEnd
+      (j) => (j.status === "delivered" || j.status === "completed") && j.scheduled_date >= monthStart && j.scheduled_date <= monthEnd
     ).length,
   };
 

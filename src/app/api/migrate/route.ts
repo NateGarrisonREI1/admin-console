@@ -332,6 +332,46 @@ const MIGRATIONS: { name: string; sql: string }[] = [
       END $$;
     `,
   },
+  {
+    name: "add_workflow_columns_hes_schedule",
+    sql: `
+      DO $$ BEGIN
+        IF EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename='hes_schedule') THEN
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS payer_type TEXT DEFAULT 'homeowner';
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS payer_email TEXT;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS payer_name TEXT;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS requested_by TEXT DEFAULT 'homeowner';
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS source TEXT;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS hes_report_url TEXT;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS leaf_report_url TEXT;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS reports_sent_at TIMESTAMPTZ;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS field_completed_at TIMESTAMPTZ;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS report_ready_at TIMESTAMPTZ;
+          ALTER TABLE hes_schedule ADD COLUMN IF NOT EXISTS invoice_sent_at TIMESTAMPTZ;
+        END IF;
+      END $$;
+    `,
+  },
+  {
+    name: "add_workflow_columns_inspector_schedule",
+    sql: `
+      DO $$ BEGIN
+        IF EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND tablename='inspector_schedule') THEN
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS payer_type TEXT DEFAULT 'homeowner';
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS payer_email TEXT;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS payer_name TEXT;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS requested_by TEXT DEFAULT 'homeowner';
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS source TEXT;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS hes_report_url TEXT;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS leaf_report_url TEXT;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS reports_sent_at TIMESTAMPTZ;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS field_completed_at TIMESTAMPTZ;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS report_ready_at TIMESTAMPTZ;
+          ALTER TABLE inspector_schedule ADD COLUMN IF NOT EXISTS invoice_sent_at TIMESTAMPTZ;
+        END IF;
+      END $$;
+    `,
+  },
 ];
 
 // ─── Route Handler ──────────────────────────────────────────────────

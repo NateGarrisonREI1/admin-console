@@ -6,10 +6,12 @@ import { fetchLeadPricingConfig } from "../_actions/lead-pricing";
 import { fetchServiceCatalog } from "../_actions/services";
 import { fetchRefundRequests } from "../refunds/actions";
 import { fetchAuthLogs } from "../auth-logs/actions";
+import { fetchEmailTemplates } from "./email-templates/actions";
 import LeadPricingClient from "./lead-pricing/LeadPricingClient";
 import ServicesClient from "./services/ServicesClient";
 import AdminRefundsClient from "../refunds/AdminRefundsClient";
 import AuthLogsClient from "../auth-logs/AuthLogsClient";
+import EmailTemplatesClient from "./email-templates/EmailTemplatesClient";
 
 type Props = {
   searchParams: Promise<{ tab?: string }>;
@@ -35,6 +37,10 @@ export default async function SettingsPage({ searchParams }: Props) {
     ? await fetchAuthLogs({ limit: 200 })
     : [];
 
+  const emailTemplates = tab === "email-templates"
+    ? await fetchEmailTemplates()
+    : [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Header */}
@@ -54,6 +60,7 @@ export default async function SettingsPage({ searchParams }: Props) {
         <TabLink href="/admin/settings?tab=service-catalog" active={tab === "service-catalog"}>Service Catalog</TabLink>
         <TabLink href="/admin/settings?tab=refunds" active={tab === "refunds"}>Refunds</TabLink>
         <TabLink href="/admin/settings?tab=auth-logs" active={tab === "auth-logs"}>Auth Logs</TabLink>
+        <TabLink href="/admin/settings?tab=email-templates" active={tab === "email-templates"}>Email Templates</TabLink>
       </div>
 
       {/* Tab Content */}
@@ -94,6 +101,10 @@ export default async function SettingsPage({ searchParams }: Props) {
 
       {tab === "auth-logs" && (
         <AuthLogsClient initialEvents={authEvents} />
+      )}
+
+      {tab === "email-templates" && (
+        <EmailTemplatesClient templates={emailTemplates} />
       )}
     </div>
   );

@@ -65,6 +65,16 @@ function formatDayShort(iso: string): string {
   });
 }
 
+function formatTime(time: string | null): string {
+  if (!time) return "\u2014";
+  const [h, m] = time.split(":");
+  const hour = parseInt(h, 10);
+  if (isNaN(hour)) return time;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${h12}:${m} ${ampm}`;
+}
+
 function fmtCurrency(n: number): string {
   return "$" + n.toLocaleString();
 }
@@ -616,6 +626,7 @@ function EditPanelContent({
 // ─── Jobs Table ─────────────────────────────────────────────────────
 
 function JobsTable({ entries, emptyMessage }: { entries: UnifiedScheduleEntry[]; emptyMessage: string }) {
+  const router = useRouter();
   if (entries.length === 0) {
     return (
       <div style={{ padding: "16px 0", fontSize: 12, color: TEXT_DIM, textAlign: "center" }}>
@@ -640,14 +651,14 @@ function JobsTable({ entries, emptyMessage }: { entries: UnifiedScheduleEntry[];
           {entries.map((entry) => {
             const sColor = jobStatusColors[entry.status] ?? TEXT_DIM;
             return (
-              <tr key={entry.id}>
+              <tr key={entry.id} onClick={() => router.push(`/admin/schedule?jobId=${entry.id}`)} style={{ cursor: "pointer" }}>
                 <td>
                   <div style={{ fontSize: 12, color: TEXT_SEC, fontWeight: 600, whiteSpace: "nowrap" }}>
                     {formatDateShort(entry.scheduled_date)}
                   </div>
                   {entry.scheduled_time && (
                     <div style={{ fontSize: 10, color: TEXT_DIM, marginTop: 1 }}>
-                      {entry.scheduled_time.slice(0, 5)}
+                      {formatTime(entry.scheduled_time)}
                     </div>
                   )}
                 </td>
@@ -1051,6 +1062,7 @@ export default function TeamMemberDetailClient({ data }: Props) {
                       {dayJobs.map((j) => (
                         <span
                           key={j.id}
+                          onClick={() => router.push(`/admin/schedule?jobId=${j.id}`)}
                           style={{
                             fontSize: 10,
                             fontWeight: 600,
@@ -1062,10 +1074,11 @@ export default function TeamMemberDetailClient({ data }: Props) {
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             maxWidth: 150,
+                            cursor: "pointer",
                           }}
                           title={j.customer_name}
                         >
-                          {j.scheduled_time ? j.scheduled_time.slice(0, 5) + " " : ""}
+                          {j.scheduled_time ? formatTime(j.scheduled_time) + " " : ""}
                           {j.customer_name}
                         </span>
                       ))}

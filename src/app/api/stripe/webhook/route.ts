@@ -48,15 +48,19 @@ export async function POST(request: Request) {
     const table = jobType === "inspector" ? "inspector_schedule" : "hes_schedule";
     const now = new Date().toISOString();
 
-    // Update job with payment confirmation
+    // Fetch current status to decide email behavior
+    const { data: currentJob } = await supabaseAdmin
+      .from(table)
+      .select("status")
+      .eq("id", jobId)
+      .single();
+
+    // Update payment fields only — don't change job status
     const { error: updateErr } = await supabaseAdmin.from(table).update({
       payment_status: "paid",
       payment_id: (session.payment_intent as string) || session.id,
       stripe_checkout_session_id: session.id,
-      job_completed_at: now,
       payment_received_at: now,
-      status: "completed",
-      leaf_delivery_status: "queued",
     }).eq("id", jobId);
 
     if (updateErr) {
@@ -83,111 +87,111 @@ export async function POST(request: Request) {
       jobType
     );
 
-    // Log job completed
-    await logJobActivity(
-      jobId,
-      "job_completed",
-      "Job completed",
-      { role: "system" },
-      undefined,
-      jobType
-    );
-
     console.log(`[stripe-webhook] Payment confirmed for job ${jobId} — $${amountPaid}`);
 
-    // ─── Post-payment: PDF receipt + email (fire-and-forget) ────────
+    // ─── Post-payment: PDF receipt generation + conditional email ────────
     try {
       const customerEmail = session.customer_details?.email || session.metadata?.customer_email;
 
-      if (customerEmail) {
-        // Fetch job details for the receipt
-        const { data: jobRow } = await supabaseAdmin
-          .from(table)
-          .select("customer_name, customer_email, address, city, state, zip, scheduled_date, service_name, tier_name")
-          .eq("id", jobId)
-          .single();
+      // Fetch job details for receipt generation
+      const { data: jobRow } = await supabaseAdmin
+        .from(table)
+        .select("customer_name, customer_email, address, city, state, zip, scheduled_date, service_name, tier_name")
+        .eq("id", jobId)
+        .single();
 
-        if (jobRow) {
-          const serviceName =
-            [jobRow.service_name, jobRow.tier_name].filter(Boolean).join(" — ") ||
-            (jobType === "inspector" ? "Home Inspection" : "HES Assessment");
-          const address = [jobRow.address, jobRow.city, jobRow.state, jobRow.zip].filter(Boolean).join(", ");
+      if (jobRow) {
+        const serviceName =
+          [jobRow.service_name, jobRow.tier_name].filter(Boolean).join(" — ") ||
+          (jobType === "inspector" ? "Home Inspection" : "Home Energy Assessment");
+        const address = [jobRow.address, jobRow.city, jobRow.state, jobRow.zip].filter(Boolean).join(", ");
 
-          // 1. Generate PDF
-          const { generateReceiptPdf } = await import("@/lib/generateReceipt");
-          const pdfBuffer = await generateReceiptPdf({
-            jobId,
-            jobType: jobType as "hes" | "inspector",
-            customerName: jobRow.customer_name,
-            customerEmail,
-            serviceName,
-            address,
-            scheduledDate: jobRow.scheduled_date,
-            amountCents: session.amount_total || 0,
-            paymentId: (session.payment_intent as string) || session.id,
-            stripeSessionId: session.id,
-            paidAt: now,
-          });
+        // 1. Generate PDF receipt
+        const { generateReceiptPdf } = await import("@/lib/generateReceipt");
+        const pdfBuffer = await generateReceiptPdf({
+          jobId,
+          jobType: jobType as "hes" | "inspector",
+          customerName: jobRow.customer_name,
+          customerEmail: customerEmail || jobRow.customer_email,
+          serviceName,
+          address,
+          scheduledDate: jobRow.scheduled_date,
+          amountCents: session.amount_total || 0,
+          paymentId: (session.payment_intent as string) || session.id,
+          stripeSessionId: session.id,
+          paidAt: now,
+        });
 
-          const receiptFilename = `LEAF-Receipt-${jobId.slice(0, 8)}.pdf`;
-          const storagePath = `receipts/${jobType}/${jobId}/${receiptFilename}`;
+        const receiptFilename = `LEAF-Receipt-${jobId.slice(0, 8)}.pdf`;
+        const storagePath = `receipts/${jobType}/${jobId}/${receiptFilename}`;
 
-          // 2. Upload to Supabase Storage
-          const { error: uploadErr } = await supabaseAdmin.storage
+        // 2. Upload to Supabase Storage
+        const { error: uploadErr } = await supabaseAdmin.storage
+          .from("job-files")
+          .upload(storagePath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+
+        let receiptUrl: string | null = null;
+        if (uploadErr) {
+          console.error("[stripe-webhook] Receipt upload failed:", uploadErr.message);
+        } else {
+          const { data: signedData } = await supabaseAdmin.storage
             .from("job-files")
-            .upload(storagePath, pdfBuffer, { contentType: "application/pdf", upsert: true });
+            .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
+          receiptUrl = signedData?.signedUrl ?? null;
+        }
 
-          let receiptUrl: string | null = null;
-          if (uploadErr) {
-            console.error("[stripe-webhook] Receipt upload failed:", uploadErr.message);
-          } else {
-            const { data: signedData } = await supabaseAdmin.storage
-              .from("job-files")
-              .createSignedUrl(storagePath, 60 * 60 * 24 * 365 * 10);
-            receiptUrl = signedData?.signedUrl ?? null;
-          }
+        // 3. Save receipt_url on job record
+        if (receiptUrl) {
+          await supabaseAdmin.from(table).update({ receipt_url: receiptUrl }).eq("id", jobId);
+        }
 
-          // 3. Save receipt_url on job record
-          if (receiptUrl) {
-            await supabaseAdmin.from(table).update({ receipt_url: receiptUrl }).eq("id", jobId);
-          }
+        // 4. Send early receipt if payment came before reports are ready
+        const preReportStatuses = ["pending", "scheduled", "en_route", "on_site", "field_complete"];
+        const isPreReport = currentJob && preReportStatuses.includes(currentJob.status);
 
-          // 4. Send receipt email
-          const { sendReceiptEmail } = await import("@/lib/services/EmailService");
-          const LEAF_APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://leafenergy.app";
-          const reportUrl = `${LEAF_APP_URL}/report/${jobId}`;
+        if (isPreReport && customerEmail) {
+          const { sendEarlyReceiptEmail } = await import("@/lib/services/EmailService");
           const paidDate = new Date(now).toLocaleDateString("en-US", {
             month: "long", day: "numeric", year: "numeric",
           });
 
-          await sendReceiptEmail({
+          await sendEarlyReceiptEmail({
             to: customerEmail,
             customerName: jobRow.customer_name,
-            serviceName,
             amount: amountPaid,
+            serviceName,
             paidDate,
-            reportUrl,
             receiptPdfBuffer: pdfBuffer,
             receiptFilename,
           });
 
-          // 5. Log activity
           await logJobActivity(
             jobId,
             "receipt_sent",
-            `Receipt emailed to ${customerEmail}`,
+            `Early receipt emailed to ${customerEmail}`,
             { role: "system" },
             { receipt_url: receiptUrl, email: customerEmail },
             jobType
           );
 
-          console.log(`[stripe-webhook] Receipt generated and emailed for job ${jobId}`);
+          console.log(`[stripe-webhook] Early receipt emailed for job ${jobId}`);
+        } else {
+          // Reports are ready or delivered — receipt will go out when admin
+          // delivers reports via "Send Reports" button
+          await logJobActivity(
+            jobId,
+            "receipt_generated",
+            "PDF receipt generated and stored",
+            { role: "system" },
+            { receipt_url: receiptUrl },
+            jobType
+          );
+
+          console.log(`[stripe-webhook] Receipt stored (no email) for job ${jobId} — status: ${currentJob?.status}`);
         }
-      } else {
-        console.log(`[stripe-webhook] No customer email for receipt — job ${jobId}`);
       }
     } catch (receiptErr: any) {
-      console.error("[stripe-webhook] Receipt/email error (non-blocking):", receiptErr?.message ?? receiptErr);
+      console.error("[stripe-webhook] Receipt error (non-blocking):", receiptErr?.message ?? receiptErr);
     }
   }
 

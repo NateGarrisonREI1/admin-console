@@ -58,6 +58,16 @@ function formatDayLabel(iso: string): string {
   return new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
+function formatTime(time: string | null): string {
+  if (!time) return "";
+  const [h, m] = time.split(":");
+  const hour = parseInt(h, 10);
+  if (isNaN(hour)) return time;
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${h12}:${m} ${ampm}`;
+}
+
 function isOnTimeOff(member: UnifiedTeamMember, date: string): boolean {
   return member.time_off.some((p) => date >= p.start && date <= p.end);
 }
@@ -362,6 +372,7 @@ function ScheduleWeekView({
   onPrevWeek: () => void;
   onNextWeek: () => void;
 }) {
+  const router = useRouter();
   const days: string[] = [];
   const d = new Date(weekStart + "T12:00:00");
   for (let i = 0; i < 7; i++) {
@@ -433,10 +444,11 @@ function ScheduleWeekView({
                           {jobs.map((j) => (
                             <span
                               key={j.id}
-                              style={{ padding: "2px 6px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: j.type === "hes" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)", color: j.type === "hes" ? "#10b981" : "#f59e0b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                              onClick={(e) => { e.stopPropagation(); router.push(`/admin/schedule?jobId=${j.id}`); }}
+                              style={{ padding: "2px 6px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: j.type === "hes" ? "rgba(16,185,129,0.1)" : "rgba(245,158,11,0.1)", color: j.type === "hes" ? "#10b981" : "#f59e0b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer" }}
                               title={`${j.customer_name} ${j.scheduled_time ?? ""}`}
                             >
-                              {j.scheduled_time ? j.scheduled_time.slice(0, 5) : j.type === "hes" ? "HES" : "Insp"}
+                              {j.scheduled_time ? formatTime(j.scheduled_time) : j.type === "hes" ? "HES" : "Insp"}
                             </span>
                           ))}
                         </div>

@@ -3,6 +3,7 @@
 
 import { revalidatePath } from "next/cache";
 import { AdminOpsService } from "@/lib/services/AdminOpsService";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { fetchJobActivity, logJobActivity, type ActivityLogEntry } from "@/lib/activityLog";
 
 export type MemberType = "hes" | "inspector";
@@ -108,6 +109,54 @@ export async function updateScheduleJobStatus(
     `Status changed to ${status.replace(/_/g, " ")}`,
     { name: "Admin", role: "admin" },
     undefined,
+    type
+  );
+
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/team");
+}
+
+// ─── Confirm pending job (set time, tech, amount, status → scheduled) ──
+
+export async function confirmPendingJob(
+  id: string,
+  type: MemberType,
+  scheduledDate: string,
+  scheduledTime: string,
+  teamMemberId: string,
+  invoiceAmount: number | null,
+  tierOverride?: { service_tier_id: string; tier_name: string; home_sqft_range: string; catalog_base_price: number }
+) {
+  const svc = new AdminOpsService();
+  const updates: Record<string, unknown> = {
+    status: "scheduled",
+    scheduled_date: scheduledDate,
+    scheduled_time: scheduledTime,
+    team_member_id: teamMemberId,
+  };
+  if (invoiceAmount !== null) {
+    updates.invoice_amount = invoiceAmount;
+  }
+  if (tierOverride) {
+    updates.service_tier_id = tierOverride.service_tier_id;
+    updates.tier_name = tierOverride.tier_name;
+    updates.home_sqft_range = tierOverride.home_sqft_range;
+    updates.catalog_base_price = tierOverride.catalog_base_price;
+    updates.catalog_total_price = tierOverride.catalog_base_price + (updates.invoice_amount as number ?? 0 - tierOverride.catalog_base_price);
+  }
+
+  if (type === "hes") {
+    await svc.updateHesSchedule(id, updates);
+  } else {
+    await svc.updateInspectorSchedule(id, updates);
+  }
+
+  await logJobActivity(
+    id,
+    "job_scheduled",
+    "Job confirmed and scheduled",
+    { name: "Admin", role: "admin" },
+    { scheduled_date: scheduledDate, scheduled_time: scheduledTime, team_member_id: teamMemberId, invoice_amount: invoiceAmount },
     type
   );
 
@@ -236,6 +285,114 @@ export async function deleteScheduleJob(id: string, type: MemberType) {
   }
   revalidatePath("/admin/schedule");
   revalidatePath("/admin/team");
+}
+
+// ─── Update customer info (name, email, phone) ─────────────────────
+
+export async function updateJobCustomerInfo(
+  id: string,
+  type: MemberType,
+  field: "customer_name" | "customer_email" | "customer_phone",
+  value: string
+) {
+  const svc = new AdminOpsService();
+  if (type === "hes") {
+    await svc.updateHesSchedule(id, { [field]: value || null });
+  } else {
+    await svc.updateInspectorSchedule(id, { [field]: value || null });
+  }
+
+  const labels: Record<string, string> = {
+    customer_name: "Customer name",
+    customer_email: "Customer email",
+    customer_phone: "Customer phone",
+  };
+
+  await logJobActivity(
+    id,
+    "customer_info_updated",
+    `${labels[field]} updated to ${value || "(cleared)"}`,
+    { name: "Admin", role: "admin" },
+    { field, value },
+    type
+  );
+
+  revalidatePath("/admin/schedule");
+}
+
+// ─── Update a single job field (generic) ─────────────────────────────
+
+const ALLOWED_JOB_FIELDS = new Set([
+  "payer_type", "payer_email", "payer_name", "requested_by",
+  "hes_report_url", "leaf_report_url",
+  "payment_status", "status",
+]);
+
+export async function updateJobField(
+  id: string,
+  type: MemberType,
+  field: string,
+  value: string | null
+) {
+  if (!ALLOWED_JOB_FIELDS.has(field)) {
+    throw new Error(`Field "${field}" is not allowed.`);
+  }
+
+  const svc = new AdminOpsService();
+  if (type === "hes") {
+    await svc.updateHesSchedule(id, { [field]: value || null });
+  } else {
+    await svc.updateInspectorSchedule(id, { [field]: value || null });
+  }
+
+  const label = field.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  await logJobActivity(
+    id,
+    "field_updated",
+    `${label} updated to ${value || "(cleared)"}`,
+    { name: "Admin", role: "admin" },
+    { field, value },
+    type
+  );
+
+  revalidatePath("/admin/schedule");
+}
+
+// ─── Send reports (deliver to homeowner + broker) ──────────────────
+
+export async function sendReportsAction(
+  jobId: string,
+  jobType: MemberType
+): Promise<{ error?: string }> {
+  const table = jobType === "inspector" ? "inspector_schedule" : "hes_schedule";
+
+  // Verify prerequisites
+  const { data: job } = await supabaseAdmin
+    .from(table)
+    .select("payment_status, hes_report_url")
+    .eq("id", jobId)
+    .single();
+
+  if (!job) return { error: "Job not found" };
+  if (job.payment_status !== "paid") return { error: "Payment must be confirmed before sending reports" };
+  if (!job.hes_report_url) return { error: "HES report URL must be set before sending reports" };
+
+  const { deliverReports } = await import("@/lib/services/EmailService");
+  const result = await deliverReports(jobId, jobType);
+  if (result.error) return result;
+
+  await logJobActivity(
+    jobId,
+    "reports_delivered",
+    "Reports delivered to homeowner",
+    { name: "Admin", role: "admin" },
+    undefined,
+    jobType
+  );
+
+  revalidatePath("/admin/schedule");
+  revalidatePath("/admin/team");
+  return {};
 }
 
 // ─── Activity Log ──────────────────────────────────────────────────

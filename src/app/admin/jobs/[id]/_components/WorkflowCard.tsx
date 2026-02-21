@@ -97,13 +97,14 @@ const fmtRange = (start?: string | null, end?: string | null): string => {
     const eD = new Date(end);
     if (isNaN(sD.getTime()) || isNaN(eD.getTime())) return 'Invalid date';
 
-    const day = sD.toLocaleDateString(undefined, {
+    const day = sD.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
+      timeZone: 'America/Los_Angeles',
     });
-    const sT = sD.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    const eT = eD.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    const sT = sD.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' });
+    const eT = eD.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/Los_Angeles' });
     return `${day} • ${sT}–${eT}`;
   } catch {
     return 'Invalid date';

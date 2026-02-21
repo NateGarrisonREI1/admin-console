@@ -1,8 +1,8 @@
 // src/app/admin/schedule/SchedulePageClient.tsx
 "use client";
 
-import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { SchedulePageData, ScheduleJob, MemberType } from "./data";
 import {
   createScheduleJob,
@@ -13,6 +13,9 @@ import {
   deleteScheduleJob,
   getJobActivityLog,
   getTeamMembersByType,
+  updateJobCustomerInfo,
+  updateJobField,
+  confirmPendingJob,
 } from "./actions";
 import type { ServiceCatalog } from "../_actions/services";
 import { fetchServiceCatalog } from "../_actions/services";
@@ -20,7 +23,9 @@ import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, typ
 import ActivityLog from "@/components/ui/ActivityLog";
 import type { ActivityLogEntry } from "@/lib/activityLog";
 import { useIsMobile, useIsSmallMobile } from "@/lib/useMediaQuery";
-import { PlusIcon, AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, AdjustmentsHorizontalIcon, ChevronDownIcon, PencilIcon, CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import StatusProgressBar from "@/components/ui/StatusProgressBar";
+import TimePicker from "@/components/ui/TimePicker";
 const PANEL_WIDTH = 420;
 
 // ─── Design tokens ──────────────────────────────────────────────────
@@ -42,7 +47,7 @@ function todayStr(): string {
 function formatDate(iso: string): string {
   const d = iso.includes("T") ? new Date(iso) : new Date(iso + "T12:00:00");
   if (Number.isNaN(d.getTime())) return "\u2014";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "2-digit", timeZone: "America/Los_Angeles" });
 }
 
 function formatTime(time: string | null): string {
@@ -92,6 +97,17 @@ function typeLabel(type: string): string {
   if (type === "leaf_followup") return "LEAF Follow-up";
   return type;
 }
+
+// ─── Workflow helpers ────────────────────────────────────────────────
+
+/** Normalize legacy statuses to current workflow values */
+function normalizeStatus(status: string): string {
+  if (status === "in_progress") return "on_site";
+  if (status === "completed") return "delivered";
+  if (status === "rescheduled") return "scheduled";
+  return status;
+}
+
 
 // ─── Calendar Helpers ────────────────────────────────────────────────
 
@@ -161,30 +177,41 @@ function weekRangeLabel(dates: string[]): string {
 // ─── Status pill colors ─────────────────────────────────────────────
 
 const PILL_COLORS = {
-  schedule:    { bg: "#7c3aed", hover: "#6d28d9", text: "#fff" },
-  scheduled:   { bg: "#059669", hover: "#047857", text: "#fff" },
-  reschedule:  { bg: "#2563eb", hover: "#1d4ed8", text: "#fff" },
-  in_progress: { bg: "#d97706", hover: "#b45309", text: "#fff" },
-  completed:   { bg: "#059669", hover: "#047857", text: "#fff" },
-  cancelled:   { bg: "#dc2626", hover: "#b91c1c", text: "#fff" },
-  archived:    { bg: "#475569", hover: "#374151", text: "#fff" },
+  schedule:       { bg: "#7c3aed", hover: "#6d28d9", text: "#fff" },
+  scheduled:      { bg: "#059669", hover: "#047857", text: "#fff" },
+  reschedule:     { bg: "#2563eb", hover: "#1d4ed8", text: "#fff" },
+  en_route:       { bg: "#2563eb", hover: "#1d4ed8", text: "#fff" },
+  on_site:        { bg: "#059669", hover: "#047857", text: "#fff" },
+  field_complete: { bg: "#d97706", hover: "#b45309", text: "#fff" },
+  report_ready:   { bg: "#0891b2", hover: "#0e7490", text: "#fff" },
+  delivered:      { bg: "#059669", hover: "#047857", text: "#fff" },
+  in_progress:    { bg: "#d97706", hover: "#b45309", text: "#fff" },
+  completed:      { bg: "#059669", hover: "#047857", text: "#fff" },
+  cancelled:      { bg: "#dc2626", hover: "#b91c1c", text: "#fff" },
+  archived:       { bg: "#475569", hover: "#374151", text: "#fff" },
 } as const;
 
 // ─── Display badge config (table rows — not clickable) ──────────────
 
 const STATUS_DISPLAY: Record<string, { bg: string; color: string; border: string; label: string }> = {
-  pending:      { bg: "rgba(124,58,237,0.12)", color: "#a78bfa", border: "rgba(124,58,237,0.3)", label: "Pending" },
-  scheduled:    { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Scheduled" },
-  rescheduled:  { bg: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "rgba(37,99,235,0.35)", label: "Rescheduled" },
-  in_progress:  { bg: "rgba(217,119,6,0.15)", color: "#fbbf24", border: "rgba(217,119,6,0.35)", label: "In Progress" },
-  completed:    { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Completed" },
-  paid:         { bg: "rgba(16,185,129,0.20)", color: "#34d399", border: "rgba(16,185,129,0.5)",  label: "Paid" },
-  cancelled:    { bg: "rgba(100,116,139,0.12)", color: "#94a3b8", border: "rgba(100,116,139,0.3)", label: "Cancelled" },
-  archived:     { bg: "rgba(71,85,105,0.15)", color: "#94a3b8", border: "rgba(71,85,105,0.3)", label: "Archived" },
+  pending:        { bg: "rgba(245,158,11,0.15)", color: "#fbbf24", border: "rgba(245,158,11,0.35)", label: "Pending" },
+  scheduled:      { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Scheduled" },
+  rescheduled:    { bg: "rgba(37,99,235,0.15)", color: "#60a5fa", border: "rgba(37,99,235,0.35)", label: "Rescheduled" },
+  en_route:       { bg: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "rgba(59,130,246,0.35)", label: "En Route" },
+  on_site:        { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "On Site" },
+  field_complete: { bg: "rgba(217,119,6,0.15)", color: "#fbbf24", border: "rgba(217,119,6,0.35)", label: "Field Complete" },
+  report_ready:   { bg: "rgba(8,145,178,0.15)", color: "#22d3ee", border: "rgba(8,145,178,0.35)", label: "Report Ready" },
+  delivered:      { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Delivered" },
+  // Legacy + special
+  in_progress:    { bg: "rgba(217,119,6,0.15)", color: "#fbbf24", border: "rgba(217,119,6,0.35)", label: "In Progress" },
+  completed:      { bg: "rgba(16,185,129,0.15)", color: "#34d399", border: "rgba(16,185,129,0.35)", label: "Completed" },
+  paid:           { bg: "rgba(16,185,129,0.20)", color: "#34d399", border: "rgba(16,185,129,0.5)",  label: "Paid" },
+  cancelled:      { bg: "rgba(100,116,139,0.12)", color: "#94a3b8", border: "rgba(100,116,139,0.3)", label: "Cancelled" },
+  archived:       { bg: "rgba(71,85,105,0.15)", color: "#94a3b8", border: "rgba(71,85,105,0.3)", label: "Archived" },
 };
 
 function resolveStatusBadge(job: ScheduleJob) {
-  if (job.status === "completed" && job.payment_status === "paid") {
+  if ((job.status === "completed" || job.status === "delivered") && job.payment_status === "paid") {
     return STATUS_DISPLAY.paid;
   }
   return STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
@@ -201,16 +228,37 @@ const STATUS_TRANSITIONS: Record<string, TransitionDef[]> = {
   ],
   scheduled: [
     { status: "rescheduled", label: "Re-Schedule", colorKey: "reschedule", action: "reschedule" },
-    { status: "in_progress", label: "In Progress", colorKey: "in_progress" },
+    { status: "en_route", label: "En Route", colorKey: "en_route" },
     { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
   ],
   rescheduled: [
     { status: "rescheduled", label: "Re-Schedule", colorKey: "reschedule", action: "reschedule" },
-    { status: "in_progress", label: "In Progress", colorKey: "in_progress" },
+    { status: "en_route", label: "En Route", colorKey: "en_route" },
     { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
   ],
+  en_route: [
+    { status: "on_site", label: "On Site", colorKey: "on_site" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  on_site: [
+    { status: "field_complete", label: "Field Complete", colorKey: "field_complete" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  field_complete: [
+    { status: "report_ready", label: "Report Ready", colorKey: "report_ready" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  report_ready: [
+    { status: "delivered", label: "Delivered", colorKey: "delivered" },
+    { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
+  ],
+  delivered: [
+    { status: "rescheduled", label: "Re-Schedule", colorKey: "reschedule", action: "reschedule" },
+    { status: "archived", label: "Archive", colorKey: "archived", action: "archive" },
+  ],
+  // Legacy statuses
   in_progress: [
-    { status: "completed", label: "Completed", colorKey: "completed" },
+    { status: "field_complete", label: "Field Complete", colorKey: "field_complete" },
     { status: "cancelled", label: "Cancel", colorKey: "cancelled", action: "cancel" },
   ],
   completed: [
@@ -230,19 +278,25 @@ const JOB_TYPE_BADGE: Record<string, { bg: string; color: string; border: string
   leaf_followup: { bg: "rgba(99,102,241,0.12)", color: "#818cf8", border: "rgba(99,102,241,0.3)", label: "LEAF" },
 };
 
+const BROKER_BADGE = { bg: "rgba(139,92,246,0.12)", color: "#a78bfa", border: "rgba(139,92,246,0.3)", label: "Broker" };
+
 // Filter option lists (for column headers)
 const TYPE_OPTIONS = [
   { value: "hes", label: "HES Assessment" },
   { value: "inspector", label: "Home Inspection" },
   { value: "leaf_followup", label: "LEAF Follow-up" },
+  { value: "broker", label: "Broker" },
 ];
 
 const STATUS_OPTIONS = [
   { value: "pending", label: "Pending" },
   { value: "scheduled", label: "Scheduled" },
   { value: "rescheduled", label: "Rescheduled" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "completed", label: "Completed" },
+  { value: "en_route", label: "En Route" },
+  { value: "on_site", label: "On Site" },
+  { value: "field_complete", label: "Field Complete" },
+  { value: "report_ready", label: "Report Ready" },
+  { value: "delivered", label: "Delivered" },
   { value: "cancelled", label: "Cancelled" },
   { value: "archived", label: "Archived" },
 ];
@@ -264,6 +318,148 @@ const TYPE_OPTION_COLORS: Record<string, OptionColor> = {
   inspector:     { bg: "rgba(249,115,22,0.2)", text: "#fb923c", border: "rgba(249,115,22,0.3)", activeBg: "#f97316", activeText: "#fff" },
   leaf_followup: { bg: "rgba(59,130,246,0.2)", text: "#60a5fa", border: "rgba(59,130,246,0.3)", activeBg: "#3b82f6", activeText: "#fff" },
 };
+
+// ─── Column Visibility ──────────────────────────────────────────────
+
+type ColumnKey = "date" | "time" | "customer" | "phone" | "address" | "type" | "assigned" | "status" | "amount";
+
+const ALL_COLUMNS: { key: ColumnKey; label: string; required?: boolean }[] = [
+  { key: "date", label: "Date" },
+  { key: "time", label: "Time" },
+  { key: "customer", label: "Customer", required: true },
+  { key: "phone", label: "Phone" },
+  { key: "address", label: "Address" },
+  { key: "type", label: "Type" },
+  { key: "assigned", label: "Assigned To" },
+  { key: "status", label: "Status", required: true },
+  { key: "amount", label: "Amount" },
+];
+
+const ALL_COLUMN_KEYS = ALL_COLUMNS.map((c) => c.key);
+const LS_KEY = "schedule_visible_columns";
+
+function loadVisibleColumns(): Set<ColumnKey> {
+  if (typeof window === "undefined") return new Set(ALL_COLUMN_KEYS);
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw) as ColumnKey[];
+      // Always include required columns
+      const set = new Set(arr.filter((k) => ALL_COLUMN_KEYS.includes(k)));
+      for (const c of ALL_COLUMNS) { if (c.required) set.add(c.key); }
+      return set;
+    }
+  } catch {}
+  return new Set(ALL_COLUMN_KEYS);
+}
+
+function ColumnVisibilityDropdown({
+  visible,
+  onChange,
+}: {
+  visible: Set<ColumnKey>;
+  onChange: (next: Set<ColumnKey>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  function toggle(key: ColumnKey) {
+    const col = ALL_COLUMNS.find((c) => c.key === key);
+    if (col?.required) return;
+    const next = new Set(visible);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    onChange(next);
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((p) => !p)}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          padding: "7px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+          background: "transparent", color: TEXT_MUTED,
+          border: `1px solid ${BORDER}`, cursor: "pointer",
+          transition: "all 0.12s",
+        }}
+        title="Toggle column visibility"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" />
+          <rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" />
+        </svg>
+        Columns
+        {visible.size < ALL_COLUMN_KEYS.length && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: EMERALD }}>
+            {visible.size}/{ALL_COLUMN_KEYS.length}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 50,
+          width: 200, padding: "8px 0", borderRadius: 10,
+          background: "#1e293b", border: `1px solid ${BORDER}`,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        }}>
+          <div style={{ padding: "4px 12px 8px", fontSize: 10, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            Visible Columns
+          </div>
+          {ALL_COLUMNS.map((col) => {
+            const checked = visible.has(col.key);
+            const isRequired = !!col.required;
+            return (
+              <label
+                key={col.key}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "6px 12px", cursor: isRequired ? "default" : "pointer",
+                  opacity: isRequired ? 0.5 : 1,
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => { if (!isRequired) e.currentTarget.style.background = "rgba(148,163,184,0.08)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+              >
+                <div style={{
+                  width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                  border: checked ? "none" : `2px solid ${BORDER}`,
+                  background: checked ? EMERALD : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "all 0.12s",
+                }}>
+                  {checked && (
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M2 5.5L4 7.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={isRequired}
+                  onChange={() => toggle(col.key)}
+                  style={{ display: "none" }}
+                />
+                <span style={{ fontSize: 13, color: TEXT, fontWeight: 500 }}>{col.label}</span>
+                {isRequired && <span style={{ fontSize: 9, color: TEXT_DIM, marginLeft: "auto" }}>Required</span>}
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Clickable Status Pill ──────────────────────────────────────────
 
@@ -325,6 +521,8 @@ function DisplayBadge({ config }: { config: { bg: string; color: string; border:
   );
 }
 
+
+
 // ─── Mobile Card (< 640px) ──────────────────────────────────────────
 
 function ScheduleMobileCard({
@@ -346,6 +544,7 @@ function ScheduleMobileCard({
         borderRadius: 12,
         padding: 16,
         border: isSelected ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(51,65,85,0.5)",
+        borderLeft: job.status === "pending" && !isSelected ? "4px solid rgba(245,158,11,0.6)" : undefined,
         marginBottom: 12,
         cursor: "pointer",
       }}
@@ -357,10 +556,10 @@ function ScheduleMobileCard({
           </span>
           <span style={{ fontSize: 12, color: isMuted ? TEXT_DIM : TEXT_SEC }}>{formatTime(job.scheduled_time)}</span>
           {todayRow && !isMuted && (
-            <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: EMERALD, padding: "1px 5px", borderRadius: 4 }}>TODAY</span>
+            <span style={{ display: "inline-flex", alignItems: "center", fontSize: 9, fontWeight: 800, color: "#fff", background: EMERALD, padding: "2px 6px", borderRadius: 4, lineHeight: 1, flexShrink: 0 }}>TODAY</span>
           )}
           {overdue && (
-            <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#ef4444", padding: "1px 5px", borderRadius: 4 }}>OVERDUE</span>
+            <span style={{ display: "inline-flex", alignItems: "center", fontSize: 9, fontWeight: 800, color: "#fff", background: "#ef4444", padding: "2px 6px", borderRadius: 4, lineHeight: 1, flexShrink: 0 }}>OVERDUE</span>
           )}
         </div>
         <DisplayBadge config={statusBadge} />
@@ -370,7 +569,10 @@ function ScheduleMobileCard({
       </div>
       {addr && <div style={{ fontSize: 12, color: TEXT_SEC, marginBottom: 6 }}>{addr}</div>}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <DisplayBadge config={typeBadge} />
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <DisplayBadge config={typeBadge} />
+          {job.requested_by === "broker" && <DisplayBadge config={BROKER_BADGE} />}
+        </div>
         <span style={{ fontSize: 12, color: job.team_member_name ? TEXT_SEC : TEXT_DIM }}>
           {job.team_member_name || "Unassigned"}
         </span>
@@ -381,13 +583,34 @@ function ScheduleMobileCard({
 
 // ─── KPI Card ───────────────────────────────────────────────────────
 
-function KpiCard({ label, value, color }: { label: string; value: string | number; color: string }) {
+function KpiCard({
+  label, value, color, onClick, isActive, showPulse,
+}: {
+  label: string; value: string | number; color: string;
+  onClick?: () => void; isActive?: boolean; showPulse?: boolean;
+}) {
   return (
-    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 14px" }}>
-      <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+    <div
+      onClick={onClick}
+      style={{
+        background: CARD,
+        border: `1px solid ${isActive ? color : BORDER}`,
+        borderRadius: 10,
+        padding: "10px 14px",
+        cursor: onClick ? "pointer" : undefined,
+        transition: "border-color 0.15s",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
         {label}
+        {showPulse && (
+          <span className="kpi-pulse-dot" style={{
+            display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+            background: color, flexShrink: 0,
+          }} />
+        )}
       </div>
-      <div style={{ fontSize: 20, fontWeight: 700, color, marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, color: (typeof value === "number" && value > 0) ? color : TEXT_DIM, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
@@ -766,8 +989,227 @@ function ScheduleServiceModal({
 
 // ─── Job Detail Panel Content ────────────────────────────────────────
 
+// ─── Inline Editable Field ──────────────────────────────────────────
+
+function EditableField({
+  label,
+  value,
+  jobId,
+  jobType,
+  field,
+  onSaved,
+  isLink,
+  linkPrefix,
+}: {
+  label: string;
+  value: string | null;
+  jobId: string;
+  jobType: MemberType;
+  field: "customer_name" | "customer_email" | "customer_phone";
+  onSaved: (msg: string) => void;
+  isLink?: boolean;
+  linkPrefix?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setDraft(value ?? ""); setEditing(false); }, [value]);
+
+  function validate(v: string): string | null {
+    const trimmed = v.trim();
+    if (field === "customer_name") {
+      if (!trimmed) return "Name is required";
+    } else if (field === "customer_email") {
+      if (trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "Invalid email address";
+    } else if (field === "customer_phone") {
+      if (trimmed && trimmed.replace(/\D/g, "").length < 10) return "Invalid phone number";
+    }
+    return null;
+  }
+
+  const validationError = editing ? validate(draft) : null;
+  const canSave = !saving && !validationError;
+
+  async function handleSave() {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await updateJobCustomerInfo(jobId, jobType, field, draft.trim());
+      onSaved(`${label} updated.`);
+      setEditing(false);
+    } catch (err: any) {
+      alert(err?.message ?? "Failed to update.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div>
+        <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>{label}</div>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+            className="admin-input"
+            style={{ fontSize: 13, padding: "5px 8px", flex: 1, minWidth: 0, borderColor: validationError ? "#ef4444" : undefined }}
+            onKeyDown={(e) => { if (e.key === "Enter" && canSave) handleSave(); if (e.key === "Escape") { setDraft(value ?? ""); setEditing(false); } }}
+          />
+          <button type="button" onClick={handleSave} disabled={!canSave}
+            style={{ background: canSave ? "rgba(16,185,129,0.15)" : "rgba(51,65,85,0.2)", border: `1px solid ${canSave ? "rgba(16,185,129,0.3)" : "rgba(51,65,85,0.3)"}`, borderRadius: 6, padding: "4px 6px", cursor: canSave ? "pointer" : "not-allowed", display: "flex", opacity: canSave ? 1 : 0.4 }}>
+            <CheckIcon style={{ width: 14, height: 14, color: canSave ? "#10b981" : "#475569" }} />
+          </button>
+          <button type="button" onClick={() => { setDraft(value ?? ""); setEditing(false); }}
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 6, padding: "4px 6px", cursor: "pointer", display: "flex" }}>
+            <XMarkIcon style={{ width: 14, height: 14, color: "#f87171" }} />
+          </button>
+        </div>
+        {validationError && (
+          <div style={{ fontSize: 11, color: "#ef4444", marginTop: 3 }}>{validationError}</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+        {value ? (
+          isLink && linkPrefix ? (
+            <a href={`${linkPrefix}${value}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{value}</a>
+          ) : (
+            <span style={{ fontSize: 13, color: TEXT_SEC, fontWeight: field === "customer_name" ? 700 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{value}</span>
+          )
+        ) : (
+          <span style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</span>
+        )}
+        <button type="button" onClick={() => setEditing(true)}
+          style={{ background: "none", border: "none", padding: 2, cursor: "pointer", display: "flex", opacity: 0.5, transition: "opacity 0.15s", flexShrink: 0 }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+        >
+          <PencilIcon style={{ width: 12, height: 12, color: "#64748b" }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Payer / Generic Editable Field ──────────────────────────────────
+
+function PayerField({
+  label,
+  value,
+  jobId,
+  jobType,
+  field,
+  onSaved,
+  isLink,
+  linkPrefix,
+  compact,
+}: {
+  label: string;
+  value: string | null;
+  jobId: string;
+  jobType: MemberType;
+  field: string;
+  onSaved: (msg: string) => void;
+  isLink?: boolean;
+  linkPrefix?: string;
+  compact?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setDraft(value ?? ""); setEditing(false); }, [value]);
+
+  async function handleSave() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await updateJobField(jobId, jobType, field, draft.trim() || null);
+      const fieldLabel = label || field.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      onSaved(`${fieldLabel} updated.`);
+      setEditing(false);
+    } catch (err: any) {
+      alert(err?.message ?? "Failed to update.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (compact) {
+    // Compact mode: just an edit pencil button
+    return (
+      <button type="button" onClick={() => setEditing(!editing)}
+        style={{ background: "none", border: "none", padding: 2, cursor: "pointer", display: "flex", opacity: 0.5 }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+      >
+        <PencilIcon style={{ width: 12, height: 12, color: "#64748b" }} />
+      </button>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div>
+        {label && <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>{label}</div>}
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+            className="admin-input"
+            style={{ fontSize: 13, padding: "5px 8px", flex: 1, minWidth: 0 }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") { setDraft(value ?? ""); setEditing(false); } }}
+          />
+          <button type="button" onClick={handleSave} disabled={saving}
+            style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 6, padding: "4px 6px", cursor: "pointer", display: "flex" }}>
+            <CheckIcon style={{ width: 14, height: 14, color: "#10b981" }} />
+          </button>
+          <button type="button" onClick={() => { setDraft(value ?? ""); setEditing(false); }}
+            style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 6, padding: "4px 6px", cursor: "pointer", display: "flex" }}>
+            <XMarkIcon style={{ width: 14, height: 14, color: "#f87171" }} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minWidth: 0 }}>
+      {label && <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>{label}</div>}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+        {value ? (
+          isLink && linkPrefix ? (
+            <a href={`${linkPrefix}${value}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{value}</a>
+          ) : (
+            <span style={{ fontSize: 13, color: TEXT_SEC, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{value}</span>
+          )
+        ) : (
+          <span style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</span>
+        )}
+        <button type="button" onClick={() => setEditing(true)}
+          style={{ background: "none", border: "none", padding: 2, cursor: "pointer", display: "flex", opacity: 0.5, transition: "opacity 0.15s", flexShrink: 0 }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+        >
+          <PencilIcon style={{ width: 12, height: 12, color: "#64748b" }} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function JobDetailContent({
   job,
+  members,
   onStatusUpdated,
   onCancelRequest,
   onRescheduleRequest,
@@ -775,6 +1217,7 @@ function JobDetailContent({
   onDeleteRequest,
 }: {
   job: ScheduleJob;
+  members: { id: string; name: string; type: MemberType }[];
   onStatusUpdated: (msg: string) => void;
   onCancelRequest: (job: ScheduleJob) => void;
   onRescheduleRequest: (job: ScheduleJob) => void;
@@ -783,6 +1226,37 @@ function JobDetailContent({
 }) {
   const [notes, setNotes] = useState(job.special_notes ?? "");
   const [busy, setBusy] = useState(false);
+
+  // Pending job confirmation state
+  const [confirmDate, setConfirmDate] = useState(job.scheduled_date ?? "");
+  const [confirmTime, setConfirmTime] = useState("");
+  const [confirmTechId, setConfirmTechId] = useState(job.team_member_id ?? "");
+  const defaultPrice = job.catalog_total_price ?? job.invoice_amount ?? null;
+  const [confirmAmount, setConfirmAmount] = useState(defaultPrice !== null ? String(defaultPrice) : "");
+  const canConfirm = confirmDate !== "" && confirmTime !== "" && confirmTechId !== "";
+
+  // Tier selection state for pending jobs
+  const [tierDropdownOpen, setTierDropdownOpen] = useState(false);
+  const [selectedTierId, setSelectedTierId] = useState(job.service_tier_id ?? "");
+  const [selectedTierName, setSelectedTierName] = useState(job.tier_name ?? "");
+  const [selectedTierSizeLabel, setSelectedTierSizeLabel] = useState(job.home_sqft_range ?? "");
+  const [categoryTiers, setCategoryTiers] = useState<{ id: string; name: string; size_label: string; price: number }[]>([]);
+  const [tiersLoading, setTiersLoading] = useState(false);
+
+  // Load tiers for this job's category when component mounts (pending jobs only)
+  useEffect(() => {
+    if (job.status !== "pending" || !job.service_category_id) return;
+    setTiersLoading(true);
+    fetchServiceCatalog()
+      .then((catalog) => {
+        const cat = catalog.find((c) => c.id === job.service_category_id);
+        if (cat) {
+          setCategoryTiers(cat.tiers.filter((t) => t.is_active).map((t) => ({ id: t.id, name: t.name, size_label: t.size_label, price: t.price })));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setTiersLoading(false));
+  }, [job.id, job.status, job.service_category_id]);
   const [activityEntries, setActivityEntries] = useState<ActivityLogEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
 
@@ -798,7 +1272,8 @@ function JobDetailContent({
   const mapUrl = makeMapEmbed(job.address, job.city, job.state, job.zip);
   const directionsUrl = makeMapHref(job.address, job.city, job.state, job.zip);
   const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
-  const statusBadge = resolveStatusBadge(job);
+  // Always show real status badge in header (paid badge moved to progress bar)
+  const statusBadge = STATUS_DISPLAY[job.status] ?? STATUS_DISPLAY.pending;
 
   async function handlePillAction(newStatus: string, label: string) {
     if (busy) return;
@@ -853,11 +1328,188 @@ function JobDetailContent({
       <div>
         <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
           <DisplayBadge config={typeBadge} />
+          {job.requested_by === "broker" && (
+            <span title={job.payer_name ? `Broker: ${job.payer_name}` : "Broker referral"}>
+              <DisplayBadge config={BROKER_BADGE} />
+            </span>
+          )}
           <DisplayBadge config={statusBadge} />
         </div>
-        <h3 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: 0 }}>{job.customer_name}</h3>
+        <EditableField label="Customer" value={job.customer_name} jobId={job.id} jobType={job.type} field="customer_name" onSaved={onStatusUpdated} />
         <p style={{ fontSize: 13, color: TEXT_SEC, margin: "4px 0 0" }}>{typeLabel(job.type)}</p>
       </div>
+
+      {/* Status Progress Bar */}
+      <StatusProgressBar status={job.status} paymentStatus={job.payment_status ?? "unpaid"} />
+
+      {/* Pending actions — inline confirm fields + buttons */}
+      {job.status === "pending" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Scheduled Date */}
+          <div>
+            <label style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+              Scheduled Date
+            </label>
+            <input
+              type="date"
+              value={confirmDate}
+              onChange={(e) => setConfirmDate(e.target.value)}
+              className="admin-input"
+              style={{ fontSize: 13, padding: "8px 12px", width: "100%" }}
+            />
+          </div>
+
+          {/* Scheduled Time */}
+          <div>
+            <label style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+              Scheduled Time
+            </label>
+            <TimePicker value={confirmTime} onChange={setConfirmTime} />
+          </div>
+
+          {/* Assign To */}
+          <div>
+            <label style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+              Assign To
+            </label>
+            <select
+              value={confirmTechId}
+              onChange={(e) => setConfirmTechId(e.target.value)}
+              className="admin-input"
+              style={{ fontSize: 13, padding: "8px 12px", width: "100%" }}
+            >
+              <option value="">Select team member...</option>
+              {members
+                .filter((m) => m.type === job.type)
+                .map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+            </select>
+          </div>
+
+          {/* Amount — tier-driven */}
+          <div>
+            <label style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", display: "block", marginBottom: 4 }}>
+              Amount
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: TEXT }}>
+                {confirmAmount ? `$${parseFloat(confirmAmount).toLocaleString()}` : "\u2014"}
+              </span>
+              {categoryTiers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTierDropdownOpen(!tierDropdownOpen)}
+                  style={{ background: "none", border: "none", padding: 2, cursor: "pointer", display: "flex", opacity: 0.5, transition: "opacity 0.15s", flexShrink: 0 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.5"; }}
+                  title="Change tier"
+                >
+                  <PencilIcon style={{ width: 13, height: 13, color: "#64748b" }} />
+                </button>
+              )}
+            </div>
+            {selectedTierSizeLabel && (
+              <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>
+                {selectedTierName ? `${selectedTierName} (${selectedTierSizeLabel})` : selectedTierSizeLabel}
+              </div>
+            )}
+            {tierDropdownOpen && categoryTiers.length > 0 && (
+              <div style={{
+                marginTop: 6, border: `1px solid ${BORDER}`, borderRadius: 8,
+                background: "rgba(15,23,42,0.95)", overflow: "hidden",
+              }}>
+                {categoryTiers.map((t) => {
+                  const isSelected = t.id === selectedTierId;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedTierId(t.id);
+                        setSelectedTierName(t.name);
+                        setSelectedTierSizeLabel(t.size_label);
+                        setConfirmAmount(String(t.price));
+                        setTierDropdownOpen(false);
+                      }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "8px 12px",
+                        background: isSelected ? "rgba(16,185,129,0.1)" : "transparent",
+                        border: "none", borderBottom: `1px solid ${BORDER}`,
+                        color: isSelected ? EMERALD : TEXT, fontSize: 12, cursor: "pointer",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{t.size_label}</span>
+                      <span style={{ color: TEXT_DIM }}> — ${t.price.toLocaleString()}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {tiersLoading && (
+              <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 4 }}>Loading tiers…</div>
+            )}
+          </div>
+
+          {/* Hint when disabled */}
+          {!canConfirm && (
+            <div style={{ fontSize: 11, color: TEXT_DIM, fontStyle: "italic" }}>
+              Set date, time, and assign tech to confirm
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              type="button"
+              disabled={busy || !canConfirm}
+              onClick={async () => {
+                if (busy || !canConfirm) return;
+                setBusy(true);
+                try {
+                  const amt = confirmAmount ? parseFloat(confirmAmount) : null;
+                  const tierOverride = selectedTierId && selectedTierName && selectedTierSizeLabel
+                    ? { service_tier_id: selectedTierId, tier_name: selectedTierName, home_sqft_range: selectedTierSizeLabel, catalog_base_price: amt ?? 0 }
+                    : undefined;
+                  await confirmPendingJob(job.id, job.type, confirmDate, confirmTime, confirmTechId, amt, tierOverride);
+                  onStatusUpdated("Job confirmed and scheduled.");
+                } catch (err: any) {
+                  alert(err?.message ?? "Failed to schedule job.");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              style={{
+                flex: 1, padding: "10px 16px", borderRadius: 8, border: "none",
+                background: canConfirm ? EMERALD : "#334155", color: canConfirm ? "#fff" : TEXT_DIM,
+                fontSize: 14, fontWeight: 700,
+                cursor: busy || !canConfirm ? "not-allowed" : "pointer",
+                opacity: busy ? 0.6 : 1,
+                transition: "all 0.15s",
+              }}
+            >
+              Confirm &amp; Schedule
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onCancelRequest(job)}
+              style={{
+                padding: "10px 16px", borderRadius: 8,
+                border: "1px solid rgba(239,68,68,0.4)", background: "transparent",
+                color: "#f87171", fontSize: 14, fontWeight: 700,
+                cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
+                transition: "all 0.12s",
+              }}
+            >
+              Cancel Request
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ height: 1, background: BORDER }} />
 
@@ -867,18 +1519,8 @@ function JobDetailContent({
           Job Details
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
-          <div>
-            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Phone</div>
-            {job.customer_phone ? (
-              <a href={`tel:${job.customer_phone}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>{job.customer_phone}</a>
-            ) : <div style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</div>}
-          </div>
-          <div>
-            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Email</div>
-            {job.customer_email ? (
-              <a href={`mailto:${job.customer_email}`} style={{ fontSize: 13, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>{job.customer_email}</a>
-            ) : <div style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</div>}
-          </div>
+          <EditableField label="Phone" value={job.customer_phone} jobId={job.id} jobType={job.type} field="customer_phone" onSaved={onStatusUpdated} isLink linkPrefix="tel:" />
+          <EditableField label="Email" value={job.customer_email} jobId={job.id} jobType={job.type} field="customer_email" onSaved={onStatusUpdated} isLink linkPrefix="mailto:" />
           <div>
             <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Address</div>
             <div style={{ fontSize: 13, color: TEXT_SEC }}>{addr || "\u2014"}</div>
@@ -888,15 +1530,57 @@ function JobDetailContent({
             <div style={{ fontSize: 13, color: job.team_member_name ? TEXT_SEC : TEXT_DIM }}>{job.team_member_name || "Unassigned"}</div>
           </div>
           <div>
-            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Scheduled</div>
-            <div style={{ fontSize: 13, color: TEXT_SEC }}>{formatDate(job.scheduled_date)} at {formatTime(job.scheduled_time)}</div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>
+              {job.status === "pending" ? "Requested Date" : "Scheduled"}
+            </div>
+            {job.scheduled_time ? (
+              <div style={{ fontSize: 13, color: TEXT_SEC }}>{formatDate(job.scheduled_date)} at {formatTime(job.scheduled_time)}</div>
+            ) : (
+              <div style={{ fontSize: 13, color: TEXT_SEC }}>{formatDate(job.scheduled_date)}</div>
+            )}
           </div>
+          {(() => {
+            const prefMatch = job.special_notes?.match(/^Preferred time: (.+)/m);
+            return prefMatch ? (
+              <div>
+                <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Requested Time</div>
+                <div style={{ fontSize: 13, color: job.status === "pending" ? "#fbbf24" : TEXT_DIM, fontWeight: job.status === "pending" ? 600 : 400 }}>
+                  {prefMatch[1]}
+                </div>
+              </div>
+            ) : null;
+          })()}
           <div>
             <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Amount</div>
             <div style={{ fontSize: 13, color: job.invoice_amount ? TEXT : TEXT_DIM, fontWeight: 600 }}>
               {job.invoice_amount ? `$${job.invoice_amount}` : "\u2014"}
             </div>
           </div>
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Requested By</div>
+            <div style={{ fontSize: 13, color: TEXT_SEC }}>
+              {job.requested_by === "broker"
+                ? (job.payer_name ? `${job.payer_name} (Broker)` : "Broker")
+                : "Homeowner (direct)"}
+            </div>
+          </div>
+          {(() => {
+            const payerDiffers = job.payer_type === "broker" || (job.payer_name && job.payer_name !== job.customer_name);
+            return payerDiffers ? (
+              <div>
+                <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Payer</div>
+                <div style={{ fontSize: 13, color: TEXT_SEC }}>
+                  {job.payer_name || "\u2014"}
+                  {job.payer_type ? ` (${job.payer_type.charAt(0).toUpperCase() + job.payer_type.slice(1)})` : ""}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Payer</div>
+                <div style={{ fontSize: 13, color: TEXT_DIM }}>Homeowner</div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -953,6 +1637,81 @@ function JobDetailContent({
 
       <div style={{ height: 1, background: BORDER }} />
 
+      {/* Payer Info */}
+      <div>
+        <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+          Payer Info
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 20px" }}>
+          <PayerField label="Requested By" value={job.requested_by} jobId={job.id} jobType={job.type} field="requested_by" onSaved={onStatusUpdated} />
+          <PayerField label="Payer Name" value={job.payer_name} jobId={job.id} jobType={job.type} field="payer_name" onSaved={onStatusUpdated} />
+          <PayerField label="Payer Email" value={job.payer_email} jobId={job.id} jobType={job.type} field="payer_email" onSaved={onStatusUpdated} isLink linkPrefix="mailto:" />
+          <div>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Payer Type</div>
+            <div style={{ fontSize: 13, color: job.payer_type ? TEXT_SEC : TEXT_DIM }}>{job.payer_type ?? "\u2014"}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ height: 1, background: BORDER }} />
+
+      {/* Reports & Delivery */}
+      <div>
+        <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
+          Reports & Delivery
+        </div>
+        <div style={{ display: "grid", gap: 10 }}>
+          {/* Payment Status */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "8px 12px", borderRadius: 8,
+            background: job.payment_status === "paid" ? "rgba(16,185,129,0.08)" : "rgba(245,158,11,0.08)",
+            border: job.payment_status === "paid" ? "1px solid rgba(16,185,129,0.2)" : "1px solid rgba(245,158,11,0.2)",
+          }}>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase" }}>Payment</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: job.payment_status === "paid" ? EMERALD : "#f59e0b" }}>
+              {job.payment_status === "paid" ? "Paid" : job.payment_status === "invoiced" ? "Invoiced" : "Unpaid"}
+            </div>
+          </div>
+
+          {/* HES Report */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderRadius: 8, background: "rgba(30,41,59,0.5)", border: `1px solid ${BORDER}` }}>
+            <div>
+              <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>HES Report</div>
+              {job.hes_report_url ? (
+                <a href={job.hes_report_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>
+                  View Report
+                </a>
+              ) : (
+                <span style={{ fontSize: 12, color: TEXT_DIM }}>Not uploaded</span>
+              )}
+            </div>
+            <PayerField label="" value={job.hes_report_url} jobId={job.id} jobType={job.type} field="hes_report_url" onSaved={onStatusUpdated} compact />
+          </div>
+
+          {/* LEAF Report */}
+          <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(30,41,59,0.5)", border: `1px solid ${BORDER}` }}>
+            <div style={{ fontSize: 10, color: TEXT_DIM, fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>LEAF Report</div>
+            {job.leaf_report_url ? (
+              <a href={job.leaf_report_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", fontWeight: 600 }}>
+                View Report
+              </a>
+            ) : (
+              <span style={{ fontSize: 12, color: TEXT_DIM }}>Not available</span>
+            )}
+          </div>
+
+          {/* Delivery status */}
+          {job.reports_sent_at && (
+            <div style={{ fontSize: 11, color: EMERALD, fontWeight: 600 }}>
+              Reports sent {new Date(job.reports_sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ height: 1, background: BORDER }} />
+
       {/* Actions */}
       <div>
         <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
@@ -979,6 +1738,7 @@ type ViewMode = "list" | "calendar";
 
 export default function SchedulePageClient({ data }: { data: SchedulePageData }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   const isCompactMobile = useIsSmallMobile();
   const today = useMemo(() => todayStr(), []);
@@ -1001,6 +1761,59 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   const [globalSearch, setGlobalSearch] = useState("");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
+  // KPI card filter — only one active at a time
+  const [kpiFilter, setKpiFilter] = useState<"today" | "week" | "pending" | "completed" | null>(null);
+
+  function toggleKpi(card: "today" | "week" | "pending" | "completed") {
+    if (kpiFilter === card) {
+      // Deactivate — clear the filters this KPI set
+      setKpiFilter(null);
+      setDateFilter({});
+      setStatusFilter([]);
+    } else {
+      setKpiFilter(card);
+      // Reset other column filters so the KPI view is clean
+      setTimeFilter([]);
+      setCustomerSearch("");
+      setPhoneSearch("");
+      setAddressSearch("");
+      setTypeFilter([]);
+      setAssignedFilter([]);
+      setAmountRange({});
+      setGlobalSearch("");
+      switch (card) {
+        case "today":
+          setDateFilter({ preset: "today" });
+          setStatusFilter([]);
+          break;
+        case "week":
+          setDateFilter({ preset: "this_week" });
+          setStatusFilter([]);
+          break;
+        case "pending":
+          setDateFilter({});
+          setStatusFilter(["pending"]);
+          break;
+        case "completed":
+          setDateFilter({ preset: "this_month" });
+          setStatusFilter(["delivered", "completed"]);
+          break;
+      }
+    }
+  }
+
+  // Column visibility
+  const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(() => new Set(ALL_COLUMN_KEYS));
+  useEffect(() => {
+    const saved = loadVisibleColumns();
+    setVisibleColumns(saved);
+  }, []);
+  const colVisible = useCallback((key: ColumnKey) => visibleColumns.has(key), [visibleColumns]);
+  function handleColumnsChange(next: Set<ColumnKey>) {
+    setVisibleColumns(next);
+    try { localStorage.setItem(LS_KEY, JSON.stringify([...next])); } catch {}
+  }
+
   // Sort state
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
@@ -1015,8 +1828,20 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   const [toast, setToast] = useState<string | null>(null);
   const clearToast = useCallback(() => setToast(null), []);
 
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(() => searchParams.get("jobId"));
   const selectedJob = useMemo(() => selectedJobId ? data.jobs.find((j) => j.id === selectedJobId) ?? null : null, [selectedJobId, data.jobs]);
+
+  // Auto-open side panel from ?jobId= query param and clear it
+  useEffect(() => {
+    const qJobId = searchParams.get("jobId");
+    if (qJobId) {
+      setSelectedJobId(qJobId);
+      // Clear the query param without a full navigation
+      const url = new URL(window.location.href);
+      url.searchParams.delete("jobId");
+      window.history.replaceState({}, "", url.pathname + url.search);
+    }
+  }, [searchParams]);
 
   // Auto-close panel if job was deleted or filtered out of the current view
   useEffect(() => {
@@ -1091,7 +1916,11 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
       }
 
       // Multi-select filters
-      if (typeFilter.length > 0 && !typeFilter.includes(job.type)) return false;
+      if (typeFilter.length > 0) {
+        const typeMatch = typeFilter.includes(job.type);
+        const brokerMatch = typeFilter.includes("broker") && job.requested_by === "broker";
+        if (!typeMatch && !brokerMatch) return false;
+      }
       if (assignedFilter.length > 0 && !assignedFilter.includes(job.team_member_id ?? "")) return false;
       if (statusFilter.length > 0 && !statusFilter.includes(job.status)) return false;
 
@@ -1141,7 +1970,11 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   const calendarFilteredJobs = useMemo(() => {
     const gq = globalSearch.trim().toLowerCase();
     return data.jobs.filter((job) => {
-      if (typeFilter.length > 0 && !typeFilter.includes(job.type)) return false;
+      if (typeFilter.length > 0) {
+        const typeMatch = typeFilter.includes(job.type);
+        const brokerMatch = typeFilter.includes("broker") && job.requested_by === "broker";
+        if (!typeMatch && !brokerMatch) return false;
+      }
       if (assignedFilter.length > 0 && !assignedFilter.includes(job.team_member_id ?? "")) return false;
       if (statusFilter.length > 0 && !statusFilter.includes(job.status)) return false;
       if (customerSearch.trim() && !(job.customer_name ?? "").toLowerCase().includes(customerSearch.trim().toLowerCase())) return false;
@@ -1175,11 +2008,21 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   // Build active filter chips
   const activeFilters = useMemo(() => {
     const chips: ActiveFilter[] = [];
-    if (dateFilter.preset) {
-      const labels: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month" };
-      chips.push({ key: "date", label: "Date", value: labels[dateFilter.preset] ?? dateFilter.preset, onClear: () => setDateFilter({}) });
-    } else if (dateFilter.from || dateFilter.to) {
-      chips.push({ key: "date", label: "Date", value: `${dateFilter.from ?? "…"} → ${dateFilter.to ?? "…"}`, onClear: () => setDateFilter({}) });
+
+    // "Completed This Month" KPI — single combined chip instead of separate date + status chips
+    if (kpiFilter === "completed") {
+      chips.push({ key: "kpi", label: "Status", value: "Completed This Month", onClear: () => { setKpiFilter(null); setDateFilter({}); setStatusFilter([]); } });
+    } else {
+      if (dateFilter.preset) {
+        const labels: Record<string, string> = { today: "Today", this_week: "This Week", this_month: "This Month" };
+        chips.push({ key: "date", label: "Date", value: labels[dateFilter.preset] ?? dateFilter.preset, onClear: () => { setKpiFilter(null); setDateFilter({}); } });
+      } else if (dateFilter.from || dateFilter.to) {
+        chips.push({ key: "date", label: "Date", value: `${dateFilter.from ?? "…"} → ${dateFilter.to ?? "…"}`, onClear: () => setDateFilter({}) });
+      }
+      if (statusFilter.length > 0) {
+        const labels = statusFilter.map((v) => STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
+        chips.push({ key: "status", label: "Status", value: labels, onClear: () => { setKpiFilter(null); setStatusFilter([]); } });
+      }
     }
     if (timeFilter.length > 0) {
       const labels = timeFilter.map((v) => TIME_SEGMENT_OPTIONS.find((o) => o.value === v)?.label?.split(" (")[0] ?? v).join(", ");
@@ -1196,18 +2039,15 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
       const labels = assignedFilter.map((v) => memberOptions.find((o) => o.value === v)?.label ?? v).join(", ");
       chips.push({ key: "assigned", label: "Assigned", value: labels, onClear: () => setAssignedFilter([]) });
     }
-    if (statusFilter.length > 0) {
-      const labels = statusFilter.map((v) => STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v).join(", ");
-      chips.push({ key: "status", label: "Status", value: labels, onClear: () => setStatusFilter([]) });
-    }
     if (amountRange.min || amountRange.max) {
       chips.push({ key: "amount", label: "Amount", value: `$${amountRange.min ?? "0"} – $${amountRange.max ?? "∞"}`, onClear: () => setAmountRange({}) });
     }
     if (globalSearch.trim()) chips.push({ key: "search", label: "Search", value: globalSearch, onClear: () => setGlobalSearch("") });
     return chips;
-  }, [dateFilter, timeFilter, customerSearch, phoneSearch, addressSearch, typeFilter, assignedFilter, statusFilter, amountRange, globalSearch, memberOptions]);
+  }, [kpiFilter, dateFilter, timeFilter, customerSearch, phoneSearch, addressSearch, typeFilter, assignedFilter, statusFilter, amountRange, globalSearch, memberOptions]);
 
   function clearAllFilters() {
+    setKpiFilter(null);
     setDateFilter({});
     setTimeFilter([]);
     setCustomerSearch("");
@@ -1291,16 +2131,21 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
   }
 
   function isOverdue(job: ScheduleJob): boolean {
-    if (job.status === "completed" || job.status === "cancelled" || job.status === "archived") return false;
+    if (["delivered", "completed", "cancelled", "archived"].includes(job.status)) return false;
+    if (job.payment_status === "paid") return false;
     return job.scheduled_date < today;
   }
 
-  const COL_COUNT = 9;
+  const COL_COUNT = visibleColumns.size;
   const panelOpen = selectedJob !== null;
 
   return (
     <>
-    <style>{`@keyframes schedPanelFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+    <style>{`
+      @keyframes schedPanelFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes kpiPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+      .kpi-pulse-dot { animation: kpiPulse 1.5s ease-in-out infinite; }
+    `}</style>
     <div style={{ display: "flex", flexDirection: "column", gap: 16, marginRight: isMobile ? 0 : (panelOpen ? PANEL_WIDTH : 0), transition: "margin-right 300ms ease" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -1320,10 +2165,15 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
 
       {/* Stats Row */}
       <div className="admin-kpi-grid">
-        <KpiCard label="Today's Jobs" value={data.stats.todayJobs} color="#fbbf24" />
-        <KpiCard label="This Week" value={data.stats.thisWeek} color="#60a5fa" />
-        <KpiCard label="Pending Requests" value={data.stats.pendingRequests} color="#fb923c" />
-        <KpiCard label="Completed This Month" value={data.stats.completedThisMonth} color={EMERALD} />
+        <KpiCard label="Today's Jobs" value={data.stats.todayJobs} color="#fbbf24"
+          isActive={kpiFilter === "today"} onClick={() => toggleKpi("today")} />
+        <KpiCard label="This Week" value={data.stats.thisWeek} color="#60a5fa"
+          isActive={kpiFilter === "week"} onClick={() => toggleKpi("week")} />
+        <KpiCard label="Pending Requests" value={data.stats.pendingRequests} color="#f59e0b"
+          showPulse={data.stats.pendingRequests > 0}
+          isActive={kpiFilter === "pending"} onClick={() => toggleKpi("pending")} />
+        <KpiCard label="Completed This Month" value={data.stats.completedThisMonth} color={EMERALD}
+          isActive={kpiFilter === "completed"} onClick={() => toggleKpi("completed")} />
       </div>
 
       {/* View Toggle + Search */}
@@ -1344,9 +2194,14 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
             Showing <span style={{ fontWeight: 700, color: TEXT_SEC }}>{filteredJobs.length}</span> jobs
           </span>
         </div>
-        <input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)}
-          placeholder="Search customer, address, team member..."
-          className="admin-input" style={{ maxWidth: 340, fontSize: 13, padding: "7px 12px" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input value={globalSearch} onChange={(e) => setGlobalSearch(e.target.value)}
+            placeholder="Search customer, address, team member..."
+            className="admin-input" style={{ maxWidth: 340, fontSize: 13, padding: "7px 12px" }} />
+          {viewMode === "list" && (
+            <ColumnVisibilityDropdown visible={visibleColumns} onChange={handleColumnsChange} />
+          )}
+        </div>
       </div>
 
       {/* Mobile Filter Toggle */}
@@ -1442,60 +2297,60 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
             <table className="admin-table" style={{ minWidth: 1100, tableLayout: "fixed" }}>
               <thead>
                 <tr>
-                  <FilterableHeader
+                  {colVisible("date") && <FilterableHeader
                     label="Date" filterType="date-range" width={120}
                     filterValue={dateFilter} onFilterChange={(v) => setDateFilter(v as { preset?: string; from?: string; to?: string })}
                     sortable sortDir={sortColumn === "date" ? sortDir : null} onSortChange={handleSort("date")}
                     isOpen={openColumn === "date"} onOpen={() => setOpenColumn("date")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("time") && <FilterableHeader
                     label="Time" filterType="multi-select" width={80}
                     options={TIME_SEGMENT_OPTIONS}
                     optionColors={TIME_SEGMENT_COLORS}
                     filterValue={timeFilter} onFilterChange={(v) => setTimeFilter(v as string[])}
                     isOpen={openColumn === "time"} onOpen={() => setOpenColumn("time")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("customer") && <FilterableHeader
                     label="Customer" filterType="search" width={150}
                     filterValue={customerSearch} onFilterChange={(v) => setCustomerSearch(v as string)}
                     sortable sortDir={sortColumn === "customer" ? sortDir : null} onSortChange={handleSort("customer")}
                     isOpen={openColumn === "customer"} onOpen={() => setOpenColumn("customer")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("phone") && <FilterableHeader
                     label="Phone" filterType="search" width={120}
                     filterValue={phoneSearch} onFilterChange={(v) => setPhoneSearch(v as string)}
                     isOpen={openColumn === "phone"} onOpen={() => setOpenColumn("phone")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("address") && <FilterableHeader
                     label="Address" filterType="search"
                     filterValue={addressSearch} onFilterChange={(v) => setAddressSearch(v as string)}
                     isOpen={openColumn === "address"} onOpen={() => setOpenColumn("address")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("type") && <FilterableHeader
                     label="Type" filterType="multi-select" width={110}
                     options={TYPE_OPTIONS}
                     optionColors={TYPE_OPTION_COLORS}
                     filterValue={typeFilter} onFilterChange={(v) => setTypeFilter(v as string[])}
                     isOpen={openColumn === "type"} onOpen={() => setOpenColumn("type")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("assigned") && <FilterableHeader
                     label="Assigned To" filterType="multi-select" width={120}
                     options={memberOptions}
                     filterValue={assignedFilter} onFilterChange={(v) => setAssignedFilter(v as string[])}
                     isOpen={openColumn === "assigned"} onOpen={() => setOpenColumn("assigned")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("status") && <FilterableHeader
                     label="Status" filterType="multi-select" width={100}
                     options={STATUS_OPTIONS}
                     filterValue={statusFilter} onFilterChange={(v) => setStatusFilter(v as string[])}
                     isOpen={openColumn === "status"} onOpen={() => setOpenColumn("status")} onClose={() => setOpenColumn(null)}
-                  />
-                  <FilterableHeader
+                  />}
+                  {colVisible("amount") && <FilterableHeader
                     label="Amount" filterType="range" width={80} align="right"
                     filterValue={amountRange} onFilterChange={(v) => setAmountRange(v as { min?: string; max?: string })}
                     sortable sortDir={sortColumn === "amount" ? sortDir : null} onSortChange={handleSort("amount")}
                     isOpen={openColumn === "amount"} onOpen={() => setOpenColumn("amount")} onClose={() => setOpenColumn(null)}
-                  />
+                  />}
                 </tr>
               </thead>
               <tbody>
@@ -1507,8 +2362,11 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
                   const typeBadge = JOB_TYPE_BADGE[job.type] ?? JOB_TYPE_BADGE.hes;
                   const statusBadge = resolveStatusBadge(job);
 
+                  const isPending = job.status === "pending";
                   const leftBorder = isSelected
                     ? "3px solid rgba(16,185,129,0.6)"
+                    : isPending
+                    ? "4px solid rgba(245,158,11,0.6)"
                     : overdue
                     ? "3px solid rgba(239,68,68,0.6)"
                     : todayRow && !isMuted
@@ -1519,37 +2377,53 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
                   const secColor = isMuted ? TEXT_DIM : TEXT_SEC;
                   const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(", ");
 
+                  const rowBg = isSelected
+                    ? "rgba(16,185,129,0.08)"
+                    : isPending
+                    ? "rgba(245,158,11,0.08)"
+                    : (job.payment_status === "paid" || job.status === "delivered")
+                    ? "rgba(16,185,129,0.06)"
+                    : undefined;
+
                   return (
                     <tr
                       key={job.id}
                       onClick={() => handleRowClick(job.id)}
                       style={{
                         cursor: "pointer", borderLeft: leftBorder,
-                        background: isSelected ? "rgba(16,185,129,0.08)" : undefined,
+                        background: rowBg,
                         transition: "background 0.1s ease",
                       }}
-                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(148,163,184,0.05)"; }}
-                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = ""; }}
+                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = isSelected ? "" : "rgba(148,163,184,0.05)"; }}
+                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = rowBg ?? ""; }}
                     >
                         {/* Date */}
+                        {colVisible("date") && (
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontWeight: 600, fontSize: 13, color: overdue ? "#f87171" : textColor }}>
-                              {formatDate(job.scheduled_date)}
-                            </span>
-                            {todayRow && !isMuted && (
-                              <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: EMERALD, padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Today</span>
+                            {todayRow && !isMuted ? (
+                              <span style={{ display: "inline-flex", alignItems: "center", fontSize: 9, fontWeight: 800, color: "#fff", background: EMERALD, padding: "2px 6px", borderRadius: 4, lineHeight: 1, flexShrink: 0, textTransform: "uppercase" }}>Today</span>
+                            ) : (
+                              <span style={{ fontWeight: 600, fontSize: 13, color: overdue ? "#f87171" : textColor }}>
+                                {formatDate(job.scheduled_date)}
+                              </span>
                             )}
                             {overdue && (
-                              <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#ef4444", padding: "1px 5px", borderRadius: 4, textTransform: "uppercase" }}>Overdue</span>
+                              <span style={{ display: "inline-flex", alignItems: "center", fontSize: 9, fontWeight: 800, color: "#fff", background: "#ef4444", padding: "2px 6px", borderRadius: 4, lineHeight: 1, flexShrink: 0, textTransform: "uppercase" }}>Overdue</span>
                             )}
                           </div>
                         </td>
+                        )}
                         {/* Time */}
+                        {colVisible("time") && (
                         <td><span style={{ fontSize: 13, color: overdue ? "#fca5a5" : secColor }}>{formatTime(job.scheduled_time)}</span></td>
+                        )}
                         {/* Customer */}
+                        {colVisible("customer") && (
                         <td><span style={{ fontWeight: 600, fontSize: 13, color: textColor }}>{job.customer_name}</span></td>
+                        )}
                         {/* Phone */}
+                        {colVisible("phone") && (
                         <td>
                           {job.customer_phone ? (
                             <a href={`tel:${job.customer_phone}`} onClick={(e) => e.stopPropagation()}
@@ -1558,7 +2432,9 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
                             </a>
                           ) : <span style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</span>}
                         </td>
+                        )}
                         {/* Address */}
+                        {colVisible("address") && (
                         <td>
                           {addr ? (
                             <a href={makeMapHref(job.address, job.city, job.state, job.zip)} target="_blank" rel="noreferrer"
@@ -1568,18 +2444,32 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
                             </a>
                           ) : <span style={{ fontSize: 13, color: TEXT_DIM }}>{"\u2014"}</span>}
                         </td>
+                        )}
                         {/* Type */}
-                        <td><DisplayBadge config={typeBadge} /></td>
+                        {colVisible("type") && (
+                        <td>
+                          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                            <DisplayBadge config={typeBadge} />
+                            {job.requested_by === "broker" && <DisplayBadge config={BROKER_BADGE} />}
+                          </div>
+                        </td>
+                        )}
                         {/* Assigned To */}
+                        {colVisible("assigned") && (
                         <td><span style={{ fontSize: 13, color: job.team_member_name ? secColor : TEXT_DIM }}>{job.team_member_name || "Unassigned"}</span></td>
+                        )}
                         {/* Status */}
+                        {colVisible("status") && (
                         <td><DisplayBadge config={statusBadge} /></td>
+                        )}
                         {/* Amount */}
+                        {colVisible("amount") && (
                         <td style={{ textAlign: "right" }}>
                           <span style={{ fontWeight: 600, fontSize: 13, color: job.invoice_amount ? textColor : TEXT_DIM }}>
                             {job.invoice_amount ? `$${job.invoice_amount}` : "\u2014"}
                           </span>
                         </td>
+                        )}
                     </tr>
                   );
                 })}
@@ -2047,6 +2937,7 @@ export default function SchedulePageClient({ data }: { data: SchedulePageData })
           <div key={selectedJob.id} style={{ animation: "schedPanelFadeIn 200ms ease" }}>
             <JobDetailContent
               job={selectedJob}
+              members={data.members}
               onStatusUpdated={(msg) => { setToast(msg); handleRefresh(); }}
               onCancelRequest={(j) => setCancelTarget(j)}
               onRescheduleRequest={(j) => setRescheduleTarget(j)}
