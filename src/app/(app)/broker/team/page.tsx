@@ -1,9 +1,15 @@
 // src/app/(app)/broker/team/page.tsx
-import { fetchBrokerContractors } from "./actions";
+export const dynamic = "force-dynamic";
+
+import { fetchBrokerTeam, fetchREIAssessors, fetchREIInspectors } from "./actions";
 import BrokerTeamClient from "./BrokerTeamClient";
 
 export default async function BrokerTeamPage() {
-  const data = await fetchBrokerContractors();
+  const [data, assessors, inspectors] = await Promise.all([
+    fetchBrokerTeam(),
+    fetchREIAssessors(),
+    fetchREIInspectors(),
+  ]);
 
   if (!data) {
     return (
@@ -13,5 +19,11 @@ export default async function BrokerTeamPage() {
     );
   }
 
-  return <BrokerTeamClient contractors={data.contractors} coverage={data.coverage} />;
+  return (
+    <BrokerTeamClient
+      data={data}
+      assessors={assessors}
+      inspectors={inspectors}
+    />
+  );
 }

@@ -3,46 +3,49 @@
 
 import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
 import { BrokerService } from "@/lib/services/BrokerService";
-import type { BrokerContractor } from "@/types/broker";
+import { revalidatePath } from "next/cache";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-export type ServiceCoverage = {
-  type: string;
-  covered: boolean;
-};
-
-export type BrokerTeamData = {
-  contractors: BrokerContractor[];
-  coverage: ServiceCoverage[];
-};
-
-export type AddContractorInput = {
-  companyName: string;
-  contactName: string;
-  email: string;
-  phone: string;
-  website: string;
+export type TeamMember = {
+  id: string;
+  contractorUserId: string | null;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  companyName: string | null;
   serviceTypes: string[];
   serviceAreas: string[];
-  notes: string;
+  status: string;
+  notes: string | null;
+  isPreferred: boolean;
+  leadsRouted: number;
+  leadsCompleted: number;
+  createdAt: string;
 };
 
-export type UpdateContractorInput = AddContractorInput & {
+export type TeamData = {
+  members: TeamMember[];
+};
+
+export type PlatformUser = {
   id: string;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  company_name: string | null;
+  service_areas: string[];
+  service_types: string[];
 };
 
-// ─── Constants ──────────────────────────────────────────────────────
-
-const ALL_SERVICE_TYPES = [
-  "HVAC",
-  "Solar",
-  "Electrical",
-  "Plumbing",
-  "Insulation",
-  "Windows",
-  "Handyman",
-];
+export type REITeamMember = {
+  id: string;
+  fullName: string;
+  role: "hes_assessor" | "inspector";
+  serviceArea: string;
+};
 
 // ─── Auth helper ────────────────────────────────────────────────────
 
@@ -57,9 +60,9 @@ async function getBrokerId(): Promise<string | null> {
   return broker.id;
 }
 
-// ─── Fetch ──────────────────────────────────────────────────────────
+// ─── Fetch Broker Team ──────────────────────────────────────────────
 
-export async function fetchBrokerContractors(): Promise<BrokerTeamData | null> {
+export async function fetchBrokerTeam(): Promise<TeamData | null> {
   const brokerId = await getBrokerId();
   if (!brokerId) return null;
 
@@ -72,106 +75,253 @@ export async function fetchBrokerContractors(): Promise<BrokerTeamData | null> {
     .order("company_name", { ascending: true });
 
   if (error) {
-    console.error("[fetchBrokerContractors]", error.message);
-    return { contractors: [], coverage: ALL_SERVICE_TYPES.map((t) => ({ type: t, covered: false })) };
+    console.error("[fetchBrokerTeam]", error.message);
+    return { members: [] };
   }
 
-  const contractors = (data ?? []) as BrokerContractor[];
-
-  // Compute service coverage
-  const coveredTypes = new Set<string>();
-  for (const c of contractors) {
-    for (const st of c.service_types ?? []) {
-      coveredTypes.add(st);
-    }
-  }
-
-  const coverage: ServiceCoverage[] = ALL_SERVICE_TYPES.map((type) => ({
-    type,
-    covered: coveredTypes.has(type),
+  const members: TeamMember[] = (data ?? []).map((r: Record<string, unknown>) => ({
+    id: r.id as string,
+    contractorUserId: (r.contractor_user_id as string) ?? null,
+    name: (r.contractor_name as string) || "Unknown",
+    email: (r.contractor_email as string) ?? null,
+    phone: (r.contractor_phone as string) ?? null,
+    companyName: (r.company_name as string) ?? null,
+    serviceTypes: Array.isArray(r.service_types) ? r.service_types as string[] : [],
+    serviceAreas: Array.isArray(r.service_areas) ? r.service_areas as string[] : [],
+    status: (r.status as string) || "active",
+    notes: (r.notes as string) ?? null,
+    isPreferred: !!(r.is_preferred),
+    leadsRouted: (r.leads_routed as number) ?? 0,
+    leadsCompleted: (r.leads_completed as number) ?? 0,
+    createdAt: r.created_at as string,
   }));
 
-  return { contractors, coverage };
+  return { members };
 }
 
-// ─── Add ────────────────────────────────────────────────────────────
+// ─── Search Network Contractors ─────────────────────────────────────
 
-export async function addContractor(
-  input: AddContractorInput,
-): Promise<{ success: true; contractor: BrokerContractor } | { success: false; error: string }> {
+export async function searchNetworkContractors(
+  query: string,
+  filters?: { areas?: string[]; trades?: string[] },
+): Promise<PlatformUser[]> {
+  const brokerId = await getBrokerId();
+  if (!brokerId) return [];
+
+  // Get contractor_user_ids already on this broker's team
+  const { data: existing } = await supabaseAdmin
+    .from("broker_contractors")
+    .select("contractor_user_id")
+    .eq("broker_id", brokerId)
+    .neq("status", "removed");
+
+  const excludeIds = new Set(
+    (existing ?? [])
+      .map((r: Record<string, unknown>) => r.contractor_user_id as string)
+      .filter(Boolean)
+  );
+
+  // If area or trade filters are set, pre-filter via contractor_profiles
+  let filteredProfileIds: Set<string> | null = null;
+  const hasAreaFilter = filters?.areas && filters.areas.length > 0;
+  const hasTradeFilter = filters?.trades && filters.trades.length > 0;
+
+  if (hasAreaFilter || hasTradeFilter) {
+    let cpQuery = supabaseAdmin.from("contractor_profiles").select("id");
+    if (hasAreaFilter) cpQuery = cpQuery.overlaps("service_areas", filters!.areas!);
+    if (hasTradeFilter) cpQuery = cpQuery.overlaps("service_types", filters!.trades!);
+    const { data: cpResults } = await cpQuery;
+    filteredProfileIds = new Set(
+      (cpResults ?? []).map((r: Record<string, unknown>) => r.id as string)
+    );
+    if (filteredProfileIds.size === 0) return [];
+  }
+
+  // Query app_profiles — all contractor-role users
+  let q = supabaseAdmin
+    .from("app_profiles")
+    .select("id,full_name,first_name,last_name,email,phone")
+    .eq("role", "contractor")
+    .order("full_name")
+    .limit(50);
+
+  const trimmed = query.trim();
+  if (trimmed) {
+    q = q.or(
+      `full_name.ilike.%${trimmed}%,email.ilike.%${trimmed}%,first_name.ilike.%${trimmed}%,last_name.ilike.%${trimmed}%`
+    );
+  }
+
+  if (filteredProfileIds !== null) {
+    q = q.in("id", Array.from(filteredProfileIds));
+  }
+
+  const { data: results, error } = await q;
+  if (error) {
+    console.error("[searchNetworkContractors]", error.message);
+    return [];
+  }
+
+  const matchedUsers = (results ?? [])
+    .filter((r) => !excludeIds.has(r.id))
+    .slice(0, 20);
+
+  if (matchedUsers.length === 0) return [];
+
+  // Enrich with contractor_profiles data
+  const userIds = matchedUsers.map((u) => u.id);
+  const { data: cpRows } = await supabaseAdmin
+    .from("contractor_profiles")
+    .select("id,company_name,service_areas,service_types")
+    .in("id", userIds);
+
+  const cpMap = new Map(
+    (cpRows ?? []).map((cp: Record<string, unknown>) => [cp.id as string, cp])
+  );
+
+  return matchedUsers.map((r) => {
+    const cp = cpMap.get(r.id) as Record<string, unknown> | undefined;
+    return {
+      id: r.id,
+      full_name: r.full_name,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      email: r.email,
+      phone: r.phone,
+      company_name: (cp?.company_name as string) ?? null,
+      service_areas: Array.isArray(cp?.service_areas) ? cp.service_areas as string[] : [],
+      service_types: Array.isArray(cp?.service_types) ? cp.service_types as string[] : [],
+    };
+  });
+}
+
+// ─── Add Contractor to Team ─────────────────────────────────────────
+
+export async function addContractorToTeam(
+  userId: string,
+): Promise<{ success: boolean; name?: string; error?: string }> {
   const brokerId = await getBrokerId();
   if (!brokerId) return { success: false, error: "Not authenticated" };
 
-  if (!input.companyName.trim()) return { success: false, error: "Company name is required" };
-  if (!input.contactName.trim()) return { success: false, error: "Contact name is required" };
-  if (!input.email.trim()) return { success: false, error: "Email is required" };
+  // Check for duplicates
+  const { data: dup } = await supabaseAdmin
+    .from("broker_contractors")
+    .select("id")
+    .eq("broker_id", brokerId)
+    .eq("contractor_user_id", userId)
+    .neq("status", "removed")
+    .maybeSingle();
 
-  const { data, error } = await supabaseAdmin
+  if (dup) return { success: false, error: "This contractor is already on your team." };
+
+  // Fetch profile
+  const { data: profile, error: profErr } = await supabaseAdmin
+    .from("app_profiles")
+    .select("id,full_name,first_name,last_name,email,phone")
+    .eq("id", userId)
+    .single();
+
+  if (profErr || !profile) return { success: false, error: "User not found." };
+
+  const name =
+    profile.full_name ||
+    [profile.first_name, profile.last_name].filter(Boolean).join(" ") ||
+    "Unknown";
+
+  // Get contractor_profiles data for service info
+  const { data: cpRow } = await supabaseAdmin
+    .from("contractor_profiles")
+    .select("company_name,service_areas,service_types")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const cp = cpRow as Record<string, unknown> | null;
+
+  const { error } = await supabaseAdmin
     .from("broker_contractors")
     .insert({
       broker_id: brokerId,
-      company_name: input.companyName.trim(),
-      contractor_name: input.contactName.trim(),
-      contractor_email: input.email.trim(),
-      contractor_phone: input.phone.trim() || null,
-      website: input.website.trim() || null,
-      service_types: input.serviceTypes,
-      service_areas: input.serviceAreas,
-      notes: input.notes.trim() || null,
+      contractor_user_id: userId,
+      contractor_name: name,
+      contractor_email: profile.email || null,
+      contractor_phone: profile.phone || null,
+      company_name: (cp?.company_name as string) || null,
+      service_types: Array.isArray(cp?.service_types) ? cp.service_types : [],
+      service_areas: Array.isArray(cp?.service_areas) ? cp.service_areas : [],
       status: "active",
       is_preferred: false,
-    })
-    .select()
-    .single();
+    });
 
-  if (error) {
-    console.error("[addContractor]", error.message);
-    return { success: false, error: "Failed to add contractor" };
-  }
-
-  return { success: true, contractor: data as BrokerContractor };
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/broker/team");
+  return { success: true, name };
 }
 
-// ─── Update ─────────────────────────────────────────────────────────
+// ─── Invite Contractor ──────────────────────────────────────────────
 
-export async function updateContractor(
-  input: UpdateContractorInput,
-): Promise<{ success: true; contractor: BrokerContractor } | { success: false; error: string }> {
+export async function inviteContractor(input: {
+  email: string;
+  name?: string;
+}): Promise<{ success: boolean; error?: string }> {
   const brokerId = await getBrokerId();
   if (!brokerId) return { success: false, error: "Not authenticated" };
 
-  if (!input.companyName.trim()) return { success: false, error: "Company name is required" };
-  if (!input.contactName.trim()) return { success: false, error: "Contact name is required" };
-  if (!input.email.trim()) return { success: false, error: "Email is required" };
-
-  const { data, error } = await supabaseAdmin
+  // Check if email already on team
+  const { data: existing } = await supabaseAdmin
     .from("broker_contractors")
-    .update({
-      company_name: input.companyName.trim(),
-      contractor_name: input.contactName.trim(),
-      contractor_email: input.email.trim(),
-      contractor_phone: input.phone.trim() || null,
-      website: input.website.trim() || null,
-      service_types: input.serviceTypes,
-      service_areas: input.serviceAreas,
-      notes: input.notes.trim() || null,
-    })
-    .eq("id", input.id)
+    .select("id")
     .eq("broker_id", brokerId)
-    .select()
-    .single();
+    .eq("contractor_email", input.email.trim())
+    .neq("status", "removed")
+    .maybeSingle();
 
-  if (error) {
-    console.error("[updateContractor]", error.message);
-    return { success: false, error: "Failed to update contractor" };
-  }
+  if (existing) return { success: false, error: "This email is already on your team." };
 
-  return { success: true, contractor: data as BrokerContractor };
+  const { error } = await supabaseAdmin
+    .from("broker_contractors")
+    .insert({
+      broker_id: brokerId,
+      contractor_name: input.name?.trim() || input.email.trim(),
+      contractor_email: input.email.trim(),
+      status: "pending_invite",
+      is_preferred: false,
+      service_types: [],
+      service_areas: [],
+    });
+
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/broker/team");
+  return { success: true };
 }
 
-// ─── Remove ─────────────────────────────────────────────────────────
+// ─── Update Team Member ─────────────────────────────────────────────
 
-export async function removeContractor(
+export async function updateTeamMember(input: {
+  id: string;
+  status?: string;
+  notes?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const brokerId = await getBrokerId();
+  if (!brokerId) return { success: false, error: "Not authenticated" };
+
+  const updates: Record<string, unknown> = {};
+  if (input.status !== undefined) updates.status = input.status;
+  if (input.notes !== undefined) updates.notes = input.notes?.trim() || null;
+
+  const { error } = await supabaseAdmin
+    .from("broker_contractors")
+    .update(updates)
+    .eq("id", input.id)
+    .eq("broker_id", brokerId);
+
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/broker/team");
+  return { success: true };
+}
+
+// ─── Remove Team Member ─────────────────────────────────────────────
+
+export async function removeTeamMember(
   id: string,
 ): Promise<{ success: boolean; error?: string }> {
   const brokerId = await getBrokerId();
@@ -183,51 +333,53 @@ export async function removeContractor(
     .eq("id", id)
     .eq("broker_id", brokerId);
 
-  if (error) {
-    console.error("[removeContractor]", error.message);
-    return { success: false, error: "Failed to remove contractor" };
-  }
-
+  if (error) return { success: false, error: error.message };
+  revalidatePath("/broker/team");
   return { success: true };
 }
 
-// ─── Set Preferred ──────────────────────────────────────────────────
+// ─── Fetch REI HES Assessors ────────────────────────────────────────
 
-export async function setPreferred(
-  id: string,
-  serviceType: string,
-): Promise<{ success: boolean; error?: string }> {
-  const brokerId = await getBrokerId();
-  if (!brokerId) return { success: false, error: "Not authenticated" };
-
-  // Unset preferred for all other contractors with this service type
-  const { data: allContractors } = await supabaseAdmin
-    .from("broker_contractors")
-    .select("id, service_types, is_preferred")
-    .eq("broker_id", brokerId)
-    .eq("is_preferred", true)
-    .neq("status", "removed");
-
-  for (const c of (allContractors ?? []) as { id: string; service_types: string[]; is_preferred: boolean }[]) {
-    if (c.id !== id && (c.service_types ?? []).includes(serviceType)) {
-      await supabaseAdmin
-        .from("broker_contractors")
-        .update({ is_preferred: false })
-        .eq("id", c.id);
-    }
-  }
-
-  // Set this contractor as preferred
-  const { error } = await supabaseAdmin
-    .from("broker_contractors")
-    .update({ is_preferred: true })
-    .eq("id", id)
-    .eq("broker_id", brokerId);
+export async function fetchREIAssessors(): Promise<REITeamMember[]> {
+  const { data, error } = await supabaseAdmin
+    .from("app_profiles")
+    .select("id, full_name, staff_type")
+    .eq("role", "rei_staff")
+    .eq("staff_type", "hes_assessor")
+    .order("full_name", { ascending: true });
 
   if (error) {
-    console.error("[setPreferred]", error.message);
-    return { success: false, error: "Failed to set preferred" };
+    console.error("[fetchREIAssessors]", error.message);
+    return [];
   }
 
-  return { success: true };
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    fullName: (row.full_name as string) || "Team Member",
+    role: "hes_assessor" as const,
+    serviceArea: "Portland Metro",
+  }));
+}
+
+// ─── Fetch REI Home Inspectors ──────────────────────────────────────
+
+export async function fetchREIInspectors(): Promise<REITeamMember[]> {
+  const { data, error } = await supabaseAdmin
+    .from("app_profiles")
+    .select("id, full_name, staff_type")
+    .eq("role", "rei_staff")
+    .eq("staff_type", "home_inspector")
+    .order("full_name", { ascending: true });
+
+  if (error) {
+    console.error("[fetchREIInspectors]", error.message);
+    return [];
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    fullName: (row.full_name as string) || "Team Member",
+    role: "inspector" as const,
+    serviceArea: "Portland Metro",
+  }));
 }

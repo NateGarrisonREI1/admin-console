@@ -66,23 +66,6 @@ function NavLink({ href, label, onClick }: LinkItem & { onClick?: () => void }) 
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        fontSize: 10,
-        color: "#64748b",
-        fontWeight: 700,
-        marginBottom: 6,
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
 function Divider() {
   return <div style={{ margin: "12px 0 10px", height: 1, background: "#334155" }} />;
 }
@@ -92,13 +75,11 @@ function Divider() {
 function SidebarContent({
   brokerName,
   brokerEmail,
-  brokerLogoUrl,
   onNavClick,
   onNewRequest,
 }: {
   brokerName?: string;
   brokerEmail?: string;
-  brokerLogoUrl?: string | null;
   onNavClick?: () => void;
   onNewRequest: () => void;
 }) {
@@ -109,56 +90,48 @@ function SidebarContent({
     <>
       {/* Broker identity */}
       {brokerName && (
-        <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-          {brokerLogoUrl ? (
-            <img
-              src={brokerLogoUrl}
-              alt=""
-              style={{ width: 24, height: 24, borderRadius: 6, objectFit: "cover", flexShrink: 0, border: "1px solid #334155" }}
-            />
-          ) : (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: "#f1f5f9",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}>
+            {brokerName}
+          </div>
+          {brokerEmail && (
             <div style={{
-              width: 24, height: 24, borderRadius: 6, flexShrink: 0,
-              background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)",
-              display: "grid", placeItems: "center",
-              fontSize: 11, fontWeight: 700, color: "#10b981",
+              marginTop: 2,
+              fontSize: 11,
+              color: "#64748b",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}>
-              {(brokerName || "B").charAt(0).toUpperCase()}
+              {brokerEmail}
             </div>
           )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {brokerName}
-            </div>
-            {brokerEmail && (
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {brokerEmail}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
       <div style={{ flex: 1, overflow: "auto", paddingRight: 2 }}>
-        <SectionLabel>Overview</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {OVERVIEW.map((l) => <NavLink key={l.href} {...l} onClick={onNavClick} />)}
         </nav>
 
         <Divider />
-        <SectionLabel>Marketplace</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {MARKETPLACE.map((l) => <NavLink key={l.href} {...l} onClick={onNavClick} />)}
         </nav>
 
         <Divider />
-        <SectionLabel>Network</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {NETWORK.map((l) => <NavLink key={l.href} {...l} onClick={onNavClick} />)}
         </nav>
 
         <Divider />
-        <SectionLabel>Tools</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {TOOLS.map((l) => <NavLink key={l.href} {...l} onClick={onNavClick} />)}
         </nav>
@@ -380,7 +353,7 @@ export default function BrokerSidebar({
             </button>
           </div>
 
-          <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} brokerLogoUrl={brokerLogoUrl} onNavClick={() => setMobileOpen(false)} onNewRequest={openNewRequest} />
+          <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} onNavClick={() => setMobileOpen(false)} onNewRequest={openNewRequest} />
         </aside>
       </>
     );
@@ -538,7 +511,7 @@ export default function BrokerSidebar({
         </button>
       </div>
 
-      <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} brokerLogoUrl={brokerLogoUrl} onNewRequest={openNewRequest} />
+      <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} onNewRequest={openNewRequest} />
     </aside>
   );
 }

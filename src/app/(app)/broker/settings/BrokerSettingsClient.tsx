@@ -307,7 +307,7 @@ export default function BrokerSettingsClient({
   // ── Render ──────────────────────────────────────────────────────
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+    <div style={{ width: "100%", display: "flex", flexDirection: "column", minHeight: "calc(100vh - 120px)" }}>
       {/* Page header */}
       <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Settings</h1>
@@ -359,16 +359,16 @@ export default function BrokerSettingsClient({
 
       {/* ── Main layout: sidebar + content ─────────────────────────── */}
       <div style={{
-        display: "flex", gap: 0,
+        display: "flex", gap: 0, flex: 1,
         background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`,
-        overflow: "hidden", minHeight: 480,
+        overflow: "hidden", minHeight: 0,
       }}>
         {/* ── Desktop sidebar nav ────────────────────────────────── */}
         {!isMobile && (
           <nav style={{
-            width: 180, minWidth: 180, flexShrink: 0,
+            width: 200, minWidth: 200, flexShrink: 0,
             borderRight: `1px solid ${BORDER}`,
-            padding: "16px 10px",
+            padding: "20px 12px",
             display: "flex", flexDirection: "column", gap: 2,
           }}>
             {NAV_ITEMS.map((item) => {
@@ -408,7 +408,7 @@ export default function BrokerSettingsClient({
         )}
 
         {/* ── Content area ────────────────────────────────────────── */}
-        <div style={{ flex: 1, padding: isMobile ? 20 : 28, overflowY: "auto" }}>
+        <div style={{ flex: 1, minWidth: 0, padding: isMobile ? 20 : 32, overflowY: "auto" }}>
 
           {/* ═══ PROFILE ═══ */}
           {section === "profile" && (

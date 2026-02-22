@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import Link from "next/link";
 import SidePanel from "@/components/ui/SidePanel";
 import FilterableHeader, { ActiveFilterBar, type ActiveFilter, type SortDir, type OptionColor } from "@/components/ui/FilterableHeader";
 import { AdjustmentsHorizontalIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
@@ -133,7 +132,6 @@ export default function LeadsClient({ data }: { data: BrokerMarketplaceData }) {
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
 
   // Collapsible sections
-  const [revenueOpen, setRevenueOpen] = useState(true);
   const [leadsOpen, setLeadsOpen] = useState(true);
 
   // Derived option lists
@@ -315,35 +313,18 @@ export default function LeadsClient({ data }: { data: BrokerMarketplaceData }) {
     { label: "Available", value: String(stats.available), color: EMERALD },
     { label: "Sold", value: String(stats.sold), color: "#10b981" },
     { label: "Expired", value: String(stats.expired), color: TEXT_MUTED },
-    { label: "Total Revenue", value: money(stats.totalRevenue), color: "#f59e0b" },
-    { label: "My Earnings", value: money(stats.brokerEarnings), color: "#3b82f6" },
   ];
 
   return (
     <div style={{ padding: 28 }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>Marketplace</h1>
-          <p style={{ color: TEXT_DIM, fontSize: 13, margin: "4px 0 0", fontWeight: 500 }}>Your leads from LEAF reports and campaigns</p>
-        </div>
-        <Link
-          href="/broker/request"
-          style={{
-            display: "inline-flex", alignItems: "center", gap: 6,
-            padding: "9px 18px", borderRadius: 8, textDecoration: "none",
-            background: EMERALD, color: "#fff", fontSize: 13, fontWeight: 700,
-            border: "1px solid rgba(16,185,129,0.5)", transition: "all 0.15s ease",
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "#059669"; e.currentTarget.style.boxShadow = "0 0 12px rgba(16,185,129,0.3)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = EMERALD; e.currentTarget.style.boxShadow = "none"; }}
-        >
-          + New Request
-        </Link>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ color: TEXT, fontSize: 22, fontWeight: 700, margin: 0 }}>Marketplace</h1>
+        <p style={{ color: TEXT_DIM, fontSize: 13, margin: "4px 0 0", fontWeight: 500 }}>Your leads from LEAF reports and campaigns</p>
       </div>
 
-      {/* Stats */}
-      <div className="admin-kpi-grid-6" style={{ marginBottom: 20 }}>
+      {/* KPI Cards — 4 across on desktop, 2x2 on mobile */}
+      <div className="admin-kpi-grid" style={{ marginBottom: 12 }}>
         {statCards.map((s) => (
           <div key={s.label} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px 16px" }}>
             <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>{s.label}</div>
@@ -352,91 +333,16 @@ export default function LeadsClient({ data }: { data: BrokerMarketplaceData }) {
         ))}
       </div>
 
-      {/* Revenue Section (collapsible) */}
-      <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, marginBottom: 20, overflow: "hidden" }}>
-        <button type="button" onClick={() => setRevenueOpen(!revenueOpen)}
-          style={{
-            width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
-            padding: "14px 18px", background: "transparent", border: "none", cursor: "pointer",
-          }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Revenue</span>
-          <span style={{ fontSize: 12, color: TEXT_DIM, transition: "transform 0.15s", transform: revenueOpen ? "rotate(180deg)" : "rotate(0)" }}>{"\u25BC"}</span>
-        </button>
-        {revenueOpen && (
-          <div style={{ padding: "0 18px 18px" }}>
-            {/* Revenue Cards */}
-            <div className="broker-revenue-grid" style={{ marginBottom: 18 }}>
-              <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "14px 16px" }}>
-                <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Total Revenue</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b", marginTop: 2 }}>{money(revenueData.totalRevenue)}</div>
-              </div>
-              <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "14px 16px" }}>
-                <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>REI Cut (30%)</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: EMERALD, marginTop: 2 }}>{money(revenueData.reiRevenue)}</div>
-              </div>
-              <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "14px 16px" }}>
-                <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>My Earnings (68.6%)</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#3b82f6", marginTop: 2 }}>{money(revenueData.myEarnings)}</div>
-              </div>
-            </div>
-
-            {/* Revenue by Service Type */}
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Revenue by Service Type</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {SERVICE_TYPES.filter((s) => s.value !== "all").map((st) => {
-                  const amt = revenueData.byType.get(st.value) ?? 0;
-                  const stc = SYSTEM_TYPE_COLORS[st.value];
-                  const maxAmt = Math.max(...[...revenueData.byType.values()], 1);
-                  const pct = Math.round((amt / maxAmt) * 100);
-                  return (
-                    <div key={st.value} style={{ flex: "1 1 140px", minWidth: 140, background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "10px 14px" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: stc?.text ?? TEXT_MUTED, marginBottom: 4 }}>{st.label}</div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: amt > 0 ? TEXT : TEXT_DIM }}>{money(amt)}</div>
-                      <div style={{ height: 4, borderRadius: 2, background: BORDER, marginTop: 6 }}>
-                        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 2, background: stc?.text ?? TEXT_MUTED, transition: "width 0.3s" }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Recent Transactions */}
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Recent Transactions</div>
-              {data.transactions.length === 0 ? (
-                <div style={{ padding: 20, textAlign: "center", fontSize: 13, color: TEXT_DIM, background: BG, border: `1px solid ${BORDER}`, borderRadius: 8 }}>
-                  No transactions recorded yet
-                </div>
-              ) : (
-                <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr>
-                        {["Lead", "Contractor", "Amount", "REI Take", "My Take", "Date"].map((h) => (
-                          <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: `1px solid ${BORDER}` }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.transactions.map((tx) => (
-                        <tr key={tx.id} style={{ borderBottom: `1px solid ${BORDER}` }}>
-                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 600, color: TEXT }}>{tx.lead_title || "\u2014"}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_SEC }}>{tx.contractor_name || "\u2014"}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: TEXT }}>{money(tx.total_amount)}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: EMERALD }}>{money(tx.rei_amount)}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 13, fontWeight: 700, color: "#3b82f6" }}>{money(tx.poster_amount)}</td>
-                          <td style={{ padding: "10px 14px", fontSize: 12, color: TEXT_DIM }}>{fmtDate(tx.created_at)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+      {/* Revenue Row — 2 cards */}
+      <div className="admin-kpi-grid" style={{ marginBottom: 20 }}>
+        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Total Revenue</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b", marginTop: 2 }}>{money(revenueData.totalRevenue)}</div>
+        </div>
+        <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>My Earnings</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#3b82f6", marginTop: 2 }}>{money(revenueData.myEarnings)}</div>
+        </div>
       </div>
 
       {/* Leads Section (collapsible) */}
