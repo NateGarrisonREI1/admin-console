@@ -4,6 +4,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useIsMobile } from "@/lib/useMediaQuery";
 import {
   updateBrokerProfile,
   updateReferralCode,
@@ -26,6 +27,18 @@ const RED = "#ef4444";
 
 const BASE_URL = "app.renewableenergyincentives.com/request/";
 
+// ─── Nav sections ───────────────────────────────────────────────────
+
+type Section = "profile" | "branding" | "link" | "templates" | "prefs";
+
+const NAV_ITEMS: { key: Section; label: string; shortLabel: string }[] = [
+  { key: "profile", label: "Profile", shortLabel: "Profile" },
+  { key: "branding", label: "Branding", shortLabel: "Brand" },
+  { key: "link", label: "Client Link", shortLabel: "Link" },
+  { key: "templates", label: "Templates", shortLabel: "Templates" },
+  { key: "prefs", label: "Preferences", shortLabel: "Prefs" },
+];
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function formatPhone(raw: string): string {
@@ -36,13 +49,6 @@ function formatPhone(raw: string): string {
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────
-
-const sectionStyle: React.CSSProperties = {
-  background: CARD,
-  border: `1px solid ${BORDER}`,
-  borderRadius: 12,
-  padding: 24,
-};
 
 const labelStyle: React.CSSProperties = {
   display: "block",
@@ -104,18 +110,18 @@ function getTemplates(brokerName: string, companyName: string | null, clientLink
     {
       name: "Introduce HES to Your Client",
       description: "Explain what a Home Energy Score is and why it matters",
-      subject: "Save Money on Energy Costs — Free Home Analysis",
+      subject: "Save Money on Energy Costs \u2014 Free Home Analysis",
       body: `Hi,\n\nI wanted to share a resource that can help you understand your home's energy efficiency and find ways to save on utility costs.\n\nA Home Energy Score (HES) assessment identifies where your home loses energy and provides a clear roadmap for improvements. It typically takes about an hour and covers insulation, HVAC, windows, and more.\n\nI've partnered with REI (Renewable Energy Incentives) to make scheduling easy. You can book your assessment directly here:\n${clientLink}\n\nFeel free to reach out if you have any questions.\n\nBest,\n${brokerName}\n${company}`,
     },
     {
       name: "LEAF Report Follow-Up",
       description: "Follow up after a LEAF report has been delivered",
       subject: "Your Home Energy Report is Ready",
-      body: `Hi,\n\nGreat news — your LEAF (Local Energy Assessment & Forecast) report is ready! This report includes your Home Energy Score, personalized upgrade recommendations, and estimated savings.\n\nI'd love to walk you through the findings and discuss next steps. The report highlights opportunities that could reduce your energy bills and increase your home's value.\n\nWould you have time for a quick call this week?\n\nBest,\n${brokerName}\n${company}`,
+      body: `Hi,\n\nGreat news \u2014 your LEAF (Local Energy Assessment & Forecast) report is ready! This report includes your Home Energy Score, personalized upgrade recommendations, and estimated savings.\n\nI'd love to walk you through the findings and discuss next steps. The report highlights opportunities that could reduce your energy bills and increase your home's value.\n\nWould you have time for a quick call this week?\n\nBest,\n${brokerName}\n${company}`,
     },
     {
       name: "Schedule Your Assessment",
-      description: "Short and direct — send the scheduling link",
+      description: "Short and direct \u2014 send the scheduling link",
       subject: "Schedule Your Home Energy Assessment",
       body: `Hi,\n\nReady to learn how efficient your home is? Use the link below to schedule your Home Energy Assessment at a time that works for you:\n${clientLink}\n\nI'll be involved throughout the process and will share the results with you once complete. The assessment takes about an hour.\n\nLooking forward to it!\n\n${brokerName}\n${company}`,
     },
@@ -123,7 +129,7 @@ function getTemplates(brokerName: string, companyName: string | null, clientLink
       name: "Post-Sale Energy Check",
       description: "Suggest an HES after a real estate transaction",
       subject: "Congratulations on Your New Home!",
-      body: `Hi,\n\nCongratulations on your new home! As you settle in, I'd recommend scheduling a Home Energy Assessment. It's one of the smartest first steps for any new homeowner.\n\nYou'll get a clear picture of your home's energy performance and actionable recommendations that can save you money from day one.\n\nSchedule here:\n${clientLink}\n\nLet me know if you have any questions — happy to help!\n\nWarm regards,\n${brokerName}\n${company}`,
+      body: `Hi,\n\nCongratulations on your new home! As you settle in, I'd recommend scheduling a Home Energy Assessment. It's one of the smartest first steps for any new homeowner.\n\nYou'll get a clear picture of your home's energy performance and actionable recommendations that can save you money from day one.\n\nSchedule here:\n${clientLink}\n\nLet me know if you have any questions \u2014 happy to help!\n\nWarm regards,\n${brokerName}\n${company}`,
     },
   ];
 }
@@ -136,7 +142,11 @@ export default function BrokerSettingsClient({
   settings: BrokerSettings;
 }) {
   const router = useRouter();
+  const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Active section
+  const [section, setSection] = useState<Section>("profile");
 
   // Toast
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -172,7 +182,6 @@ export default function BrokerSettingsClient({
   const [notifyLeafDelivery, setNotifyLeafDelivery] = useState(true);
   const [notifyLeadAlerts, setNotifyLeadAlerts] = useState(true);
 
-  // Load preferences from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem("rei_broker_prefs");
@@ -298,9 +307,9 @@ export default function BrokerSettingsClient({
   // ── Render ──────────────────────────────────────────────────────
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
+    <div style={{ maxWidth: 900, margin: "0 auto" }}>
       {/* Page header */}
-      <div>
+      <div style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Settings</h1>
         <p style={{ fontSize: 13, color: TEXT_DIM, margin: 0 }}>Manage your profile, client link, and preferences</p>
       </div>
@@ -309,456 +318,533 @@ export default function BrokerSettingsClient({
       {toast && (
         <div style={{
           padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+          marginBottom: 16,
           border: `1px solid ${toast.type === "error" ? "rgba(239,68,68,0.3)" : EMERALD_BORDER}`,
           background: toast.type === "error" ? "rgba(239,68,68,0.08)" : EMERALD_BG,
           color: toast.type === "error" ? RED : EMERALD,
-          transition: "all 0.2s ease",
         }}>
           {toast.message}
         </div>
       )}
 
-      {/* ═══ SECTION 1: PROFILE ═══ */}
-      <div style={sectionStyle}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Profile</h2>
-        <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 20px" }}>Your broker identity and branding</p>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div>
-            <label style={labelStyle}>Contact Name</label>
-            <input
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Jane Smith"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Company Name</label>
-            <input
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Smith Realty Group"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Phone</label>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(formatPhone(e.target.value))}
-              placeholder="(503) 555-1234"
-              style={inputStyle}
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>Email</label>
-            <input
-              value={settings.email}
-              readOnly
-              style={{ ...inputStyle, opacity: 0.5, cursor: "not-allowed" }}
-            />
-            <div style={{ fontSize: 10, color: TEXT_DIM, marginTop: 4 }}>Change via account settings</div>
-          </div>
-        </div>
-
-        {/* Logo upload */}
-        <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
-          <label style={labelStyle}>Logo</label>
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-            {/* Drop zone */}
-            <div
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                const file = e.dataTransfer.files[0];
-                if (file) handleLogoFile(file);
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              style={{
-                width: 100, height: 100, borderRadius: 12,
-                border: `2px dashed ${dragOver ? EMERALD : BORDER}`,
-                background: dragOver ? EMERALD_BG : "transparent",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", transition: "all 0.15s ease", flexShrink: 0,
-                overflow: "hidden",
-              }}
-            >
-              {uploadingLogo ? (
-                <div style={{ fontSize: 12, color: TEXT_DIM }}>Uploading...</div>
-              ) : logoUrl ? (
-                <img src={logoUrl} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
-              ) : (
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 24, marginBottom: 2 }}>+</div>
-                  <div style={{ fontSize: 10, color: TEXT_DIM }}>Upload</div>
-                </div>
-              )}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/svg+xml"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleLogoFile(file);
-                e.target.value = "";
-              }}
-            />
-
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingLogo}
-                  style={btnSecondary()}
-                >
-                  Upload Logo
-                </button>
-                {logoUrl && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveLogo}
-                    disabled={uploadingLogo}
-                    style={{ ...btnSecondary(), color: RED, borderColor: "rgba(239,68,68,0.3)" }}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-              <div style={{ fontSize: 11, color: TEXT_DIM, lineHeight: 1.5 }}>
-                PNG, JPG, or SVG — max 2MB<br />
-                Shown on your client referral form
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Live preview */}
-        <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
-          <div style={{
-            fontSize: 10, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase",
-            letterSpacing: "0.08em", marginBottom: 10,
-          }}>
-            Preview — What your clients see
-          </div>
-          <div style={{
-            borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "hidden",
-            transform: "scale(0.65)", transformOrigin: "top left",
-            width: "153.8%", /* 1/0.65 to fill available width after scale */
-          }}>
-            <div style={{ background: CARD, padding: "28px 24px 20px" }}>
-              {/* Mini header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <Image src="/images/rei-logo.png" alt="REI" width={80} height={22} style={{ objectFit: "contain" }} />
-                {logoUrl ? (
-                  <img src={logoUrl} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "contain", border: `1px solid ${BORDER}` }} />
-                ) : (
-                  <div style={{
-                    width: 32, height: 32, borderRadius: "50%", background: BG,
-                    border: `2px solid ${EMERALD_BORDER}`, display: "grid", placeItems: "center",
-                    fontSize: 13, fontWeight: 700, color: EMERALD,
-                  }}>
-                    {(companyName || fullName || "B").charAt(0).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              {/* Mini title */}
-              <div style={{ textAlign: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 6 }}>
-                  Schedule a Home Energy Assessment
-                </div>
-                <div style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  padding: "6px 12px", borderRadius: 6,
-                  background: EMERALD_BG, border: `1px solid ${BORDER}`,
-                  fontSize: 11, fontWeight: 600, color: EMERALD,
-                }}>
-                  Referred by {fullName || "Broker"}
-                  {companyName && <span style={{ color: TEXT_DIM }}>&mdash; {companyName}</span>}
-                </div>
-              </div>
-              {/* Mini progress bar */}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ width: "100%", height: 4, borderRadius: 2, background: BORDER }}>
-                  <div style={{ width: "16%", height: "100%", borderRadius: 2, background: EMERALD }} />
-                </div>
-                <div style={{ fontSize: 9, color: TEXT_DIM, textAlign: "right", marginTop: 3 }}>Step 1 of 6</div>
-              </div>
-              {/* Mini service cards */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div style={{
-                  padding: "12px 10px", borderRadius: 8, border: `2px solid ${EMERALD}`,
-                  background: EMERALD_BG, textAlign: "center",
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 2 }}>🏠</div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: EMERALD }}>HES Assessment</div>
-                </div>
-                <div style={{
-                  padding: "12px 10px", borderRadius: 8, border: `1px solid ${BORDER}`,
-                  textAlign: "center",
-                }}>
-                  <div style={{ fontSize: 16, marginBottom: 2 }}>🔍</div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: TEXT_SEC }}>Inspection</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Save button */}
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={handleSaveProfile}
-            disabled={savingProfile}
-            style={btnPrimary(savingProfile)}
-          >
-            {savingProfile ? "Saving..." : "Save Changes"}
-          </button>
-        </div>
-      </div>
-
-      {/* ═══ SECTION 2: CLIENT LINK ═══ */}
-      <div style={sectionStyle}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Client Link</h2>
-        <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 20px" }}>Your personalized referral link for clients</p>
-
-        {/* Current link */}
-        {refCode && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={labelStyle}>Your Link</label>
-            <div style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "10px 14px", borderRadius: 8,
-              background: BG, border: `1px solid ${BORDER}`,
-            }}>
-              <span style={{ flex: 1, fontSize: 13, color: EMERALD, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {BASE_URL}{refCode}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Referral code */}
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Referral Code</label>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={refCodeDraft}
-              onChange={(e) => {
-                const v = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
-                setRefCodeDraft(v);
-                setCodeError("");
-              }}
-              placeholder="your-code"
-              style={{ ...inputStyle, flex: 1 }}
-            />
-            <button
-              type="button"
-              onClick={handleSaveCode}
-              disabled={savingCode || refCodeDraft === refCode}
-              style={btnPrimary(savingCode || refCodeDraft === refCode)}
-            >
-              {savingCode ? "Saving..." : "Update Code"}
-            </button>
-          </div>
-          {refCodeDraft && refCodeDraft !== refCode && (
-            <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 6 }}>
-              Preview: {BASE_URL}<span style={{ color: EMERALD, fontWeight: 600 }}>{refCodeDraft}</span>
-            </div>
-          )}
-          {codeError && (
-            <div style={{ fontSize: 12, color: RED, marginTop: 6, fontWeight: 600 }}>{codeError}</div>
-          )}
-          <div style={{ fontSize: 10, color: TEXT_DIM, marginTop: 6 }}>
-            Lowercase letters, numbers, and hyphens only
-          </div>
-        </div>
-
-        {/* Stats */}
+      {/* ── Mobile: horizontal scrollable tabs ─────────────────────── */}
+      {isMobile && (
         <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12,
-          marginBottom: 16, paddingTop: 16, borderTop: `1px solid ${BORDER}`,
+          display: "flex", gap: 6, overflowX: "auto", paddingBottom: 12,
+          marginBottom: 16, WebkitOverflowScrolling: "touch",
+          msOverflowStyle: "none", scrollbarWidth: "none",
         }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: EMERALD }}>{settings.referralVisits}</div>
-            <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>Link Visits</div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: EMERALD }}>{settings.referralConversions}</div>
-            <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>Submissions</div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: EMERALD }}>{conversionRate}%</div>
-            <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>Conversion</div>
-          </div>
-        </div>
-
-        {/* Action buttons */}
-        {refCode && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              style={btnSecondary()}
-            >
-              {copied ? "Copied!" : "Copy Link"}
-            </button>
-            <a
-              href={`sms:?body=${encodeURIComponent(`Schedule your Home Energy Assessment here: ${clientLink}`)}`}
-              style={{ ...btnSecondary(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
-            >
-              Text
-            </a>
-            <a
-              href={`mailto:?subject=${encodeURIComponent("Schedule Your Home Energy Assessment")}&body=${encodeURIComponent(`Hi,\n\nUse this link to schedule your Home Energy Assessment:\n${clientLink}\n\nBest,\n${fullName}`)}`}
-              style={{ ...btnSecondary(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
-            >
-              Email
-            </a>
-          </div>
-        )}
-      </div>
-
-      {/* ═══ SECTION 3: EMAIL TEMPLATES ═══ */}
-      <div style={sectionStyle}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Email Templates</h2>
-        <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 20px" }}>Pre-written emails you can copy and send from your own email client</p>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {templates.map((tpl, i) => {
-            const isOpen = expandedTemplate === i;
+          {NAV_ITEMS.map((item) => {
+            const isActive = section === item.key;
             return (
-              <div key={i} style={{
-                borderRadius: 10, border: `1px solid ${isOpen ? EMERALD_BORDER : BORDER}`,
-                background: isOpen ? EMERALD_BG : "transparent",
-                overflow: "hidden", transition: "all 0.15s ease",
-              }}>
-                <button
-                  type="button"
-                  onClick={() => setExpandedTemplate(isOpen ? null : i)}
-                  style={{
-                    width: "100%", padding: "14px 16px",
-                    background: "transparent", border: "none", cursor: "pointer",
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    textAlign: "left",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{tpl.name}</div>
-                    <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>{tpl.description}</div>
-                  </div>
-                  <span style={{ fontSize: 18, color: TEXT_DIM, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-                    ▾
-                  </span>
-                </button>
-
-                {isOpen && (
-                  <div style={{ padding: "0 16px 16px" }}>
-                    <div style={{
-                      padding: "12px 14px", borderRadius: 8,
-                      background: BG, border: `1px solid ${BORDER}`,
-                      marginBottom: 12,
-                    }}>
-                      <div style={{ fontSize: 11, color: TEXT_DIM, marginBottom: 4 }}>Subject:</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 12 }}>{tpl.subject}</div>
-                      <div style={{ fontSize: 11, color: TEXT_DIM, marginBottom: 4 }}>Body:</div>
-                      <pre style={{
-                        fontSize: 12, color: TEXT_SEC, lineHeight: 1.6,
-                        whiteSpace: "pre-wrap", wordWrap: "break-word",
-                        margin: 0, fontFamily: "inherit",
-                      }}>
-                        {tpl.body}
-                      </pre>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(`Subject: ${tpl.subject}\n\n${tpl.body}`);
-                          setCopiedTemplate(i);
-                          setTimeout(() => setCopiedTemplate(null), 2000);
-                        }}
-                        style={btnSecondary()}
-                      >
-                        {copiedTemplate === i ? "Copied!" : "Copy to Clipboard"}
-                      </button>
-                      <a
-                        href={`mailto:?subject=${encodeURIComponent(tpl.subject)}&body=${encodeURIComponent(tpl.body)}`}
-                        style={{ ...btnPrimary(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
-                      >
-                        Open in Email
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setSection(item.key)}
+                style={{
+                  padding: "8px 16px", borderRadius: 8, whiteSpace: "nowrap",
+                  border: `1.5px solid ${isActive ? EMERALD_BORDER : BORDER}`,
+                  background: isActive ? EMERALD_BG : "transparent",
+                  color: isActive ? EMERALD : TEXT_DIM,
+                  fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  transition: "all 0.15s ease", flexShrink: 0,
+                }}
+              >
+                {item.shortLabel}
+              </button>
             );
           })}
         </div>
-      </div>
+      )}
 
-      {/* ═══ SECTION 4: PREFERENCES ═══ */}
-      <div style={sectionStyle}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Preferences</h2>
-        <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 20px" }}>Default settings for new requests</p>
-
-        {/* Default payment method */}
-        <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle}>Default Payment Method</label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {([
-              { value: "broker", label: "I pay (invoice me)" },
-              { value: "homeowner", label: "Homeowner pays" },
-              { value: "ask", label: "Ask each time" },
-            ] as const).map((opt) => {
-              const isActive = defaultPayer === opt.value;
+      {/* ── Main layout: sidebar + content ─────────────────────────── */}
+      <div style={{
+        display: "flex", gap: 0,
+        background: CARD, borderRadius: 12, border: `1px solid ${BORDER}`,
+        overflow: "hidden", minHeight: 480,
+      }}>
+        {/* ── Desktop sidebar nav ────────────────────────────────── */}
+        {!isMobile && (
+          <nav style={{
+            width: 180, minWidth: 180, flexShrink: 0,
+            borderRight: `1px solid ${BORDER}`,
+            padding: "16px 10px",
+            display: "flex", flexDirection: "column", gap: 2,
+          }}>
+            {NAV_ITEMS.map((item) => {
+              const isActive = section === item.key;
               return (
                 <button
-                  key={opt.value}
+                  key={item.key}
                   type="button"
-                  onClick={() => setDefaultPayer(opt.value)}
+                  onClick={() => setSection(item.key)}
                   style={{
-                    padding: "12px 14px", borderRadius: 8, textAlign: "left",
-                    border: `1.5px solid ${isActive ? EMERALD_BORDER : BORDER}`,
+                    padding: "10px 14px", borderRadius: 8,
+                    border: "none", textAlign: "left",
                     background: isActive ? EMERALD_BG : "transparent",
-                    color: isActive ? EMERALD : TEXT_SEC,
-                    fontSize: 13, fontWeight: 600, cursor: "pointer",
-                    transition: "all 0.15s ease",
+                    borderLeft: isActive ? `3px solid ${EMERALD}` : "3px solid transparent",
+                    color: isActive ? TEXT : TEXT_DIM,
+                    fontSize: 13, fontWeight: isActive ? 700 : 500,
+                    cursor: "pointer", transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = "rgba(148,163,184,0.06)";
+                      e.currentTarget.style.color = TEXT_SEC;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = TEXT_DIM;
+                    }
                   }}
                 >
-                  {opt.label}
+                  {item.label}
                 </button>
               );
             })}
-          </div>
-        </div>
+          </nav>
+        )}
 
-        {/* Notification toggles */}
-        <div style={{ paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
-          <label style={labelStyle}>Email Notifications</label>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <ToggleRow label="New client request (from client link)" checked={notifyClientRequest} onChange={setNotifyClientRequest} />
-            <ToggleRow label="Job status updates" checked={notifyJobStatus} onChange={setNotifyJobStatus} />
-            <ToggleRow label="LEAF delivery notifications" checked={notifyLeafDelivery} onChange={setNotifyLeafDelivery} />
-            <ToggleRow label="Lead marketplace alerts" checked={notifyLeadAlerts} onChange={setNotifyLeadAlerts} />
-          </div>
-        </div>
+        {/* ── Content area ────────────────────────────────────────── */}
+        <div style={{ flex: 1, padding: isMobile ? 20 : 28, overflowY: "auto" }}>
 
-        {/* Save preferences */}
-        <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={handleSavePreferences}
-            style={btnPrimary()}
-          >
-            Save Preferences
-          </button>
+          {/* ═══ PROFILE ═══ */}
+          {section === "profile" && (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Profile</h2>
+              <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 24px" }}>Your broker identity</p>
+
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
+                <div>
+                  <label style={labelStyle}>Contact Name</label>
+                  <input
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Jane Smith"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Company Name</label>
+                  <input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="Smith Realty Group"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Phone</label>
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(formatPhone(e.target.value))}
+                    placeholder="(503) 555-1234"
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Email</label>
+                  <input
+                    value={settings.email}
+                    readOnly
+                    style={{ ...inputStyle, opacity: 0.5, cursor: "not-allowed" }}
+                  />
+                  <div style={{ fontSize: 10, color: TEXT_DIM, marginTop: 4 }}>Change via account settings</div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={handleSaveProfile}
+                  disabled={savingProfile}
+                  style={btnPrimary(savingProfile)}
+                >
+                  {savingProfile ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ BRANDING ═══ */}
+          {section === "branding" && (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Branding</h2>
+              <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 24px" }}>Logo and client form appearance</p>
+
+              {/* Logo upload */}
+              <div style={{ marginBottom: 28 }}>
+                <label style={labelStyle}>Logo</label>
+                <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      const file = e.dataTransfer.files[0];
+                      if (file) handleLogoFile(file);
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      width: 100, height: 100, borderRadius: 12,
+                      border: `2px dashed ${dragOver ? EMERALD : BORDER}`,
+                      background: dragOver ? EMERALD_BG : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: "pointer", transition: "all 0.15s ease", flexShrink: 0,
+                      overflow: "hidden",
+                    }}
+                  >
+                    {uploadingLogo ? (
+                      <div style={{ fontSize: 12, color: TEXT_DIM }}>Uploading...</div>
+                    ) : logoUrl ? (
+                      <img src={logoUrl} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 8 }} />
+                    ) : (
+                      <div style={{ textAlign: "center", color: TEXT_DIM }}>
+                        <div style={{ fontSize: 24, marginBottom: 2 }}>+</div>
+                        <div style={{ fontSize: 10 }}>Upload</div>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/svg+xml"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleLogoFile(file);
+                      e.target.value = "";
+                    }}
+                  />
+
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingLogo} style={btnSecondary()}>
+                        Upload Logo
+                      </button>
+                      {logoUrl && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveLogo}
+                          disabled={uploadingLogo}
+                          style={{ ...btnSecondary(), color: RED, borderColor: "rgba(239,68,68,0.3)" }}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: TEXT_DIM, lineHeight: 1.5 }}>
+                      PNG, JPG, or SVG &mdash; max 2MB<br />
+                      Shown on your client referral form
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live preview */}
+              <div style={{ paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase",
+                  letterSpacing: "0.08em", marginBottom: 10,
+                }}>
+                  Preview &mdash; What your clients see
+                </div>
+                <div style={{
+                  borderRadius: 12, border: `1px solid ${BORDER}`, overflow: "hidden",
+                  transform: isMobile ? "scale(0.55)" : "scale(0.65)",
+                  transformOrigin: "top left",
+                  width: isMobile ? "181.8%" : "153.8%",
+                }}>
+                  <div style={{ background: BG, padding: "28px 24px 20px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                      <Image src="/images/rei-logo.png" alt="REI" width={80} height={22} style={{ objectFit: "contain" }} />
+                      {logoUrl ? (
+                        <img src={logoUrl} alt="" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "contain", border: `1px solid ${BORDER}` }} />
+                      ) : (
+                        <div style={{
+                          width: 32, height: 32, borderRadius: "50%", background: CARD,
+                          border: `2px solid ${EMERALD_BORDER}`, display: "grid", placeItems: "center",
+                          fontSize: 13, fontWeight: 700, color: EMERALD,
+                        }}>
+                          {(companyName || fullName || "B").charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: "center", marginBottom: 12 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 6 }}>
+                        Schedule a Home Energy Assessment
+                      </div>
+                      <div style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        padding: "6px 12px", borderRadius: 6,
+                        background: EMERALD_BG, border: `1px solid ${BORDER}`,
+                        fontSize: 11, fontWeight: 600, color: EMERALD,
+                      }}>
+                        Referred by {fullName || "Broker"}
+                        {companyName && <span style={{ color: TEXT_DIM }}> &mdash; {companyName}</span>}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ width: "100%", height: 4, borderRadius: 2, background: BORDER }}>
+                        <div style={{ width: "16%", height: "100%", borderRadius: 2, background: EMERALD }} />
+                      </div>
+                      <div style={{ fontSize: 9, color: TEXT_DIM, textAlign: "right", marginTop: 3 }}>Step 1 of 6</div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <div style={{
+                        padding: "12px 10px", borderRadius: 8, border: `2px solid ${EMERALD}`,
+                        background: EMERALD_BG, textAlign: "center",
+                      }}>
+                        <div style={{ fontSize: 16, marginBottom: 2 }}>{"\uD83C\uDFE0"}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: EMERALD }}>HES Assessment</div>
+                      </div>
+                      <div style={{
+                        padding: "12px 10px", borderRadius: 8, border: `1px solid ${BORDER}`,
+                        textAlign: "center",
+                      }}>
+                        <div style={{ fontSize: 16, marginBottom: 2 }}>{"\uD83D\uDD0D"}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: TEXT_SEC }}>Inspection</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ═══ CLIENT LINK ═══ */}
+          {section === "link" && (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Client Link</h2>
+              <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 24px" }}>Your personalized referral link for clients</p>
+
+              {refCode && (
+                <div style={{ marginBottom: 20 }}>
+                  <label style={labelStyle}>Your Link</label>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "10px 14px", borderRadius: 8,
+                    background: BG, border: `1px solid ${BORDER}`,
+                  }}>
+                    <span style={{ flex: 1, fontSize: 13, color: EMERALD, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {BASE_URL}{refCode}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Referral Code</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={refCodeDraft}
+                    onChange={(e) => {
+                      const v = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "");
+                      setRefCodeDraft(v);
+                      setCodeError("");
+                    }}
+                    placeholder="your-code"
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveCode}
+                    disabled={savingCode || refCodeDraft === refCode}
+                    style={btnPrimary(savingCode || refCodeDraft === refCode)}
+                  >
+                    {savingCode ? "Saving..." : "Update"}
+                  </button>
+                </div>
+                {refCodeDraft && refCodeDraft !== refCode && (
+                  <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 6 }}>
+                    Preview: {BASE_URL}<span style={{ color: EMERALD, fontWeight: 600 }}>{refCodeDraft}</span>
+                  </div>
+                )}
+                {codeError && (
+                  <div style={{ fontSize: 12, color: RED, marginTop: 6, fontWeight: 600 }}>{codeError}</div>
+                )}
+                <div style={{ fontSize: 10, color: TEXT_DIM, marginTop: 6 }}>
+                  Lowercase letters, numbers, and hyphens only
+                </div>
+              </div>
+
+              <div style={{
+                display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12,
+                marginBottom: 20, paddingTop: 20, borderTop: `1px solid ${BORDER}`,
+              }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: EMERALD }}>{settings.referralVisits}</div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>Link Visits</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: EMERALD }}>{settings.referralConversions}</div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>Submissions</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: EMERALD }}>{conversionRate}%</div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>Conversion</div>
+                </div>
+              </div>
+
+              {refCode && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={handleCopyLink} style={btnSecondary()}>
+                    {copied ? "Copied!" : "Copy Link"}
+                  </button>
+                  <a
+                    href={`sms:?body=${encodeURIComponent(`Schedule your Home Energy Assessment here: ${clientLink}`)}`}
+                    style={{ ...btnSecondary(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                  >
+                    Text
+                  </a>
+                  <a
+                    href={`mailto:?subject=${encodeURIComponent("Schedule Your Home Energy Assessment")}&body=${encodeURIComponent(`Hi,\n\nUse this link to schedule your Home Energy Assessment:\n${clientLink}\n\nBest,\n${fullName}`)}`}
+                    style={{ ...btnSecondary(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                  >
+                    Email
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ═══ EMAIL TEMPLATES ═══ */}
+          {section === "templates" && (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Email Templates</h2>
+              <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 24px" }}>Pre-written emails you can copy and send from your own email client</p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {templates.map((tpl, i) => {
+                  const isOpen = expandedTemplate === i;
+                  return (
+                    <div key={i} style={{
+                      borderRadius: 10, border: `1px solid ${isOpen ? EMERALD_BORDER : BORDER}`,
+                      background: isOpen ? EMERALD_BG : "transparent",
+                      overflow: "hidden", transition: "all 0.15s ease",
+                    }}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedTemplate(isOpen ? null : i)}
+                        style={{
+                          width: "100%", padding: "14px 16px",
+                          background: "transparent", border: "none", cursor: "pointer",
+                          display: "flex", justifyContent: "space-between", alignItems: "center",
+                          textAlign: "left",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{tpl.name}</div>
+                          <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>{tpl.description}</div>
+                        </div>
+                        <span style={{ fontSize: 18, color: TEXT_DIM, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s", flexShrink: 0, marginLeft: 8 }}>
+                          {"\u25BE"}
+                        </span>
+                      </button>
+
+                      {isOpen && (
+                        <div style={{ padding: "0 16px 16px" }}>
+                          <div style={{
+                            padding: "12px 14px", borderRadius: 8,
+                            background: BG, border: `1px solid ${BORDER}`,
+                            marginBottom: 12,
+                          }}>
+                            <div style={{ fontSize: 11, color: TEXT_DIM, marginBottom: 4 }}>Subject:</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, marginBottom: 12 }}>{tpl.subject}</div>
+                            <div style={{ fontSize: 11, color: TEXT_DIM, marginBottom: 4 }}>Body:</div>
+                            <pre style={{
+                              fontSize: 12, color: TEXT_SEC, lineHeight: 1.6,
+                              whiteSpace: "pre-wrap", wordWrap: "break-word",
+                              margin: 0, fontFamily: "inherit",
+                            }}>
+                              {tpl.body}
+                            </pre>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`Subject: ${tpl.subject}\n\n${tpl.body}`);
+                                setCopiedTemplate(i);
+                                setTimeout(() => setCopiedTemplate(null), 2000);
+                              }}
+                              style={btnSecondary()}
+                            >
+                              {copiedTemplate === i ? "Copied!" : "Copy to Clipboard"}
+                            </button>
+                            <a
+                              href={`mailto:?subject=${encodeURIComponent(tpl.subject)}&body=${encodeURIComponent(tpl.body)}`}
+                              style={{ ...btnPrimary(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                            >
+                              Open in Email
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ═══ PREFERENCES ═══ */}
+          {section === "prefs" && (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Preferences</h2>
+              <p style={{ fontSize: 12, color: TEXT_DIM, margin: "0 0 24px" }}>Default settings for new requests</p>
+
+              <div style={{ marginBottom: 24 }}>
+                <label style={labelStyle}>Default Payment Method</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {([
+                    { value: "broker", label: "I pay (invoice me)" },
+                    { value: "homeowner", label: "Homeowner pays" },
+                    { value: "ask", label: "Ask each time" },
+                  ] as const).map((opt) => {
+                    const isActive = defaultPayer === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setDefaultPayer(opt.value)}
+                        style={{
+                          padding: "12px 14px", borderRadius: 8, textAlign: "left",
+                          border: `1.5px solid ${isActive ? EMERALD_BORDER : BORDER}`,
+                          background: isActive ? EMERALD_BG : "transparent",
+                          color: isActive ? EMERALD : TEXT_SEC,
+                          fontSize: 13, fontWeight: 600, cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
+                <label style={labelStyle}>Email Notifications</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <ToggleRow label="New client request (from client link)" checked={notifyClientRequest} onChange={setNotifyClientRequest} />
+                  <ToggleRow label="Job status updates" checked={notifyJobStatus} onChange={setNotifyJobStatus} />
+                  <ToggleRow label="LEAF delivery notifications" checked={notifyLeafDelivery} onChange={setNotifyLeafDelivery} />
+                  <ToggleRow label="Lead marketplace alerts" checked={notifyLeadAlerts} onChange={setNotifyLeadAlerts} />
+                </div>
+              </div>
+
+              <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" onClick={handleSavePreferences} style={btnPrimary()}>
+                  Save Preferences
+                </button>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
@@ -792,7 +878,7 @@ function ToggleRow({
         width: 40, height: 22, borderRadius: 11,
         background: checked ? EMERALD : BORDER,
         position: "relative", transition: "background 0.2s ease",
-        flexShrink: 0,
+        flexShrink: 0, marginLeft: 12,
       }}>
         <div style={{
           width: 18, height: 18, borderRadius: "50%",
