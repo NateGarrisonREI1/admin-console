@@ -36,6 +36,7 @@ export type BrokerJob = {
   external_assessor_company: string | null;
   external_assessor_email: string | null;
   created_at: string;
+  source: string | null;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ const COLS = `id, customer_name, customer_email, customer_phone, address, city, 
   scheduled_date, scheduled_time, status, payment_status, invoice_amount, network_status,
   team_member_id, team_member_name, service_name, tier_name,
   hes_report_url, leaf_report_url, leaf_tier, delivered_by, reports_sent_at,
-  external_assessor_name, external_assessor_company, external_assessor_email, created_at`;
+  external_assessor_name, external_assessor_company, external_assessor_email, created_at, source`;
 
 // ─── Fetch ALL broker jobs ──────────────────────────────────────────
 

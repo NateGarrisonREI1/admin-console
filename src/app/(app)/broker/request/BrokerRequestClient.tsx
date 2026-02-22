@@ -27,11 +27,12 @@ const RED = "#ef4444";
 const RED_BORDER = "rgba(239,68,68,0.4)";
 
 const TIME_OPTIONS = [
-  { value: "", label: "Select a time..." },
-  { value: "Morning (8am\u201312pm)", label: "Morning (8am\u201312pm)" },
-  { value: "Afternoon (12\u20134pm)", label: "Afternoon (12\u20134pm)" },
+  { value: "Morning (8am\u201312pm)", label: "Morning" },
+  { value: "Afternoon (12\u20134pm)", label: "Afternoon" },
   { value: "Flexible", label: "Flexible" },
 ];
+
+const STEP_LABELS = ["Service", "Size", "Add-Ons", "Property", "Homeowner", "Schedule", "Payment", "Review"];
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -53,23 +54,6 @@ function money(n: number): string {
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────
-
-const sectionStyle: React.CSSProperties = {
-  background: CARD,
-  border: `1px solid ${BORDER}`,
-  borderRadius: 12,
-  padding: "20px 24px",
-  marginBottom: 20,
-};
-
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 700,
-  color: TEXT_MUTED,
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  marginBottom: 16,
-};
 
 const labelStyle: React.CSSProperties = {
   display: "block",
@@ -95,39 +79,37 @@ function inputStyle(hasError: boolean): React.CSSProperties {
   };
 }
 
-const selectStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  fontSize: 14,
-  border: `1.5px solid ${BORDER}`,
-  borderRadius: 8,
-  outline: "none",
-  background: BG,
-  color: TEXT,
-  cursor: "pointer",
-  boxSizing: "border-box" as const,
-  fontFamily: "inherit",
-  WebkitAppearance: "none",
-  MozAppearance: "none",
-  appearance: "none",
-};
-
 const errorTextStyle: React.CSSProperties = {
   fontSize: 11,
   color: RED,
   marginTop: 4,
 };
 
+// ─── Checkmark SVG ──────────────────────────────────────────────────
+
+function Checkmark({ size = 16, color = "#fff" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
 // ─── Component ──────────────────────────────────────────────────────
 
 export default function BrokerRequestClient({
   broker,
   catalog,
+  embedded,
+  onSuccess,
 }: {
   broker: BrokerProfile;
   catalog: ServiceCategory[];
+  embedded?: boolean;
+  onSuccess?: (referenceId: string) => void;
 }) {
   const router = useRouter();
+  const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<BrokerRequestResult | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -191,11 +173,8 @@ export default function BrokerRequestClient({
     .filter((a) => selectedAddonIds.includes(a.id))
     .reduce((sum, a) => sum + a.price, 0);
   const totalPrice = basePrice + addonTotal;
-  const minPrice = selectedCategory?.tiers.length
-    ? Math.min(...selectedCategory.tiers.map((t) => t.price))
-    : 0;
 
-  // Validation
+  // ── Validation ─────────────────────────────────────────────────────
   const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   const validateField = useCallback(
@@ -246,17 +225,79 @@ export default function BrokerRequestClient({
     );
   }
 
-  // ── Success redirect ──────────────────────────────────────────────
+  // ── Step navigation helpers ────────────────────────────────────────
+
+  // Determine the effective next/prev step (skip addons if none)
+  function nextStep(from: number): number {
+    const next = from + 1;
+    // Skip addons step if no addons for this category
+    if (next === 3 && addons.length === 0) return 4;
+    return next;
+  }
+
+  function prevStep(from: number): number {
+    const prev = from - 1;
+    if (prev === 3 && addons.length === 0) return 2;
+    return prev;
+  }
+
+  function goNext() {
+    const n = nextStep(step);
+    if (n <= 8) setStep(n);
+  }
+
+  function goBack() {
+    const p = prevStep(step);
+    if (p >= 1) setStep(p);
+  }
+
+  // Auto-advance after card selection (300ms delay)
+  function autoAdvance() {
+    setTimeout(() => {
+      setStep((s) => {
+        const n = s + 1;
+        // Skip addons if none
+        if (n === 3 && addons.length === 0) return 4;
+        return n <= 8 ? n : s;
+      });
+    }, 300);
+  }
+
+  // ── Step validity ──────────────────────────────────────────────────
+
+  function isStepValid(s: number): boolean {
+    switch (s) {
+      case 1: return selectedCategoryId !== "";
+      case 2: return selectedTierId !== "";
+      case 3: return true; // addons are optional
+      case 4:
+        return address.trim() !== "" && city.trim() !== "" && state.trim() !== "" && /^\d{5}$/.test(zip.trim());
+      case 5:
+        if (!homeownerPresent) return true;
+        return hoName.trim() !== "" && EMAIL_RE.test(hoEmail.trim()) && hoPhone.replace(/\D/g, "").length === 10;
+      case 6:
+        return preferredDate !== "" && preferredDate >= tomorrowStr() && preferredTime !== "";
+      case 7: return true; // payment has default
+      case 8: return true;
+      default: return false;
+    }
+  }
+
+  // ── Success redirect ───────────────────────────────────────────────
   useEffect(() => {
     if (result?.success) {
-      const timer = setTimeout(() => router.push("/broker/schedule"), 3000);
-      return () => clearTimeout(timer);
+      if (onSuccess) {
+        const timer = setTimeout(() => onSuccess(result.referenceId), 2000);
+        return () => clearTimeout(timer);
+      } else {
+        const timer = setTimeout(() => router.push("/broker/schedule"), 3000);
+        return () => clearTimeout(timer);
+      }
     }
-  }, [result, router]);
+  }, [result, router, onSuccess]);
 
-  // ── Submit ────────────────────────────────────────────────────────
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  // ── Submit ─────────────────────────────────────────────────────────
+  async function handleSubmit() {
     setSubmitting(true);
 
     const res = await submitBrokerRequest({
@@ -280,23 +321,21 @@ export default function BrokerRequestClient({
     setResult(res);
     if (!res.success) {
       setErrors(res.errors);
-      // Mark all error fields as touched
       const t: Record<string, boolean> = {};
       for (const k of Object.keys(res.errors)) t[k] = true;
       setTouched((prev) => ({ ...prev, ...t }));
     }
   }
 
-  // ── Success screen ────────────────────────────────────────────────
+  // ── Success screen ─────────────────────────────────────────────────
   if (result?.success) {
     return (
-      <div style={{ maxWidth: 540, margin: "60px auto", textAlign: "center" }}>
+      <div style={{ maxWidth: embedded ? undefined : 540, margin: embedded ? "20px auto" : "60px auto", textAlign: "center" }}>
         <div style={{
           width: 72, height: 72, borderRadius: "50%",
           background: "rgba(16,185,129,0.12)", border: `2px solid ${EMERALD}`,
           display: "flex", alignItems: "center", justifyContent: "center",
           margin: "0 auto 20px",
-          animation: "popIn 0.3s ease",
         }}>
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
             <path d="M5 13l4 4L19 7" stroke={EMERALD} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -318,316 +357,380 @@ export default function BrokerRequestClient({
         <p style={{ fontSize: 13, color: TEXT_DIM, lineHeight: 1.5 }}>
           You&apos;ll receive status updates at <strong style={{ color: TEXT_SEC }}>{broker.email}</strong>
         </p>
-        <p style={{ fontSize: 12, color: TEXT_DIM, marginTop: 20 }}>
-          Redirecting to your schedule...
-        </p>
-        <Link
-          href="/broker/schedule"
-          style={{
-            display: "inline-block", marginTop: 8,
-            fontSize: 13, fontWeight: 600, color: EMERALD, textDecoration: "none",
-          }}
-        >
-          Go to Schedule {"\u2192"}
-        </Link>
+        {!embedded && (
+          <>
+            <p style={{ fontSize: 12, color: TEXT_DIM, marginTop: 20 }}>
+              Redirecting to your schedule...
+            </p>
+            <Link
+              href="/broker/schedule"
+              style={{
+                display: "inline-block", marginTop: 8,
+                fontSize: 13, fontWeight: 600, color: EMERALD, textDecoration: "none",
+              }}
+            >
+              Go to Schedule {"\u2192"}
+            </Link>
+          </>
+        )}
       </div>
     );
   }
 
-  // ── Form ──────────────────────────────────────────────────────────
+  // ── Visible step labels (filter out Add-Ons if skipped) ────────────
+  const visibleSteps: { label: string; stepNum: number }[] = [];
+  for (let i = 0; i < STEP_LABELS.length; i++) {
+    const num = i + 1;
+    if (num === 3 && addons.length === 0) continue;
+    visibleSteps.push({ label: STEP_LABELS[i], stepNum: num });
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────
   return (
     <div style={{ maxWidth: 640, margin: "0 auto" }}>
+      {/* Header */}
+      {!embedded && (
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>
+            Request a Service
+          </h1>
+          <p style={{ fontSize: 13, color: TEXT_DIM, margin: 0 }}>
+            Order an HES Assessment or Home Inspection from REI
+          </p>
+        </div>
+      )}
+
+      {/* Progress Bar */}
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>
-          Request a Service
-        </h1>
-        <p style={{ fontSize: 13, color: TEXT_DIM, margin: 0 }}>
-          Order an HES Assessment or Home Inspection from REI
-        </p>
+        <div style={{
+          width: "100%", height: 6, borderRadius: 3,
+          background: BORDER, overflow: "hidden",
+        }}>
+          <div style={{
+            height: "100%", borderRadius: 3,
+            background: EMERALD,
+            width: `${((visibleSteps.findIndex((v) => v.stepNum === step) + 1) / visibleSteps.length) * 100}%`,
+            transition: "width 0.3s ease",
+          }} />
+        </div>
+        <div style={{ marginTop: 6, fontSize: 12, color: TEXT_DIM, textAlign: "right" }}>
+          Step {visibleSteps.findIndex((v) => v.stepNum === step) + 1} of {visibleSteps.length}
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        {/* ── YOUR INFO ────────────────────────────────────────── */}
-        <div style={sectionStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={sectionTitleStyle}>Your Info</div>
-            <Link
-              href="/broker/settings"
-              style={{ fontSize: 12, fontWeight: 600, color: EMERALD, textDecoration: "none" }}
-              onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
-            >
-              Edit
-            </Link>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Name</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginTop: 2 }}>{broker.fullName}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Company</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: TEXT, marginTop: 2 }}>{broker.companyName || "\u2014"}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Email</div>
-              <div style={{ fontSize: 13, color: TEXT_SEC, marginTop: 2 }}>{broker.email}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Phone</div>
-              <div style={{ fontSize: 13, color: TEXT_SEC, marginTop: 2 }}>{broker.phone ? formatPhone(broker.phone) : "\u2014"}</div>
-            </div>
-          </div>
-        </div>
+      {/* Step Content Card */}
+      <div style={{
+        background: CARD, borderRadius: 12, padding: "24px 24px 20px",
+        border: `1px solid ${BORDER}`, marginBottom: 20,
+      }}>
 
-        {/* ── SERVICE SELECTION ─────────────────────────────────── */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Service</div>
+        {/* ── Step 1: Service ─────────────────────────────────── */}
+        {step === 1 && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>What do you need?</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>Select a service type</p>
+            <div className="broker-service-grid">
+              {catalog.map((cat) => {
+                const isActive = selectedCategoryId === cat.categoryId;
+                const catMin = cat.tiers.length ? Math.min(...cat.tiers.map((t) => t.price)) : 0;
+                const icon = cat.categorySlug === "hes_assessment" ? "\uD83C\uDFE0" : "\uD83D\uDD0D";
 
-          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT_SEC, marginBottom: 12 }}>
-            What do you need?
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-            {catalog.map((cat) => {
-              const isActive = selectedCategoryId === cat.categoryId;
-              const catMin = cat.tiers.length ? Math.min(...cat.tiers.map((t) => t.price)) : 0;
-              const icon = cat.categorySlug === "hes_assessment" ? "\uD83C\uDFE0" : "\uD83D\uDD0D";
-
-              return (
-                <button
-                  key={cat.categoryId}
-                  type="button"
-                  onClick={() => setSelectedCategoryId(cat.categoryId)}
-                  style={{
-                    padding: "18px 16px",
-                    borderRadius: 10,
-                    border: isActive
-                      ? `2px solid ${EMERALD}`
-                      : `1.5px solid ${BORDER}`,
-                    background: isActive ? EMERALD_BG : "transparent",
-                    cursor: "pointer",
-                    textAlign: "center",
-                    transition: "all 0.15s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isActive) e.currentTarget.style.borderColor = TEXT_DIM;
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isActive) e.currentTarget.style.borderColor = BORDER;
-                  }}
-                >
-                  <div style={{ fontSize: 24, marginBottom: 6 }}>{icon}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: isActive ? EMERALD : TEXT }}>
-                    {cat.categoryName}
-                  </div>
-                  <div style={{ fontSize: 12, color: TEXT_DIM, marginTop: 4 }}>
-                    From {money(catMin)}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Home Size */}
-          {selectedCategory && selectedCategory.tiers.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle}>Home Size</label>
-              <select
-                value={selectedTierId}
-                onChange={(e) => setSelectedTierId(e.target.value)}
-                style={selectStyle}
-              >
-                <option value="">Select a home size...</option>
-                {selectedCategory.tiers.map((t) => (
-                  <option key={t.tierId} value={t.tierId}>
-                    {t.sizeLabel} \u2014 {money(t.price)}
-                  </option>
-                ))}
-              </select>
-              {touched.serviceTierId && errors.serviceTierId && (
-                <div style={errorTextStyle}>{errors.serviceTierId}</div>
-              )}
-              {selectedTier && (
-                <div style={{
-                  marginTop: 8, padding: "8px 12px", borderRadius: 8,
-                  background: EMERALD_BG, border: `1px solid ${EMERALD_BORDER}`,
-                  fontSize: 14, fontWeight: 700, color: EMERALD,
-                }}>
-                  Base price: {money(selectedTier.price)}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Addons */}
-          {addons.length > 0 && (
-            <div>
-              <label style={labelStyle}>Add-Ons</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {addons.map((addon) => {
-                  const isChecked = selectedAddonIds.includes(addon.id);
-                  return (
-                    <label
-                      key={addon.id}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "10px 14px", borderRadius: 8, cursor: "pointer",
-                        border: `1px solid ${isChecked ? EMERALD_BORDER : BORDER}`,
-                        background: isChecked ? EMERALD_BG : "transparent",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleAddon(addon.id)}
-                        style={{ accentColor: EMERALD, width: 16, height: 16 }}
-                      />
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: TEXT }}>
-                        {addon.name}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: TEXT_SEC }}>
-                        +{money(addon.price)}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* ── PROPERTY ─────────────────────────────────────────── */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Property</div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>Address</label>
-            <input
-              type="text"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              onBlur={() => handleBlur("address", address)}
-              placeholder="1205 NW 23rd Ave"
-              style={inputStyle(!!touched.address && !!errors.address)}
-            />
-            {touched.address && errors.address && <div style={errorTextStyle}>{errors.address}</div>}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 100px", gap: 12 }}>
-            <div>
-              <label style={labelStyle}>City</label>
-              <input
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                onBlur={() => handleBlur("city", city)}
-                placeholder="Portland"
-                style={inputStyle(!!touched.city && !!errors.city)}
-              />
-              {touched.city && errors.city && <div style={errorTextStyle}>{errors.city}</div>}
-            </div>
-            <div>
-              <label style={labelStyle}>State</label>
-              <input
-                type="text"
-                value={state}
-                onChange={(e) => setState(e.target.value)}
-                onBlur={() => handleBlur("state", state)}
-                style={inputStyle(!!touched.state && !!errors.state)}
-              />
-              {touched.state && errors.state && <div style={errorTextStyle}>{errors.state}</div>}
-            </div>
-            <div>
-              <label style={labelStyle}>Zip</label>
-              <input
-                type="text"
-                value={zip}
-                onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
-                onBlur={() => handleBlur("zip", zip)}
-                placeholder="97210"
-                style={inputStyle(!!touched.zip && !!errors.zip)}
-              />
-              {touched.zip && errors.zip && <div style={errorTextStyle}>{errors.zip}</div>}
+                return (
+                  <button
+                    key={cat.categoryId}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategoryId(cat.categoryId);
+                      autoAdvance();
+                    }}
+                    style={{
+                      padding: "18px 16px",
+                      borderRadius: 10,
+                      border: isActive ? `2px solid ${EMERALD}` : `1.5px solid ${BORDER}`,
+                      background: isActive ? EMERALD_BG : "transparent",
+                      cursor: "pointer",
+                      textAlign: "center",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.borderColor = TEXT_DIM;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.borderColor = BORDER;
+                    }}
+                  >
+                    <div style={{ fontSize: 24, marginBottom: 6 }}>{icon}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: isActive ? EMERALD : TEXT }}>
+                      {cat.categoryName}
+                    </div>
+                    <div style={{ fontSize: 12, color: TEXT_DIM, marginTop: 4 }}>
+                      From {money(catMin)}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* ── HOMEOWNER ────────────────────────────────────────── */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Homeowner</div>
+        {/* ── Step 2: Home Size ───────────────────────────────── */}
+        {step === 2 && selectedCategory && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Home Size</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>Select the approximate square footage</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {selectedCategory.tiers.map((tier) => {
+                const isActive = selectedTierId === tier.tierId;
+                const sqftLabel = tier.sqFtMax
+                  ? `${tier.sqFtMin.toLocaleString()} \u2013 ${tier.sqFtMax.toLocaleString()} sq ft`
+                  : `${tier.sqFtMin.toLocaleString()}+ sq ft`;
 
-          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-            <ToggleButton
-              active={homeownerPresent}
-              onClick={() => setHomeownerPresent(true)}
-              label="Homeowner will be present"
-            />
-            <ToggleButton
-              active={!homeownerPresent}
-              onClick={() => setHomeownerPresent(false)}
-              label="Vacant / no contact"
-            />
+                return (
+                  <button
+                    key={tier.tierId}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTierId(tier.tierId);
+                      autoAdvance();
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "16px 18px",
+                      borderRadius: 10,
+                      border: isActive ? `2px solid ${EMERALD}` : `1.5px solid ${BORDER}`,
+                      background: isActive ? EMERALD_BG : "transparent",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.borderColor = TEXT_DIM;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.borderColor = BORDER;
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: isActive ? EMERALD : TEXT }}>
+                        {tier.sizeLabel}
+                      </div>
+                      <div style={{ fontSize: 12, color: TEXT_DIM, marginTop: 2 }}>
+                        {sqftLabel}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: isActive ? EMERALD : TEXT_SEC }}>
+                      {money(tier.price)}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+        )}
 
-          {homeownerPresent && (
-            <>
-              <div style={{ marginBottom: 14 }}>
-                <label style={labelStyle}>Homeowner Name</label>
+        {/* ── Step 3: Add-Ons ─────────────────────────────────── */}
+        {step === 3 && addons.length > 0 && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Add-Ons</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>Select any additional services (optional)</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {addons.map((addon) => {
+                const isChecked = selectedAddonIds.includes(addon.id);
+                return (
+                  <button
+                    key={addon.id}
+                    type="button"
+                    onClick={() => toggleAddon(addon.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12,
+                      padding: "14px 16px", borderRadius: 10, cursor: "pointer",
+                      border: `1.5px solid ${isChecked ? EMERALD_BORDER : BORDER}`,
+                      background: isChecked ? EMERALD_BG : "transparent",
+                      textAlign: "left",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <div style={{
+                      width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                      border: `2px solid ${isChecked ? EMERALD : BORDER}`,
+                      background: isChecked ? EMERALD : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      transition: "all 0.15s",
+                    }}>
+                      {isChecked && <Checkmark size={12} color="#fff" />}
+                    </div>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: TEXT }}>
+                      {addon.name}
+                    </span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: TEXT_SEC }}>
+                      +{money(addon.price)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 4: Property ────────────────────────────────── */}
+        {step === 4 && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Property Address</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>Where is the property located?</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={labelStyle}>Street Address</label>
                 <input
                   type="text"
-                  value={hoName}
-                  onChange={(e) => setHoName(e.target.value)}
-                  onBlur={() => handleBlur("hoName", hoName)}
-                  placeholder="Jane Smith"
-                  style={inputStyle(!!touched.hoName && !!errors.hoName)}
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  onBlur={() => handleBlur("address", address)}
+                  placeholder="1205 NW 23rd Ave"
+                  style={inputStyle(!!touched.address && !!errors.address)}
                 />
-                {touched.hoName && errors.hoName && <div style={errorTextStyle}>{errors.hoName}</div>}
+                {touched.address && errors.address && <div style={errorTextStyle}>{errors.address}</div>}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="broker-property-row">
                 <div>
-                  <label style={labelStyle}>Email</label>
+                  <label style={labelStyle}>City</label>
                   <input
-                    type="email"
-                    value={hoEmail}
-                    onChange={(e) => setHoEmail(e.target.value)}
-                    onBlur={() => handleBlur("hoEmail", hoEmail)}
-                    placeholder="jane@email.com"
-                    style={inputStyle(!!touched.hoEmail && !!errors.hoEmail)}
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    onBlur={() => handleBlur("city", city)}
+                    placeholder="Portland"
+                    style={inputStyle(!!touched.city && !!errors.city)}
                   />
-                  {touched.hoEmail && errors.hoEmail && <div style={errorTextStyle}>{errors.hoEmail}</div>}
+                  {touched.city && errors.city && <div style={errorTextStyle}>{errors.city}</div>}
                 </div>
                 <div>
-                  <label style={labelStyle}>Phone</label>
+                  <label style={labelStyle}>State</label>
                   <input
-                    type="tel"
-                    value={hoPhone}
-                    onChange={(e) => setHoPhone(formatPhone(e.target.value))}
-                    onBlur={() => handleBlur("hoPhone", hoPhone)}
-                    placeholder="(503) 555-1234"
-                    style={inputStyle(!!touched.hoPhone && !!errors.hoPhone)}
+                    type="text"
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    onBlur={() => handleBlur("state", state)}
+                    style={inputStyle(!!touched.state && !!errors.state)}
                   />
-                  {touched.hoPhone && errors.hoPhone && <div style={errorTextStyle}>{errors.hoPhone}</div>}
+                  {touched.state && errors.state && <div style={errorTextStyle}>{errors.state}</div>}
+                </div>
+                <div>
+                  <label style={labelStyle}>Zip</label>
+                  <input
+                    type="text"
+                    value={zip}
+                    onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
+                    onBlur={() => handleBlur("zip", zip)}
+                    placeholder="97210"
+                    style={inputStyle(!!touched.zip && !!errors.zip)}
+                  />
+                  {touched.zip && errors.zip && <div style={errorTextStyle}>{errors.zip}</div>}
                 </div>
               </div>
-            </>
-          )}
-
-          {!homeownerPresent && (
-            <div style={{
-              padding: "12px 16px", borderRadius: 8,
-              background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)",
-              fontSize: 13, color: "#fbbf24", lineHeight: 1.5,
-            }}>
-              The property will be treated as vacant. Your contact info will be used for scheduling.
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* ── SCHEDULING ───────────────────────────────────────── */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Scheduling</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
+        {/* ── Step 5: Homeowner ───────────────────────────────── */}
+        {step === 5 && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Homeowner</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>Will the homeowner be present?</p>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+              {[
+                { value: true, label: "Homeowner present" },
+                { value: false, label: "Vacant / no contact" },
+              ].map((opt) => {
+                const isActive = homeownerPresent === opt.value;
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setHomeownerPresent(opt.value)}
+                    style={{
+                      flex: 1,
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      border: isActive ? `2px solid ${EMERALD}` : `1.5px solid ${BORDER}`,
+                      background: isActive ? EMERALD_BG : "transparent",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: isActive ? EMERALD : TEXT_SEC,
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {homeownerPresent && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={labelStyle}>Homeowner Name</label>
+                  <input
+                    type="text"
+                    value={hoName}
+                    onChange={(e) => setHoName(e.target.value)}
+                    onBlur={() => handleBlur("hoName", hoName)}
+                    placeholder="Jane Smith"
+                    style={inputStyle(!!touched.hoName && !!errors.hoName)}
+                  />
+                  {touched.hoName && errors.hoName && <div style={errorTextStyle}>{errors.hoName}</div>}
+                </div>
+                <div className="broker-schedule-row">
+                  <div>
+                    <label style={labelStyle}>Email</label>
+                    <input
+                      type="email"
+                      value={hoEmail}
+                      onChange={(e) => setHoEmail(e.target.value)}
+                      onBlur={() => handleBlur("hoEmail", hoEmail)}
+                      placeholder="jane@email.com"
+                      style={inputStyle(!!touched.hoEmail && !!errors.hoEmail)}
+                    />
+                    {touched.hoEmail && errors.hoEmail && <div style={errorTextStyle}>{errors.hoEmail}</div>}
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Phone</label>
+                    <input
+                      type="tel"
+                      value={hoPhone}
+                      onChange={(e) => setHoPhone(formatPhone(e.target.value))}
+                      onBlur={() => handleBlur("hoPhone", hoPhone)}
+                      placeholder="(503) 555-1234"
+                      style={inputStyle(!!touched.hoPhone && !!errors.hoPhone)}
+                    />
+                    {touched.hoPhone && errors.hoPhone && <div style={errorTextStyle}>{errors.hoPhone}</div>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!homeownerPresent && (
+              <div style={{
+                padding: "12px 16px", borderRadius: 8,
+                background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)",
+                fontSize: 13, color: "#fbbf24", lineHeight: 1.5,
+              }}>
+                The property will be treated as vacant. Your contact info will be used for scheduling.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Step 6: Scheduling ──────────────────────────────── */}
+        {step === 6 && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Scheduling</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>When works best?</p>
+
+            <div style={{ marginBottom: 20 }}>
               <label style={labelStyle}>Preferred Date</label>
               <input
                 type="date"
@@ -644,246 +747,339 @@ export default function BrokerRequestClient({
                 <div style={errorTextStyle}>{errors.preferredDate}</div>
               )}
             </div>
+
             <div>
               <label style={labelStyle}>Preferred Time</label>
-              <select
-                value={preferredTime}
-                onChange={(e) => { setPreferredTime(e.target.value); handleBlur("preferredTime", e.target.value); }}
-                style={selectStyle}
-              >
-                {TIME_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <div style={{ display: "flex", gap: 10 }}>
+                {TIME_OPTIONS.map((opt) => {
+                  const isActive = preferredTime === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => {
+                        setPreferredTime(opt.value);
+                        setTouched((prev) => ({ ...prev, preferredTime: true }));
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: isActive ? `2px solid ${EMERALD}` : `1.5px solid ${BORDER}`,
+                        background: isActive ? EMERALD_BG : "transparent",
+                        cursor: "pointer",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: isActive ? EMERALD : TEXT_SEC,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
               {touched.preferredTime && errors.preferredTime && (
                 <div style={errorTextStyle}>{errors.preferredTime}</div>
               )}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* ── PAYMENT ──────────────────────────────────────────── */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Payment</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: TEXT_SEC, marginBottom: 12 }}>
-            Who pays?
+        {/* ── Step 7: Payment ─────────────────────────────────── */}
+        {step === 7 && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Payment</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>Who pays for this service?</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {([
+                { value: "broker" as const, icon: "\uD83D\uDCBC", label: "I\u2019ll pay (invoice me after)", desc: "You\u2019ll receive an invoice after the assessment is complete." },
+                { value: "homeowner" as const, icon: "\uD83C\uDFE0", label: "Homeowner pays (invoice them)", desc: "The homeowner will receive the invoice directly." },
+                { value: "pay_now" as const, icon: "\uD83D\uDCB3", label: "Pay now (credit card)", desc: "You\u2019ll be directed to pay after submitting this request." },
+              ]).map((opt) => {
+                const isActive = payerType === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      setPayerType(opt.value);
+                      autoAdvance();
+                    }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 14,
+                      padding: "16px 18px", borderRadius: 10,
+                      border: isActive ? `2px solid ${EMERALD}` : `1.5px solid ${BORDER}`,
+                      background: isActive ? EMERALD_BG : "transparent",
+                      cursor: "pointer", textAlign: "left",
+                      transition: "all 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) e.currentTarget.style.borderColor = TEXT_DIM;
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) e.currentTarget.style.borderColor = BORDER;
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 22, flexShrink: 0, width: 40, height: 40,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      borderRadius: 10, background: isActive ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.08)",
+                    }}>
+                      {opt.icon}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: isActive ? EMERALD : TEXT }}>
+                        {opt.label}
+                      </div>
+                      <div style={{ fontSize: 12, color: TEXT_DIM, marginTop: 2 }}>
+                        {opt.desc}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <PayerRadio
-              value="broker"
-              current={payerType}
-              onChange={setPayerType}
-              label="I\u2019ll pay (invoice me after)"
-              desc="You\u2019ll receive an invoice after the assessment is complete."
-            />
-            <PayerRadio
-              value="homeowner"
-              current={payerType}
-              onChange={setPayerType}
-              label="Homeowner pays (invoice them)"
-              desc="The homeowner will receive the invoice directly."
-            />
-            <PayerRadio
-              value="pay_now"
-              current={payerType}
-              onChange={setPayerType}
-              label="Pay now (credit card)"
-              desc="You\u2019ll be directed to pay after submitting this request."
-            />
-          </div>
-          {touched.payerType && errors.payerType && (
-            <div style={errorTextStyle}>{errors.payerType}</div>
-          )}
-        </div>
+        )}
 
-        {/* ── NOTES ────────────────────────────────────────────── */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Notes</div>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Any special instructions, access codes, or notes..."
-            rows={3}
+        {/* ── Step 8: Review ──────────────────────────────────── */}
+        {step === 8 && (
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: TEXT, margin: "0 0 4px" }}>Review & Submit</h2>
+            <p style={{ fontSize: 13, color: TEXT_DIM, margin: "0 0 20px" }}>Confirm the details below</p>
+
+            {/* Broker info */}
+            <div style={{
+              padding: "14px 16px", borderRadius: 10,
+              background: "rgba(100,116,139,0.06)", border: `1px solid ${BORDER}`,
+              marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: TEXT_DIM, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                Your Info
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM }}>Name</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{broker.fullName}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM }}>Company</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{broker.companyName || "\u2014"}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM }}>Email</div>
+                  <div style={{ fontSize: 13, color: TEXT_SEC }}>{broker.email}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: TEXT_DIM }}>Phone</div>
+                  <div style={{ fontSize: 13, color: TEXT_SEC }}>{broker.phone ? formatPhone(broker.phone) : "\u2014"}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div style={{
+              padding: "16px 18px", borderRadius: 10,
+              background: "rgba(16,185,129,0.04)", border: `1px solid ${EMERALD_BORDER}`,
+              marginBottom: 16,
+            }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
+                <div style={{ fontSize: 13, color: TEXT_SEC }}>Service</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
+                  {selectedCategory?.categoryName} &mdash; {selectedTier?.sizeLabel}
+                </div>
+
+                {address.trim() && (
+                  <>
+                    <div style={{ fontSize: 13, color: TEXT_SEC }}>Address</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
+                      {[address, city, state, zip].filter(Boolean).join(", ")}
+                    </div>
+                  </>
+                )}
+
+                {homeownerPresent && hoName.trim() && (
+                  <>
+                    <div style={{ fontSize: 13, color: TEXT_SEC }}>Homeowner</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
+                      {hoName}
+                    </div>
+                  </>
+                )}
+
+                {!homeownerPresent && (
+                  <>
+                    <div style={{ fontSize: 13, color: TEXT_SEC }}>Homeowner</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#fbbf24", textAlign: "right" }}>
+                      Vacant / no contact
+                    </div>
+                  </>
+                )}
+
+                {preferredDate && (
+                  <>
+                    <div style={{ fontSize: 13, color: TEXT_SEC }}>Date</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
+                      {new Date(preferredDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </div>
+                  </>
+                )}
+
+                {preferredTime && (
+                  <>
+                    <div style={{ fontSize: 13, color: TEXT_SEC }}>Time</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
+                      {preferredTime}
+                    </div>
+                  </>
+                )}
+
+                {addons.filter((a) => selectedAddonIds.includes(a.id)).map((a) => (
+                  <React.Fragment key={a.id}>
+                    <div style={{ fontSize: 13, color: TEXT_SEC }}>{a.name}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
+                      +{money(a.price)}
+                    </div>
+                  </React.Fragment>
+                ))}
+
+                <div style={{ gridColumn: "span 2", height: 1, background: BORDER, margin: "4px 0" }} />
+
+                <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Total</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: EMERALD, textAlign: "right" }}>
+                  {money(totalPrice)}
+                </div>
+
+                <div style={{ fontSize: 12, color: TEXT_DIM }}>Payment</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: TEXT_SEC, textAlign: "right" }}>
+                  {payerType === "broker" && "Broker pays (invoice after)"}
+                  {payerType === "homeowner" && "Homeowner pays (invoice them)"}
+                  {payerType === "pay_now" && "Pay now (credit card)"}
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label style={labelStyle}>Notes (optional)</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Any special instructions, access codes, or notes..."
+                rows={3}
+                style={{
+                  ...inputStyle(false),
+                  resize: "vertical",
+                  minHeight: 70,
+                }}
+              />
+            </div>
+
+            {/* Form error */}
+            {errors._form && (
+              <div style={{
+                padding: "10px 14px", borderRadius: 8, marginTop: 16,
+                background: "rgba(239,68,68,0.08)", border: `1px solid ${RED_BORDER}`,
+                fontSize: 13, fontWeight: 600, color: RED,
+              }}>
+                {errors._form}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Navigation Bar ─────────────────────────────────────────── */}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        gap: 12, marginBottom: 20,
+      }}>
+        {step > 1 ? (
+          <button
+            type="button"
+            onClick={goBack}
             style={{
-              ...inputStyle(false),
-              resize: "vertical",
-              minHeight: 70,
+              padding: "12px 20px", borderRadius: 10,
+              border: `1.5px solid ${BORDER}`, background: "transparent",
+              color: TEXT_SEC, fontSize: 14, fontWeight: 600,
+              cursor: "pointer", transition: "all 0.15s ease",
             }}
-          />
-        </div>
-
-        {/* ── SUMMARY ──────────────────────────────────────────── */}
-        {selectedTier && (
-          <div style={{
-            ...sectionStyle,
-            background: "rgba(16,185,129,0.04)",
-            border: `1px solid ${EMERALD_BORDER}`,
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: EMERALD, marginBottom: 12 }}>
-              Summary
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
-              <div style={{ fontSize: 13, color: TEXT_SEC }}>Service</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
-                {selectedCategory?.categoryName} \u2014 {selectedTier.sizeLabel}
-              </div>
-
-              {address.trim() && (
-                <>
-                  <div style={{ fontSize: 13, color: TEXT_SEC }}>Address</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
-                    {[address, city, state].filter(Boolean).join(", ")}
-                  </div>
-                </>
-              )}
-
-              {addons.filter((a) => selectedAddonIds.includes(a.id)).map((a) => (
-                <React.Fragment key={a.id}>
-                  <div style={{ fontSize: 13, color: TEXT_SEC }}>{a.name}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: TEXT, textAlign: "right" }}>
-                    +{money(a.price)}
-                  </div>
-                </React.Fragment>
-              ))}
-
-              <div style={{ gridColumn: "span 2", height: 1, background: BORDER, margin: "4px 0" }} />
-
-              <div style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>Total</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: EMERALD, textAlign: "right" }}>
-                {money(totalPrice)}
-              </div>
-
-              <div style={{ fontSize: 12, color: TEXT_DIM }}>Payment</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: TEXT_SEC, textAlign: "right" }}>
-                {payerType === "broker" && "Broker pays (invoice after)"}
-                {payerType === "homeowner" && "Homeowner pays (invoice them)"}
-                {payerType === "pay_now" && "Pay now (credit card)"}
-              </div>
-            </div>
-          </div>
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = TEXT_DIM; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = BORDER; }}
+          >
+            Back
+          </button>
+        ) : (
+          <div />
         )}
 
-        {/* Form error */}
-        {errors._form && (
-          <div style={{
-            padding: "10px 14px", borderRadius: 8, marginBottom: 16,
-            background: "rgba(239,68,68,0.08)", border: `1px solid ${RED_BORDER}`,
-            fontSize: 13, fontWeight: 600, color: RED,
-          }}>
-            {errors._form}
-          </div>
+        {step < 8 ? (
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={!isStepValid(step)}
+            style={{
+              padding: "12px 24px", borderRadius: 10,
+              border: "none",
+              background: isStepValid(step) ? EMERALD : BORDER,
+              color: isStepValid(step) ? "#fff" : TEXT_DIM,
+              fontSize: 14, fontWeight: 700,
+              cursor: isStepValid(step) ? "pointer" : "not-allowed",
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (isStepValid(step)) e.currentTarget.style.background = "#059669";
+            }}
+            onMouseLeave={(e) => {
+              if (isStepValid(step)) e.currentTarget.style.background = EMERALD;
+            }}
+          >
+            Next
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            style={{
+              padding: "12px 28px", borderRadius: 10,
+              border: "none", background: EMERALD,
+              color: "#fff", fontSize: 14, fontWeight: 700,
+              cursor: submitting ? "wait" : "pointer",
+              opacity: submitting ? 0.6 : 1,
+              transition: "all 0.15s ease",
+            }}
+            onMouseEnter={(e) => { if (!submitting) e.currentTarget.style.background = "#059669"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = EMERALD; }}
+          >
+            {submitting
+              ? "Submitting..."
+              : totalPrice > 0
+                ? `Submit Request \u2014 ${money(totalPrice)}`
+                : "Submit Request"
+            }
+          </button>
         )}
+      </div>
 
-        {/* ── SUBMIT ───────────────────────────────────────────── */}
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{
-            width: "100%",
-            padding: "14px 24px",
-            borderRadius: 10,
-            border: "none",
-            background: EMERALD,
-            color: "#fff",
-            fontSize: 15,
-            fontWeight: 700,
-            cursor: submitting ? "wait" : "pointer",
-            opacity: submitting ? 0.6 : 1,
-            transition: "all 0.15s ease",
-            marginBottom: 12,
-          }}
-          onMouseEnter={(e) => { if (!submitting) e.currentTarget.style.background = "#059669"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = EMERALD; }}
-        >
-          {submitting
-            ? "Submitting..."
-            : totalPrice > 0
-              ? `Submit Request \u2014 ${money(totalPrice)}`
-              : "Submit Request"
-          }
-        </button>
-
+      {!embedded && step === 8 && (
         <p style={{ fontSize: 12, color: TEXT_DIM, textAlign: "center", lineHeight: 1.5, margin: 0 }}>
           Your request will be assigned to an REI assessor.<br />
           You&apos;ll receive status updates at {broker.email}
         </p>
-      </form>
-    </div>
-  );
-}
+      )}
 
-// ─── Sub-components ─────────────────────────────────────────────────
-
-function ToggleButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: 1,
-        padding: "10px 14px",
-        borderRadius: 8,
-        border: active ? `2px solid ${EMERALD}` : `1.5px solid ${BORDER}`,
-        background: active ? EMERALD_BG : "transparent",
-        cursor: "pointer",
-        fontSize: 13,
-        fontWeight: 600,
-        color: active ? EMERALD : TEXT_SEC,
-        transition: "all 0.15s ease",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function PayerRadio({
-  value,
-  current,
-  onChange,
-  label,
-  desc,
-}: {
-  value: "broker" | "homeowner" | "pay_now";
-  current: string;
-  onChange: (v: "broker" | "homeowner" | "pay_now") => void;
-  label: string;
-  desc: string;
-}) {
-  const isActive = current === value;
-  return (
-    <label
-      style={{
-        display: "flex", gap: 12, padding: "12px 14px", borderRadius: 8,
-        border: isActive ? `2px solid ${EMERALD}` : `1.5px solid ${BORDER}`,
-        background: isActive ? EMERALD_BG : "transparent",
-        cursor: "pointer", transition: "all 0.15s",
-      }}
-    >
-      <input
-        type="radio"
-        name="payerType"
-        value={value}
-        checked={isActive}
-        onChange={() => onChange(value)}
-        style={{ accentColor: EMERALD, marginTop: 2 }}
-      />
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: isActive ? EMERALD : TEXT }}>
-          {label}
-        </div>
-        <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 2 }}>
-          {desc}
-        </div>
+      {/* Powered by REI footer */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        gap: 8, marginTop: 16, paddingTop: 16,
+        borderTop: `1px solid ${BORDER}`,
+        opacity: 0.5,
+      }}>
+        <span style={{ fontSize: 11, color: TEXT_DIM }}>Powered by</span>
+        <img src="/images/rei-logo.png" alt="REI" style={{ height: 16, objectFit: "contain", opacity: 0.7 }} />
       </div>
-    </label>
+    </div>
   );
 }

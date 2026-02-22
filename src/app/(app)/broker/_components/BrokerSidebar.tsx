@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { Bars3Icon, XMarkIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { useIsMobile } from "@/lib/useMediaQuery";
+import { useNewRequestModal } from "./NewRequestModalProvider";
 
 const STORAGE_KEY = "rei_broker_sidebar_v3";
 
@@ -15,10 +16,6 @@ type LinkItem = { href: string; label: string };
 const OVERVIEW: LinkItem[] = [
   { href: "/broker/dashboard", label: "Dashboard" },
   { href: "/broker/schedule", label: "Schedule" },
-];
-
-const PROJECTS: LinkItem[] = [
-  { href: "/broker/projects", label: "My Projects" },
 ];
 
 const MARKETPLACE: LinkItem[] = [
@@ -31,7 +28,6 @@ const NETWORK: LinkItem[] = [
 
 const TOOLS: LinkItem[] = [
   { href: "/broker/campaigns", label: "Campaigns" },
-  { href: "/broker/contacts", label: "Contacts" },
 ];
 
 function NavLink({ href, label, onClick }: LinkItem & { onClick?: () => void }) {
@@ -96,11 +92,15 @@ function Divider() {
 function SidebarContent({
   brokerName,
   brokerEmail,
+  brokerLogoUrl,
   onNavClick,
+  onNewRequest,
 }: {
   brokerName?: string;
   brokerEmail?: string;
+  brokerLogoUrl?: string | null;
   onNavClick?: () => void;
+  onNewRequest: () => void;
 }) {
   const pathname = usePathname();
   const settingsActive = pathname?.startsWith("/broker/settings");
@@ -109,15 +109,33 @@ function SidebarContent({
     <>
       {/* Broker identity */}
       {brokerName && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.3 }}>
-            {brokerName}
-          </div>
-          {brokerEmail && (
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {brokerEmail}
+        <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+          {brokerLogoUrl ? (
+            <img
+              src={brokerLogoUrl}
+              alt=""
+              style={{ width: 24, height: 24, borderRadius: 6, objectFit: "cover", flexShrink: 0, border: "1px solid #334155" }}
+            />
+          ) : (
+            <div style={{
+              width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+              background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)",
+              display: "grid", placeItems: "center",
+              fontSize: 11, fontWeight: 700, color: "#10b981",
+            }}>
+              {(brokerName || "B").charAt(0).toUpperCase()}
             </div>
           )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {brokerName}
+            </div>
+            {brokerEmail && (
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {brokerEmail}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -125,12 +143,6 @@ function SidebarContent({
         <SectionLabel>Overview</SectionLabel>
         <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {OVERVIEW.map((l) => <NavLink key={l.href} {...l} onClick={onNavClick} />)}
-        </nav>
-
-        <Divider />
-        <SectionLabel>Projects</SectionLabel>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {PROJECTS.map((l) => <NavLink key={l.href} {...l} onClick={onNavClick} />)}
         </nav>
 
         <Divider />
@@ -183,9 +195,9 @@ function SidebarContent({
           Settings
         </Link>
 
-        <Link
-          href="/broker/request"
-          onClick={onNavClick}
+        <button
+          type="button"
+          onClick={() => { onNavClick?.(); onNewRequest(); }}
           style={{
             display: "flex",
             alignItems: "center",
@@ -193,12 +205,12 @@ function SidebarContent({
             gap: 6,
             padding: "10px 12px",
             borderRadius: 8,
-            textDecoration: "none",
             fontWeight: 700,
             fontSize: 13,
             color: "#fff",
             background: "#10b981",
             border: "1px solid rgba(16,185,129,0.5)",
+            cursor: "pointer",
             transition: "all 0.15s ease",
           }}
           onMouseEnter={(e) => {
@@ -212,7 +224,7 @@ function SidebarContent({
         >
           <PlusIcon style={{ width: 16, height: 16 }} />
           New Request
-        </Link>
+        </button>
       </div>
     </>
   );
@@ -223,15 +235,18 @@ function SidebarContent({
 export default function BrokerSidebar({
   brokerName,
   brokerEmail,
+  brokerLogoUrl,
 }: {
   brokerName?: string;
   brokerEmail?: string;
+  brokerLogoUrl?: string | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const isMobile = useIsMobile();
   const pathname = usePathname();
   const prevPathname = useRef(pathname);
+  const { open: openNewRequest } = useNewRequestModal();
 
   // Load desktop collapsed preference
   useEffect(() => {
@@ -365,7 +380,7 @@ export default function BrokerSidebar({
             </button>
           </div>
 
-          <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} onNavClick={() => setMobileOpen(false)} />
+          <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} brokerLogoUrl={brokerLogoUrl} onNavClick={() => setMobileOpen(false)} onNewRequest={openNewRequest} />
         </aside>
       </>
     );
@@ -424,8 +439,9 @@ export default function BrokerSidebar({
           {"\u276F"}
         </button>
         {/* Collapsed CTA */}
-        <Link
-          href="/broker/request"
+        <button
+          type="button"
+          onClick={openNewRequest}
           title="New Request"
           style={{
             position: "absolute",
@@ -434,13 +450,14 @@ export default function BrokerSidebar({
             height: 30,
             borderRadius: 8,
             background: "#10b981",
+            border: "none",
+            cursor: "pointer",
             display: "grid",
             placeItems: "center",
-            textDecoration: "none",
           }}
         >
           <PlusIcon style={{ width: 16, height: 16, color: "#fff" }} />
-        </Link>
+        </button>
       </aside>
     );
   }
@@ -521,7 +538,7 @@ export default function BrokerSidebar({
         </button>
       </div>
 
-      <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} />
+      <SidebarContent brokerName={brokerName} brokerEmail={brokerEmail} brokerLogoUrl={brokerLogoUrl} onNewRequest={openNewRequest} />
     </aside>
   );
 }

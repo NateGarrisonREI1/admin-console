@@ -365,7 +365,7 @@ export default function LeadsClient({ data }: { data: BrokerMarketplaceData }) {
         {revenueOpen && (
           <div style={{ padding: "0 18px 18px" }}>
             {/* Revenue Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 18 }}>
+            <div className="broker-revenue-grid" style={{ marginBottom: 18 }}>
               <div style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "14px 16px" }}>
                 <div style={{ fontSize: 11, color: TEXT_DIM, fontWeight: 600 }}>Total Revenue</div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: "#f59e0b", marginTop: 2 }}>{money(revenueData.totalRevenue)}</div>

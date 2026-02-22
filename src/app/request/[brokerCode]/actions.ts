@@ -18,6 +18,7 @@ export type BrokerInfo = {
   brokerName: string;
   companyName: string | null;
   brokerEmail: string;
+  logoUrl: string | null;
 };
 
 export type ClientFormPayload = {
@@ -51,7 +52,7 @@ export type ClientFormResult =
 export async function lookupBrokerByCode(code: string): Promise<BrokerInfo | null> {
   const { data: broker } = await supabaseAdmin
     .from("brokers")
-    .select("id, user_id, company_name")
+    .select("id, user_id, company_name, logo_url")
     .eq("referral_code", code)
     .maybeSingle();
 
@@ -69,6 +70,7 @@ export async function lookupBrokerByCode(code: string): Promise<BrokerInfo | nul
     brokerName: (profile?.full_name as string) || "Broker",
     companyName: (broker.company_name as string) || null,
     brokerEmail: (profile?.email as string) || "",
+    logoUrl: (broker.logo_url as string) || null,
   };
 }
 

@@ -491,3 +491,143 @@ code {
     transform: translateY(0);
   }
 }
+
+@keyframes popIn {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* ===============================
+   Broker Portal — Responsive
+   Mobile: ≤640px  Tablet: 641-1024px  Desktop: 1025px+
+   =============================== */
+
+/* KPI grids */
+.broker-kpi-grid-4 {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, 1fr);
+}
+.broker-kpi-grid-3 {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+}
+.broker-kpi-grid-6 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(6, 1fr);
+}
+
+/* Two-column layout */
+.broker-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+/* Schedule table — hide on mobile, show on desktop */
+.broker-table-desktop { display: block; }
+.broker-card-mobile { display: none; }
+
+/* Filter tabs — horizontally scrollable on mobile */
+.broker-filter-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(30,41,59,0.5);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+/* Service cards grid */
+.broker-service-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Property row: city/state/zip */
+.broker-property-row {
+  display: grid;
+  grid-template-columns: 1fr 80px 100px;
+  gap: 12px;
+}
+
+/* Scheduling row */
+.broker-schedule-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Revenue grid */
+.broker-revenue-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+/* Job detail grid */
+.broker-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 24px;
+}
+
+/* Schedule table columns */
+.broker-schedule-header,
+.broker-schedule-row-grid {
+  display: grid;
+  grid-template-columns: 90px 1fr 80px 140px 130px 120px;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Mobile touch targets */
+@media (max-width: 640px) {
+  .broker-kpi-grid-4 { grid-template-columns: 1fr 1fr; }
+  .broker-kpi-grid-3 { grid-template-columns: 1fr 1fr; }
+  .broker-kpi-grid-6 { grid-template-columns: 1fr 1fr; }
+  .broker-two-col { grid-template-columns: 1fr; }
+  .broker-table-desktop { display: none; }
+  .broker-card-mobile { display: block; }
+  .broker-filter-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+  .broker-filter-tabs > button { flex-shrink: 0; }
+  .broker-service-grid { grid-template-columns: 1fr; }
+  .broker-property-row { grid-template-columns: 1fr; }
+  .broker-schedule-row { grid-template-columns: 1fr; }
+  .broker-revenue-grid { grid-template-columns: 1fr; }
+  .broker-detail-grid { grid-template-columns: 1fr; }
+
+  /* Touch targets */
+  .broker-input,
+  .broker-select {
+    min-height: 48px;
+    font-size: 16px !important;
+  }
+  .broker-btn {
+    min-height: 48px;
+  }
+  .broker-checkbox-row,
+  .broker-radio-row {
+    min-height: 48px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .broker-kpi-grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .broker-kpi-grid-6 { grid-template-columns: repeat(3, 1fr); }
+  .broker-revenue-grid { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+/* Schedule — mobile card layout */
+.broker-schedule-header { /* hidden on mobile via broker-table-desktop */ }
+.broker-mobile-job-card {
+  padding: 14px 16px;
+  border-bottom: 1px solid #33415544;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.broker-mobile-job-card:last-child { border-bottom: none; }

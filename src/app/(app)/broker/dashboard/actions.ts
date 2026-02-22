@@ -36,12 +36,19 @@ export type QuickStats = {
   outOfNetworkProviders: number;
 };
 
+export type ClientLinkInfo = {
+  referralCode: string | null;
+  visits: number;
+  conversions: number;
+};
+
 export type BrokerDashboardData = {
   brokerName: string;
   kpis: BrokerDashboardKPIs;
   urgentTasks: UrgentTask[];
   recentActivity: RecentActivity[];
   quickStats: QuickStats;
+  clientLink: ClientLinkInfo;
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────
@@ -79,13 +86,18 @@ export async function fetchBrokerDashboard(): Promise<BrokerDashboardData | null
   // Get broker record
   const { data: broker } = await supabaseAdmin
     .from("brokers")
-    .select("id, company_name")
+    .select("id, company_name, referral_code, referral_link_visits, referral_link_conversions")
     .eq("user_id", userId)
     .single();
 
   if (!broker) return null;
-  const brokerId = broker.id;
-  const brokerName = broker.company_name || "Your Company";
+  const brokerId = broker.id as string;
+  const brokerName = (broker.company_name as string) || "Your Company";
+  const clientLink: ClientLinkInfo = {
+    referralCode: (broker.referral_code as string) ?? null,
+    visits: (broker.referral_link_visits as number) ?? 0,
+    conversions: (broker.referral_link_conversions as number) ?? 0,
+  };
 
   const fields = "id, status, address, city, customer_name, created_at, leaf_tier, network_status, team_member_id, team_member_name";
 
@@ -188,5 +200,6 @@ export async function fetchBrokerDashboard(): Promise<BrokerDashboardData | null
     urgentTasks,
     recentActivity,
     quickStats,
+    clientLink,
   };
 }

@@ -8,6 +8,7 @@ import type {
   RecentActivity,
   QuickStats,
 } from "./actions";
+import { useNewRequestModal } from "../_components/NewRequestModalProvider";
 
 // ─── Design tokens ──────────────────────────────────────────────────
 
@@ -172,6 +173,8 @@ export default function BrokerDashboardClient({
   recentActivity,
   quickStats,
 }: Props) {
+  const { open: openNewRequest } = useNewRequestModal();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       {/* ── Header ── */}
@@ -200,20 +203,20 @@ export default function BrokerDashboardClient({
             Here&apos;s your broker overview.
           </p>
         </div>
-        <Link
-          href="/broker/request"
+        <button
+          onClick={openNewRequest}
           style={{
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
             padding: "10px 18px",
             borderRadius: 8,
-            textDecoration: "none",
             fontWeight: 700,
             fontSize: 13,
             color: "#fff",
             background: EMERALD,
             border: `1px solid rgba(16,185,129,0.5)`,
+            cursor: "pointer",
             transition: "all 0.15s ease",
           }}
           onMouseEnter={(e) => {
@@ -226,17 +229,11 @@ export default function BrokerDashboardClient({
           }}
         >
           + New Request
-        </Link>
+        </button>
       </div>
 
       {/* ── KPI Cards ── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-          gap: 14,
-        }}
-      >
+      <div className="broker-kpi-grid-4">
         <KPICard label="Active Jobs" value={kpis.activeJobs} accent={BLUE} />
         <KPICard label="Pending" value={kpis.pending} accent={AMBER} />
         <KPICard label="Completed This Month" value={kpis.completedThisMonth} accent={EMERALD} />
@@ -281,14 +278,7 @@ export default function BrokerDashboardClient({
       </div>
 
       {/* ── Bottom two-column: Recent Activity + Quick Stats ── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 16,
-          alignItems: "start",
-        }}
-      >
+      <div className="broker-two-col">
         {/* ── Recent Activity ── */}
         <div
           style={{
@@ -433,6 +423,7 @@ export default function BrokerDashboardClient({
           </div>
         </div>
       </div>
+
     </div>
   );
 }
